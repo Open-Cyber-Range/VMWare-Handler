@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 
-	sdl_parser "github.com/open-cyber-range/sdl-parser"
 	"github.com/vmware/govmomi"
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
@@ -76,7 +75,6 @@ func (deployment *Deployment) createOrFindExerciseFolder() (*object.Folder, erro
 	if errorCreatingFolder != nil {
 		return nil, errorCreatingFolder
 	}
-	fmt.Println(exerciseFolder)
 
 	return exerciseFolder, nil
 }
@@ -138,35 +136,6 @@ func main() {
 	log.SetPrefix("deployer: ")
 	log.SetFlags(0)
 
-	parsedSDL, sdlError := sdl_parser.ParseSDL(`
-scenario:
-  name: test-scenario
-  description: some-description
-  start: 2022-01-20T13:00:00Z
-  end: 2022-01-20T23:00:00Z
-  infrastructure:
-    #win10:
-    #  type: VM
-    #  description: win-10-description
-    #  template: windows10
-    #  flavor:
-    #    ram: 4gb
-    #    cpu: 2  
-    deb10:
-      type: VM
-      description: deb-10-description
-      template: debian10
-      flavor:
-        ram: 2gb
-        cpu: 1
-
-`)
-
-	if sdlError != nil {
-		log.Fatal(sdlError)
-	}
-
-	fmt.Println(parsedSDL)
 	ctx := context.Background()
 
 	configuration, configurationError := getConfiguration()
@@ -195,5 +164,4 @@ scenario:
 	if deploymentError != nil {
 		log.Fatal(deploymentError)
 	}
-	fmt.Println("Create success")
 }
