@@ -40,7 +40,12 @@ func (configuration *Configuration) createClient(ctx context.Context) (*govmomi.
 
 func getConfiguration() (*Configuration, error) {
 	var configuration Configuration
-	configurationPath := os.Args[1]
+	commandArgs := os.Args
+	if len(commandArgs) < 2 {
+		return nil, fmt.Errorf("no configuration path provided")
+	}
+	configurationPath := commandArgs[1]
+
 	yamlFile, fileError := ioutil.ReadFile(configurationPath)
 	if fileError != nil {
 		return nil, fileError
