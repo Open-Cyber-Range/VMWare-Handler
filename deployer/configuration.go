@@ -16,9 +16,9 @@ type Configuration struct {
 	Password           string
 	Hostname           string
 	Insecure           bool
-	TemplateFolderPath string
-	ResourcePoolPath   string
-	ExerciseRootPath   string
+	TemplateFolderPath string `yaml:"template_folder_path"`
+	ResourcePoolPath   string `yaml:"resource_pool_path"`
+	ExerciseRootPath   string `yaml:"exercise_root_path"`
 }
 
 func (configuration *Configuration) createClient(ctx context.Context) (*govmomi.Client, error) {
