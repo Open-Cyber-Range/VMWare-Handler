@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+option go_package = "github.com/open-cyber-range/vmware-node-deployer/deployer-grpc";
+
+// The greeting service definition.
+service NodeService {
+  // Sends a greeting
+  rpc Create (Node) returns (Reply) {}
+  // Sends another greeting
+  rpc Delete (EntityId) returns (Reply) {}
+}
+
+// The request message containing the user's name.
+message Node {
+  string name = 1;
+}
+
+message Reply {
+  enum Status {
+    OK = 0;
+    ERROR = 1;
+  }
+  Status status = 1;
+  string message = 2;
+}
+
+// The response message containing the greetings
+message EntityId {
+  string id = 1;
+}
