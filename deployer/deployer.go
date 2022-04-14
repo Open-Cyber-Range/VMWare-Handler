@@ -4,22 +4,21 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net"
 
+	// pb "github.com/open-cyber-range/vmware-node-deployer/grpc/node"
+	common "github.com/open-cyber-range/vmware-node-deployer/grpc/common"
+	node "github.com/open-cyber-range/vmware-node-deployer/grpc/node"
 	"github.com/vmware/govmomi"
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/vim25/types"
+	"google.golang.org/grpc"
 )
-
-type Node struct {
-	ExerciseName string
-	NodeName     string
-	TemplateName string
-}
 
 type Deployment struct {
 	Client        *govmomi.Client
-	Node          Node
+	Node          node.Node
 	Configuration *Configuration
 }
 
@@ -115,7 +114,7 @@ func (deployment *Deployment) run() error {
 			Pool: &resourcePoolReference,
 		},
 	}
-	task, taskError := template.Clone(context.Background(), exersiceFolder, deployment.Node.NodeName, cloneSpesifcation)
+	task, taskError := template.Clone(context.Background(), exersiceFolder, deployment.Node.Name, cloneSpesifcation)
 	if taskError != nil {
 		return taskError
 	}
@@ -132,10 +131,30 @@ func (deployment *Deployment) run() error {
 	return fmt.Errorf("failed to clone template")
 }
 
+type nodeServer struct {
+	node.UnimplementedNodeServiceServer
+	Client        *govmomi.Client
+	Configuration *Configuration
+}
+
+func (server *nodeServer) Create(ctx context.Context, node *node.Node) (*common.SimpleResponse, error) {
+	deployment := Deployment{
+		Client:        server.Client,
+		Configuration: server.Configuration,
+	}
+	log.Printf("Received node for deployement: %v in exercise: %v", node.Name, node.ExerciseName)
+
+	deploymentError := deployment.run()
+	if deploymentError != nil {
+		return &common.SimpleResponse{Message: fmt.Sprintf("Node deployment failed to: %v", deploymentError), Status: common.SimpleResponse_ERROR}, nil
+	}
+	log.Printf("Deployed: %v", node.GetName())
+	return &common.SimpleResponse{Message: "Deployed node: " + node.GetName(), Status: common.SimpleResponse_OK}, nil
+}
+
 func main() {
 	log.SetPrefix("deployer: ")
 	log.SetFlags(0)
-
 	ctx := context.Background()
 
 	configuration, configurationError := getConfiguration()
@@ -148,20 +167,52 @@ func main() {
 		log.Fatal(clientError)
 	}
 
-	node := Node{
-		ExerciseName: "test-scenario	",
-		NodeName:     "test-node",
-		TemplateName: "debian10",
+	listeningAddress, addressError := net.Listen("tcp", configuration.ServerPath)
+	if addressError != nil {
+		log.Fatalf("failed to listen: %v", addressError)
 	}
 
-	deployment := Deployment{
+	server := grpc.NewServer()
+	node.RegisterNodeServiceServer(server, &nodeServer{
 		Client:        client,
-		Node:          node,
 		Configuration: configuration,
-	}
-
-	deploymentError := deployment.run()
-	if deploymentError != nil {
-		log.Fatal(deploymentError)
+	})
+	log.Printf("server listening at %v", listeningAddress.Addr())
+	if bindError := server.Serve(listeningAddress); bindError != nil {
+		log.Fatalf("failed to serve: %v", bindError)
 	}
 }
+
+// func main() {
+// 	log.SetPrefix("deployer: ")
+// 	log.SetFlags(0)
+
+// 	ctx := context.Background()
+
+// 	configuration, configurationError := getConfiguration()
+// 	if configurationError != nil {
+// 		log.Fatal(configurationError)
+// 	}
+
+// 	client, clientError := configuration.createClient(ctx)
+// 	if clientError != nil {
+// 		log.Fatal(clientError)
+// 	}
+
+// 	node := Node{
+// 		ExerciseName: "test-scenario	",
+// 		NodeName:     "test-node",
+// 		TemplateName: "debian10",
+// 	}
+
+// 	deployment := Deployment{
+// 		Client:        client,
+// 		Node:          node,
+// 		Configuration: configuration,
+// 	}
+
+// 	deploymentError := deployment.run()
+// 	if deploymentError != nil {
+// 		log.Fatal(deploymentError)
+// 	}
+// }

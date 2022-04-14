@@ -1,8 +1,12 @@
-module github.com/open-cyber-range/vmware-node-deployer/deployer-grpc
+module github.com/open-cyber-range/vmware-node-deployer
+
+go 1.17
 
 require (
+	github.com/vmware/govmomi v0.27.4
 	google.golang.org/grpc v1.45.0
 	google.golang.org/protobuf v1.28.0
+	gopkg.in/yaml.v2 v2.4.0
 )
 
 require (
@@ -12,5 +16,3 @@ require (
 	golang.org/x/text v0.3.0 // indirect
 	google.golang.org/genproto v0.0.0-20200526211855-cb27e3aa2013 // indirect
 )
-
-go 1.17

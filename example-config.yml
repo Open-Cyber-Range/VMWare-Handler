@@ -5,3 +5,4 @@ insecure: true
 template_folder_path: /template/folder/path/in/vcenter
 resource_pool_path: /resource/pool/path/in/vcenter
 exercise_root_path: /root/folder/for/exercises/in/vcenter
+server_path: "some-address:port"
