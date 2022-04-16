@@ -6,7 +6,6 @@ import (
 	"log"
 	"net"
 
-	// pb "github.com/open-cyber-range/vmware-node-deployer/grpc/node"
 	common "github.com/open-cyber-range/vmware-node-deployer/grpc/common"
 	node "github.com/open-cyber-range/vmware-node-deployer/grpc/node"
 	"github.com/vmware/govmomi"
@@ -55,7 +54,7 @@ func (deployment *Deployment) getTemplate() (*object.VirtualMachine, error) {
 	return template, nil
 }
 
-func (deployment *Deployment) createOrFindExerciseFolder() (*object.Folder, error) {
+func (deployment *Deployment) createOrFindExerciseFolder() (_ *object.Folder, err error) {
 	finder := find.NewFinder(deployment.Client.Client, true)
 	ctx := context.Background()
 	folderPath := deployment.Configuration.ExerciseRootPath + deployment.Node.ExerciseName
@@ -65,14 +64,14 @@ func (deployment *Deployment) createOrFindExerciseFolder() (*object.Folder, erro
 		return existingFolder, nil
 	}
 
-	baseFolder, baseFolderError := finder.Folder(ctx, deployment.Configuration.ExerciseRootPath)
-	if baseFolderError != nil {
-		return nil, baseFolderError
+	baseFolder, err := finder.Folder(ctx, deployment.Configuration.ExerciseRootPath)
+	if err != nil {
+		return
 	}
 
-	exerciseFolder, errorCreatingFolder := baseFolder.CreateFolder(ctx, deployment.Node.ExerciseName)
-	if errorCreatingFolder != nil {
-		return nil, errorCreatingFolder
+	exerciseFolder, err := baseFolder.CreateFolder(ctx, deployment.Node.ExerciseName)
+	if err != nil {
+		return
 	}
 
 	return exerciseFolder, nil
@@ -83,7 +82,7 @@ func (deployment *Deployment) getResoucePool() (*object.ResourcePool, error) {
 	finder := find.NewFinder(deployment.Client.Client, true)
 	datacenter, datacenterError := finder.DefaultDatacenter(ctx)
 	if datacenterError != nil {
-		log.Fatal(datacenterError)
+		return nil, fmt.Errorf("default datacenter not found")
 	}
 	finder.SetDatacenter(datacenter)
 	resourcePool, poolError := finder.ResourcePool(ctx, deployment.Configuration.ResourcePoolPath)
@@ -94,18 +93,18 @@ func (deployment *Deployment) getResoucePool() (*object.ResourcePool, error) {
 	return resourcePool, nil
 }
 
-func (deployment *Deployment) run() error {
-	template, templateError := deployment.getTemplate()
-	if templateError != nil {
-		return templateError
+func (deployment *Deployment) run() (err error) {
+	template, err := deployment.getTemplate()
+	if err != nil {
+		return
 	}
-	exersiceFolder, folderError := deployment.createOrFindExerciseFolder()
-	if folderError != nil {
-		return folderError
+	exersiceFolder, err := deployment.createOrFindExerciseFolder()
+	if err != nil {
+		return
 	}
-	resourcePool, poolError := deployment.getResoucePool()
-	if poolError != nil {
-		return poolError
+	resourcePool, err := deployment.getResoucePool()
+	if err != nil {
+		return
 	}
 	resourcePoolReference := resourcePool.Reference()
 	cloneSpesifcation := types.VirtualMachineCloneSpec{
@@ -114,14 +113,14 @@ func (deployment *Deployment) run() error {
 			Pool: &resourcePoolReference,
 		},
 	}
-	task, taskError := template.Clone(context.Background(), exersiceFolder, deployment.Node.Name, cloneSpesifcation)
-	if taskError != nil {
-		return taskError
+	task, err := template.Clone(context.Background(), exersiceFolder, deployment.Node.Name, cloneSpesifcation)
+	if err != nil {
+		return
 	}
 
-	info, infoError := task.WaitForResult(context.Background())
-	if infoError != nil {
-		return infoError
+	info, err := task.WaitForResult(context.Background())
+	if err != nil {
+		return
 	}
 
 	if info.State == types.TaskInfoStateSuccess {
@@ -182,37 +181,3 @@ func main() {
 		log.Fatalf("failed to serve: %v", bindError)
 	}
 }
-
-// func main() {
-// 	log.SetPrefix("deployer: ")
-// 	log.SetFlags(0)
-
-// 	ctx := context.Background()
-
-// 	configuration, configurationError := getConfiguration()
-// 	if configurationError != nil {
-// 		log.Fatal(configurationError)
-// 	}
-
-// 	client, clientError := configuration.createClient(ctx)
-// 	if clientError != nil {
-// 		log.Fatal(clientError)
-// 	}
-
-// 	node := Node{
-// 		ExerciseName: "test-scenario	",
-// 		NodeName:     "test-node",
-// 		TemplateName: "debian10",
-// 	}
-
-// 	deployment := Deployment{
-// 		Client:        client,
-// 		Node:          node,
-// 		Configuration: configuration,
-// 	}
-
-// 	deploymentError := deployment.run()
-// 	if deploymentError != nil {
-// 		log.Fatal(deploymentError)
-// 	}
-// }
