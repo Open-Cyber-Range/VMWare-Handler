@@ -10,3 +10,7 @@ compile-protobuf:
 
 build: compile-protobuf
 	go build -o ./bin/wmvare-node-deployer ./deployer
+
+
+run: build
+	./bin/wmvare-node-deployer ./config.yml
