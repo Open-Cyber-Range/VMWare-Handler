@@ -17,7 +17,7 @@ import (
 
 type Deployment struct {
 	Client        *govmomi.Client
-	Node          node.Node
+	Node          *node.Node
 	Configuration *Configuration
 }
 
@@ -140,6 +140,7 @@ func (server *nodeServer) Create(ctx context.Context, node *node.Node) (*common.
 	deployment := Deployment{
 		Client:        server.Client,
 		Configuration: server.Configuration,
+		Node:          node,
 	}
 	log.Printf("Received node for deployement: %v in exercise: %v", node.Name, node.ExerciseName)
 
@@ -151,16 +152,8 @@ func (server *nodeServer) Create(ctx context.Context, node *node.Node) (*common.
 	return &common.SimpleResponse{Message: "Deployed node: " + node.GetName(), Status: common.SimpleResponse_OK}, nil
 }
 
-func main() {
-	log.SetPrefix("deployer: ")
-	log.SetFlags(0)
+func RealMain(configuration *Configuration) {
 	ctx := context.Background()
-
-	configuration, configurationError := getConfiguration()
-	if configurationError != nil {
-		log.Fatal(configurationError)
-	}
-
 	client, clientError := configuration.createClient(ctx)
 	if clientError != nil {
 		log.Fatal(clientError)
@@ -180,4 +173,16 @@ func main() {
 	if bindError := server.Serve(listeningAddress); bindError != nil {
 		log.Fatalf("failed to serve: %v", bindError)
 	}
+}
+
+func main() {
+	log.SetPrefix("deployer: ")
+	log.SetFlags(0)
+
+	configuration, configurationError := getConfiguration()
+	if configurationError != nil {
+		log.Fatal(configurationError)
+	}
+
+	RealMain(configuration)
 }
