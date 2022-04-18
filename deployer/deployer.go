@@ -146,7 +146,7 @@ func (server *nodeServer) Create(ctx context.Context, node *node.Node) (*common.
 
 	deploymentError := deployment.run()
 	if deploymentError != nil {
-		return &common.SimpleResponse{Message: fmt.Sprintf("Node deployment failed to: %v", deploymentError), Status: common.SimpleResponse_ERROR}, nil
+		return &common.SimpleResponse{Message: fmt.Sprintf("Node deployment failed due to: %v", deploymentError), Status: common.SimpleResponse_ERROR}, nil
 	}
 	log.Printf("Deployed: %v", node.GetName())
 	return &common.SimpleResponse{Message: "Deployed node: " + node.GetName(), Status: common.SimpleResponse_OK}, nil
