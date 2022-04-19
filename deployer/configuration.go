@@ -19,7 +19,7 @@ type Configuration struct {
 	TemplateFolderPath string `yaml:"template_folder_path"`
 	ResourcePoolPath   string `yaml:"resource_pool_path"`
 	ExerciseRootPath   string `yaml:"exercise_root_path"`
-	ServerPath         string `yaml:"server_path"`
+	ServerAddress      string `yaml:"server_address"`
 }
 
 func (configuration *Configuration) createClient(ctx context.Context) (*govmomi.Client, error) {

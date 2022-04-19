@@ -151,7 +151,7 @@ func waitForTaskSuccess(task *object.Task) error {
 
 func (deployment *Deployment) delete() (err error) {
 	finder := CreateFinder(deployment.Client)
-	nodePath := deployment.Configuration.ExerciseRootPath + deployment.Node.ExerciseName + "/" + deployment.Node.Name
+	nodePath := deployment.Configuration.ExerciseRootPath + "/" + deployment.Node.ExerciseName + "/" + deployment.Node.Name
 	virtualMachine, err := finder.VirtualMachine(context.Background(), nodePath)
 	if err != nil {
 		return
@@ -226,7 +226,7 @@ func RealMain(configuration *Configuration) {
 		log.Fatal(clientError)
 	}
 
-	listeningAddress, addressError := net.Listen("tcp", configuration.ServerPath)
+	listeningAddress, addressError := net.Listen("tcp", configuration.ServerAddress)
 	if addressError != nil {
 		log.Fatalf("failed to listen: %v", addressError)
 	}
