@@ -21,16 +21,20 @@ type Deployment struct {
 	Configuration *Configuration
 }
 
-func findTemplates(client *govmomi.Client, templatePath string) ([]*object.VirtualMachine, error) {
+func CreateFinder(client *govmomi.Client) *find.Finder {
 	finder := find.NewFinder(client.Client, true)
-
 	ctx := context.Background()
 	datacenter, datacenterError := finder.DefaultDatacenter(ctx)
 	if datacenterError != nil {
 		log.Fatal(datacenterError)
 	}
 	finder.SetDatacenter(datacenter)
+	return finder
+}
 
+func findTemplates(client *govmomi.Client, templatePath string) ([]*object.VirtualMachine, error) {
+	finder := CreateFinder(client)
+	ctx := context.Background()
 	return finder.VirtualMachineList(ctx, templatePath)
 }
 

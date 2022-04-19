@@ -11,7 +11,6 @@ import (
 	common "github.com/open-cyber-range/vmware-node-deployer/grpc/common"
 	node "github.com/open-cyber-range/vmware-node-deployer/grpc/node"
 	"github.com/vmware/govmomi"
-	"github.com/vmware/govmomi/find"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -43,14 +42,9 @@ func createRandomString(length int) string {
 	return string(result)
 }
 
-func testCleanup(client *govmomi.Client, folderPath string) (err error) {
-	finder := find.NewFinder(client.Client, true)
+func exerciseCleanup(client *govmomi.Client, folderPath string) (err error) {
+	finder := CreateFinder(client)
 	ctx := context.Background()
-	datacenter, err := finder.DefaultDatacenter(ctx)
-	if err != nil {
-		return
-	}
-	finder.SetDatacenter(datacenter)
 
 	virtualMachines, err := finder.VirtualMachineList(ctx, folderPath+"/*")
 	if err != nil && !strings.HasSuffix(err.Error(), "vm '"+folderPath+"/*"+"' not found") {
@@ -82,6 +76,40 @@ func testCleanup(client *govmomi.Client, folderPath string) (err error) {
 	return nil
 }
 
+func nodeExists(client *govmomi.Client, exerciseName string, nodeName string) bool {
+	finder := CreateFinder(client)
+
+	ctx := context.Background()
+	virtualMachine, _ := finder.VirtualMachine(ctx, testConfiguration.ExerciseRootPath+"/"+exerciseName+"/"+nodeName)
+	return virtualMachine != nil
+}
+
+func creategRPCClient(t *testing.T) node.NodeServiceClient {
+	connection, connectionError := grpc.Dial(testConfiguration.ServerPath, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if connectionError != nil {
+		t.Fatalf("did not connect: %v", connectionError)
+	}
+	t.Cleanup(func() {
+		connectionError := connection.Close()
+		if connectionError != nil {
+			t.Fatalf("Failed to close connection: %v", connectionError)
+		}
+	})
+	return node.NewNodeServiceClient(connection)
+}
+
+func createExercise(t *testing.T, client *govmomi.Client) (exerciseName string, fullExercisePath string) {
+	exerciseName = createRandomString(10)
+	fullExercisePath = testConfiguration.ExerciseRootPath + "/" + exerciseName
+	t.Cleanup(func() {
+		cleanupError := exerciseCleanup(client, fullExercisePath)
+		if cleanupError != nil {
+			t.Fatalf("Failed to cleanup: %v", cleanupError)
+		}
+	})
+	return
+}
+
 func TestNodeDeployment(t *testing.T) {
 	startServer(1 * time.Second)
 
@@ -90,24 +118,9 @@ func TestNodeDeployment(t *testing.T) {
 	if VMWareClientError != nil {
 		t.Fatalf("Failed to send request: %v", VMWareClientError)
 	}
-	connection, err := grpc.Dial(testConfiguration.ServerPath, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	defer func() {
-		connectionError := connection.Close()
-		if connectionError != nil {
-			t.Fatalf("Failed to close connection: %v", connectionError)
-		}
-	}()
-	if err != nil {
-		t.Fatalf("did not connect: %v", err)
-	}
-	gRPCClient := node.NewNodeServiceClient(connection)
-	exerciseName := createRandomString(10)
-	defer func() {
-		cleanupError := testCleanup(VMWareClient, testConfiguration.ExerciseRootPath+"/"+exerciseName)
-		if cleanupError != nil {
-			t.Fatalf("Failed to cleanup: %v", cleanupError)
-		}
-	}()
+	gRPCClient := creategRPCClient(t)
+	exerciseName, _ := createExercise(t, VMWareClient)
+
 	reply, err := gRPCClient.Create(context.Background(), &node.Node{
 		Name:         "test-node",
 		TemplateName: "debian10",
@@ -118,5 +131,8 @@ func TestNodeDeployment(t *testing.T) {
 	}
 	if reply.Status != common.SimpleResponse_OK {
 		t.Fatalf("Failed to create node: %v", reply.Message)
+	}
+	if !nodeExists(VMWareClient, exerciseName, "test-node") {
+		t.Fatalf("Node was not created")
 	}
 }
