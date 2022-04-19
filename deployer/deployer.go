@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"strings"
 
 	common "github.com/open-cyber-range/vmware-node-deployer/grpc/common"
 	node "github.com/open-cyber-range/vmware-node-deployer/grpc/node"
@@ -97,7 +98,7 @@ func (deployment *Deployment) getResoucePool() (*object.ResourcePool, error) {
 	return resourcePool, nil
 }
 
-func (deployment *Deployment) run() (err error) {
+func (deployment *Deployment) create() (err error) {
 	template, err := deployment.getTemplate()
 	if err != nil {
 		return
@@ -134,6 +135,43 @@ func (deployment *Deployment) run() (err error) {
 	return fmt.Errorf("failed to clone template")
 }
 
+func (deployment *Deployment) delete() (err error) {
+	finder := CreateFinder(deployment.Client)
+	nodePath := deployment.Configuration.ExerciseRootPath + deployment.Node.ExerciseName + "/" + deployment.Node.Name
+	virtualMachine, err := finder.VirtualMachine(context.Background(), nodePath)
+	if err != nil {
+		return
+	}
+
+	ctx := context.Background()
+
+	powerOffTask, err := virtualMachine.PowerOff(ctx)
+	if err != nil {
+		return
+	}
+	powerOffInfo, err := powerOffTask.WaitForResult(ctx)
+	if err != nil {
+		return
+	}
+	if powerOffInfo.State == types.TaskInfoStateSuccess {
+		return nil
+	}
+
+	destroyTask, err := virtualMachine.Destroy(ctx)
+	if err != nil {
+		return
+	}
+	destroyInfo, err := destroyTask.WaitForResult(ctx)
+	if err != nil {
+		return
+	}
+	if destroyInfo.State == types.TaskInfoStateSuccess {
+		return nil
+	}
+
+	return fmt.Errorf("failed to clone template")
+}
+
 type nodeServer struct {
 	node.UnimplementedNodeServiceServer
 	Client        *govmomi.Client
@@ -146,13 +184,35 @@ func (server *nodeServer) Create(ctx context.Context, node *node.Node) (*common.
 		Configuration: server.Configuration,
 		Node:          node,
 	}
-	log.Printf("Received node for deployement: %v in exercise: %v", node.Name, node.ExerciseName)
+	log.Printf("received node for deployement: %v in exercise: %v\n", node.Name, node.ExerciseName)
 
-	deploymentError := deployment.run()
+	deploymentError := deployment.create()
 	if deploymentError != nil {
 		return &common.SimpleResponse{Message: fmt.Sprintf("Node deployment failed due to: %v", deploymentError), Status: common.SimpleResponse_ERROR}, nil
 	}
-	log.Printf("Deployed: %v", node.GetName())
+	log.Printf("deployed: %v", node.GetName())
+	return &common.SimpleResponse{Message: "Deployed node: " + node.GetName(), Status: common.SimpleResponse_OK}, nil
+}
+
+func (server *nodeServer) Delete(ctx context.Context, Identifier *common.Identifier) (*common.SimpleResponse, error) {
+	splitIdentifier := strings.Split(Identifier.GetValue(), "/")
+	node := node.Node{
+		Name:         splitIdentifier[1],
+		ExerciseName: splitIdentifier[0],
+	}
+	deployment := Deployment{
+		Client:        server.Client,
+		Configuration: server.Configuration,
+		Node:          &node,
+	}
+	log.Printf("Received node for deleting: %v in exercise: %v\n", node.Name, node.ExerciseName)
+
+	deploymentError := deployment.delete()
+	if deploymentError != nil {
+		log.Printf("failed to delete node: %v\n", deploymentError)
+		return &common.SimpleResponse{Message: fmt.Sprintf("Node deployment failed due to: %v", deploymentError), Status: common.SimpleResponse_ERROR}, nil
+	}
+	log.Printf("deleted: %v\n", node.GetName())
 	return &common.SimpleResponse{Message: "Deployed node: " + node.GetName(), Status: common.SimpleResponse_OK}, nil
 }
 
