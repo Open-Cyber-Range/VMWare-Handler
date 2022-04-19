@@ -135,6 +135,20 @@ func (deployment *Deployment) create() (err error) {
 	return fmt.Errorf("failed to clone template")
 }
 
+func waitForTaskSuccess(task *object.Task) error {
+	ctx := context.Background()
+	info, err := task.WaitForResult(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	if info.State == types.TaskInfoStateSuccess {
+		return nil
+	}
+
+	return fmt.Errorf("failed to perform task: %v", task.Name())
+}
+
 func (deployment *Deployment) delete() (err error) {
 	finder := CreateFinder(deployment.Client)
 	nodePath := deployment.Configuration.ExerciseRootPath + deployment.Node.ExerciseName + "/" + deployment.Node.Name
@@ -149,27 +163,16 @@ func (deployment *Deployment) delete() (err error) {
 	if err != nil {
 		return
 	}
-	powerOffInfo, err := powerOffTask.WaitForResult(ctx)
+	err = waitForTaskSuccess(powerOffTask)
 	if err != nil {
 		return
 	}
-	if powerOffInfo.State == types.TaskInfoStateSuccess {
-		return nil
-	}
-
 	destroyTask, err := virtualMachine.Destroy(ctx)
 	if err != nil {
 		return
 	}
-	destroyInfo, err := destroyTask.WaitForResult(ctx)
-	if err != nil {
-		return
-	}
-	if destroyInfo.State == types.TaskInfoStateSuccess {
-		return nil
-	}
-
-	return fmt.Errorf("failed to clone template")
+	err = waitForTaskSuccess(destroyTask)
+	return
 }
 
 type nodeServer struct {
