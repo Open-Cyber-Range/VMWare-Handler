@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
 	"os"
 	"strings"
@@ -23,13 +24,18 @@ var testConfiguration = Configuration{
 	TemplateFolderPath: os.Getenv("TEST_VMWARE_TEMPLATE_FOLDER_PATH"),
 	ResourcePoolPath:   os.Getenv("TEST_VMWARE_RESOURCE_POOL_PATH"),
 	ExerciseRootPath:   os.Getenv("TEST_VMWARE_EXERCISE_ROOT_PATH"),
-	ServerPath:         os.Getenv("TEST_VMWARE_SERVER_PATH"),
+	ServerAddress:      os.Getenv("TEST_VMWARE_SERVER_ADDRESS"),
 }
 
-func startServer(timeout time.Duration) {
-	go RealMain(&testConfiguration)
+func startServer(timeout time.Duration) (configuration Configuration) {
+	configuration = testConfiguration
+	rand.Seed(time.Now().UnixNano())
+	randomPort := rand.Intn(10000) + 10000
+	configuration.ServerAddress = fmt.Sprintf("127.0.0.1:%v", randomPort)
+	go RealMain(&configuration)
 
 	time.Sleep(timeout)
+	return configuration
 }
 
 func createRandomString(length int) string {
@@ -84,8 +90,8 @@ func nodeExists(client *govmomi.Client, exerciseName string, nodeName string) bo
 	return virtualMachine != nil
 }
 
-func creategRPCClient(t *testing.T) node.NodeServiceClient {
-	connection, connectionError := grpc.Dial(testConfiguration.ServerPath, grpc.WithTransportCredentials(insecure.NewCredentials()))
+func creategRPCClient(t *testing.T, serverPath string) node.NodeServiceClient {
+	connection, connectionError := grpc.Dial(serverPath, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if connectionError != nil {
 		t.Fatalf("did not connect: %v", connectionError)
 	}
@@ -110,15 +116,52 @@ func createExercise(t *testing.T, client *govmomi.Client) (exerciseName string, 
 	return
 }
 
-func TestNodeDeployment(t *testing.T) {
-	startServer(1 * time.Second)
+func createNode(t *testing.T, client node.NodeServiceClient, exerciseName string) *node.Node {
+	node := node.Node{
+		Name:         "test-node",
+		TemplateName: "debian10",
+		ExerciseName: exerciseName,
+	}
+
+	reply, err := client.Create(context.Background(), &node)
+	if err != nil {
+		t.Fatalf("Failed to send request: %v", err)
+	}
+	if reply.Status != common.SimpleResponse_OK {
+		t.Fatalf("Failed to create node: %v", reply.Message)
+	}
+
+	return &node
+}
+
+func TestNodeDeletion(t *testing.T) {
+	configuration := startServer(3 * time.Second)
+	ctx := context.Background()
+	VMWareClient, VMWareClientError := testConfiguration.createClient(ctx)
+	if VMWareClientError != nil {
+		t.Fatalf("Failed to send request: %v", VMWareClientError)
+	}
+	gRPCClient := creategRPCClient(t, configuration.ServerAddress)
+	exerciseName, _ := createExercise(t, VMWareClient)
+	node := createNode(t, gRPCClient, exerciseName)
+
+	gRPCClient.Delete(context.Background(), &common.Identifier{
+		Value: node.ExerciseName + "/" + node.Name,
+	})
+	if nodeExists(VMWareClient, exerciseName, "test-node") {
+		t.Fatalf("Node was not deleted")
+	}
+}
+
+func TestNodeCreation(t *testing.T) {
+	configuration := startServer(3 * time.Second)
 
 	ctx := context.Background()
 	VMWareClient, VMWareClientError := testConfiguration.createClient(ctx)
 	if VMWareClientError != nil {
 		t.Fatalf("Failed to send request: %v", VMWareClientError)
 	}
-	gRPCClient := creategRPCClient(t)
+	gRPCClient := creategRPCClient(t, configuration.ServerAddress)
 	exerciseName, _ := createExercise(t, VMWareClient)
 
 	reply, err := gRPCClient.Create(context.Background(), &node.Node{
