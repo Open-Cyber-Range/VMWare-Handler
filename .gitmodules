@@ -1,0 +1,3 @@
+[submodule "grpc/proto"]
+	path = grpc/proto
+	url = git@code.ex.c-lab.ee:open-cyber-range/public/ranger-grpc.git

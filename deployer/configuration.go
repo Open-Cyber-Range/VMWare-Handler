@@ -19,6 +19,7 @@ type Configuration struct {
 	TemplateFolderPath string `yaml:"template_folder_path"`
 	ResourcePoolPath   string `yaml:"resource_pool_path"`
 	ExerciseRootPath   string `yaml:"exercise_root_path"`
+	ServerAddress      string `yaml:"server_address"`
 }
 
 func (configuration *Configuration) createClient(ctx context.Context) (*govmomi.Client, error) {
@@ -38,7 +39,7 @@ func (configuration *Configuration) createClient(ctx context.Context) (*govmomi.
 	return client, nil
 }
 
-func getConfiguration() (*Configuration, error) {
+func getConfiguration() (_ *Configuration, err error) {
 	var configuration Configuration
 	commandArgs := os.Args
 	if len(commandArgs) < 2 {
@@ -46,14 +47,14 @@ func getConfiguration() (*Configuration, error) {
 	}
 	configurationPath := commandArgs[1]
 
-	yamlFile, fileError := ioutil.ReadFile(configurationPath)
-	if fileError != nil {
-		return nil, fileError
+	yamlFile, err := ioutil.ReadFile(configurationPath)
+	if err != nil {
+		return
 	}
 
-	yamlParserError := yaml.Unmarshal(yamlFile, &configuration)
-	if yamlParserError != nil {
-		return nil, yamlParserError
+	err = yaml.Unmarshal(yamlFile, &configuration)
+	if err != nil {
+		return
 	}
 
 	return &configuration, nil
