@@ -24,9 +24,6 @@ build-and-test:
       TEST_VMWARE_EXERCISE_ROOT_PATH=$OCR_TEST_VMWARE_EXERCISE_ROOT_PATH 
       make test
 
-  artifacts:
-    paths:
-      - mybinary
   only:
     - develop
     - master
