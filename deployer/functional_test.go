@@ -116,7 +116,7 @@ func createExercise(t *testing.T, client *govmomi.Client) (exerciseName string, 
 	return
 }
 
-func createNode(t *testing.T, client node.NodeServiceClient, exerciseName string) *node.Node {
+func createNode(t *testing.T, client node.NodeServiceClient, exerciseName string) *common.Identifier {
 	node := node.Node{
 		Name:         "test-node",
 		TemplateName: "debian10",
@@ -127,11 +127,10 @@ func createNode(t *testing.T, client node.NodeServiceClient, exerciseName string
 	if err != nil {
 		t.Fatalf("Failed to send request: %v", err)
 	}
-	if reply.Status != common.SimpleResponse_OK {
-		t.Fatalf("Failed to create node: %v", reply.Message)
+	if reply.Value == "" {
+		t.Fatalf("Failed to create node")
 	}
-
-	return &node
+	return reply
 }
 
 func TestNodeDeletion(t *testing.T) {
@@ -143,11 +142,9 @@ func TestNodeDeletion(t *testing.T) {
 	}
 	gRPCClient := creategRPCClient(t, configuration.ServerAddress)
 	exerciseName, _ := createExercise(t, VMWareClient)
-	node := createNode(t, gRPCClient, exerciseName)
+	node_id := createNode(t, gRPCClient, exerciseName)
 
-	gRPCClient.Delete(context.Background(), &common.Identifier{
-		Value: node.ExerciseName + "/" + node.Name,
-	})
+	gRPCClient.Delete(context.Background(), node_id)
 	if nodeExists(VMWareClient, exerciseName, "test-node") {
 		t.Fatalf("Node was not deleted")
 	}
@@ -172,8 +169,8 @@ func TestNodeCreation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to send request: %v", err)
 	}
-	if reply.Status != common.SimpleResponse_OK {
-		t.Fatalf("Failed to create node: %v", reply.Message)
+	if reply.Value == "" {
+		t.Fatalf("Failed to create node")
 	}
 	if !nodeExists(VMWareClient, exerciseName, "test-node") {
 		t.Fatalf("Node was not created")
