@@ -1,0 +1,16 @@
+[Unit]
+Description=ranger-vmware-node-deployer
+After=network.target
+
+[Service]
+ExecStart=/var/opt/ranger/bin/ranger-vmware-node-deployer /etc/opt/ranger/ranger-vmware-node-deployer/config.yml
+Type=simple
+User=root
+Group=root
+Restart=on-failure
+RestartSec=10
+StartLimitInterval=10m
+StartLimitBurst=5
+
+[Install]
+WantedBy=multi-user.target

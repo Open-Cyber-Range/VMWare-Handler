@@ -1,0 +1,14 @@
+Source: ranger-vmware-node-deployer
+Section: devel
+Priority: optional
+Maintainer: Kaarel Allemann <kaarel.allemann@cr14.ee>
+Build-Depends: build-essential, debhelper (>= 11)
+
+Package: ranger-vmware-node-deployer
+Architecture: amd64
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Ranger VMWare Node Deployer
+ Rajger VMWare Node deployer creates a gRPC
+ server that exposes functions to Ranger for
+ manipulating VMs running on VMWare vSphere
+ service.
