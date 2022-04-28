@@ -142,9 +142,9 @@ func TestNodeDeletion(t *testing.T) {
 	}
 	gRPCClient := creategRPCClient(t, configuration.ServerAddress)
 	exerciseName, _ := createExercise(t, VMWareClient)
-	node_id := createNode(t, gRPCClient, exerciseName)
+	virtualMachineUuid := createNode(t, gRPCClient, exerciseName)
 
-	gRPCClient.Delete(context.Background(), node_id)
+	gRPCClient.Delete(context.Background(), virtualMachineUuid)
 	if nodeExists(VMWareClient, exerciseName, "test-node") {
 		t.Fatalf("Node was not deleted")
 	}
