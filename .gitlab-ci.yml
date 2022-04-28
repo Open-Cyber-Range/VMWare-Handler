@@ -1,7 +1,7 @@
 stages:
   - build
 
-image: nexus.ex.c-lab.ee:8003/go-builder
+image: $DOCKER_REGISTRY/go-builder
 
 variables:
   REPO_NAME: code.ex.c-lab.ee/open-cyber-range/public/vmware-node-deployer
