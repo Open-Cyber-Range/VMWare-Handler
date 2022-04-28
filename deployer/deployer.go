@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"path"
 
 	common "github.com/open-cyber-range/vmware-node-deployer/grpc/common"
 	node "github.com/open-cyber-range/vmware-node-deployer/grpc/node"
@@ -61,7 +62,7 @@ func (deployment *Deployment) getTemplate() (*object.VirtualMachine, error) {
 func (deployment *Deployment) createOrFindExerciseFolder() (_ *object.Folder, err error) {
 	finder := find.NewFinder(deployment.Client.Client, true)
 	ctx := context.Background()
-	folderPath := deployment.Configuration.ExerciseRootPath + deployment.Node.ExerciseName
+	folderPath := path.Join(deployment.Configuration.ExerciseRootPath, deployment.Node.ExerciseName)
 
 	existingFolder, _ := finder.Folder(ctx, folderPath)
 	if existingFolder != nil {
@@ -202,7 +203,7 @@ func (server *nodeServer) Create(ctx context.Context, node *node.Node) (*common.
 		return nil, deploymentError
 	}
 	finder := CreateFinder(deployment.Client)
-	nodePath := deployment.Configuration.ExerciseRootPath + "/" + deployment.Node.ExerciseName + "/" + deployment.Node.Name
+	nodePath := path.Join(deployment.Configuration.ExerciseRootPath, deployment.Node.ExerciseName, deployment.Node.Name)
 	virtualMachine, err := finder.VirtualMachine(context.Background(), nodePath)
 	if err != nil {
 		return nil, err
