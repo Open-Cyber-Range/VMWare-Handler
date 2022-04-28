@@ -148,32 +148,24 @@ func waitForTaskSuccess(task *object.Task) error {
 	return fmt.Errorf("failed to perform task: %v", task.Name())
 }
 
-func getVirtualMachineByUUID(deployment *Deployment, ctx context.Context, uuid string) (*object.VirtualMachine, error) {
+func (deployment *Deployment) getVirtualMachineByUUID(ctx context.Context, uuid string) (*object.VirtualMachine, error) {
 	finder := CreateFinder(deployment.Client)
-
 	datacenter, datacenterError := finder.DefaultDatacenter(ctx)
 	if datacenterError != nil {
 		log.Fatal(datacenterError)
-		return nil, datacenterError
 	}
-
 	searchIndex := object.NewSearchIndex(deployment.Client.Client)
-
 	virtualMachineRef, virtualMachineRefError := searchIndex.FindByUuid(ctx, datacenter, uuid, true, nil)
 	if virtualMachineRefError != nil {
 		log.Fatal(virtualMachineRefError)
-		return nil, virtualMachineRefError
 	}
-
 	virtualMachine := object.NewVirtualMachine(deployment.Client.Client, virtualMachineRef.Reference())
 	return virtualMachine, nil
-
 }
 
 func (deployment *Deployment) delete(uuid string) (err error) {
 	ctx := context.Background()
-
-	virtualMachine, _ := getVirtualMachineByUUID(deployment, ctx, uuid)
+	virtualMachine, _ := deployment.getVirtualMachineByUUID(ctx, uuid)
 
 	powerOffTask, err := virtualMachine.PowerOff(ctx)
 	if err != nil {
@@ -228,21 +220,17 @@ func (server *nodeServer) Delete(ctx context.Context, Identifier *common.Identif
 		Configuration: server.Configuration,
 	}
 
-	virtualMachine, _ := getVirtualMachineByUUID(&deployment, ctx, uuid)
+	virtualMachine, _ := deployment.getVirtualMachineByUUID(ctx, uuid)
 	nodeName, nodeNameError := virtualMachine.ObjectName(ctx)
 	if nodeNameError != nil {
 		return nil, nodeNameError
 	}
-
 	node := node.Node{
-		Name:         nodeName,                                       
+		Name: nodeName,
 	}
-	deployment = Deployment{
-		Client:        server.Client,
-		Configuration: server.Configuration,
-		Node:          &node,
-	}
-	log.Printf("Received node for deleting: %v with UUID: %v\n", node.Name, virtualMachine.UUID(ctx))
+	deployment.Node = &node
+
+	log.Printf("Received node for deleting: %v with UUID: %v\n", node.Name, uuid)
 
 	deploymentError := deployment.delete(uuid)
 	if deploymentError != nil {
