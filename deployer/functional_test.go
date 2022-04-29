@@ -49,7 +49,7 @@ func createRandomString(length int) string {
 }
 
 func exerciseCleanup(client *govmomi.Client, folderPath string) (err error) {
-	finder := CreateFinder(client)
+	finder, _ := createFinderAndDatacenter(client)
 	ctx := context.Background()
 
 	virtualMachines, err := finder.VirtualMachineList(ctx, folderPath+"/*")
@@ -83,7 +83,7 @@ func exerciseCleanup(client *govmomi.Client, folderPath string) (err error) {
 }
 
 func nodeExists(client *govmomi.Client, exerciseName string, nodeName string) bool {
-	finder := CreateFinder(client)
+	finder, _ := createFinderAndDatacenter(client)
 
 	ctx := context.Background()
 	virtualMachine, _ := finder.VirtualMachine(ctx, testConfiguration.ExerciseRootPath+"/"+exerciseName+"/"+nodeName)

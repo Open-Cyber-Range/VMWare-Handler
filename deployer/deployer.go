@@ -21,7 +21,7 @@ type Deployment struct {
 	Configuration *Configuration
 }
 
-func CreateFinder(client *govmomi.Client) *find.Finder {
+func createFinderAndDatacenter(client *govmomi.Client) (*find.Finder, *object.Datacenter) {
 	finder := find.NewFinder(client.Client, true)
 	ctx := context.Background()
 	datacenter, datacenterError := finder.DefaultDatacenter(ctx)
@@ -29,11 +29,11 @@ func CreateFinder(client *govmomi.Client) *find.Finder {
 		log.Fatal(datacenterError)
 	}
 	finder.SetDatacenter(datacenter)
-	return finder
+	return finder, datacenter
 }
 
 func findTemplates(client *govmomi.Client, templatePath string) ([]*object.VirtualMachine, error) {
-	finder := CreateFinder(client)
+	finder, _ := createFinderAndDatacenter(client)
 	ctx := context.Background()
 	return finder.VirtualMachineList(ctx, templatePath)
 }
@@ -83,12 +83,7 @@ func (deployment *Deployment) createOrFindExerciseFolder() (_ *object.Folder, er
 
 func (deployment *Deployment) getResoucePool() (*object.ResourcePool, error) {
 	ctx := context.Background()
-	finder := find.NewFinder(deployment.Client.Client, true)
-	datacenter, datacenterError := finder.DefaultDatacenter(ctx)
-	if datacenterError != nil {
-		return nil, fmt.Errorf("default datacenter not found")
-	}
-	finder.SetDatacenter(datacenter)
+	finder, _ := createFinderAndDatacenter(deployment.Client)
 	resourcePool, poolError := finder.ResourcePool(ctx, deployment.Configuration.ResourcePoolPath)
 	if poolError != nil {
 		return nil, poolError
@@ -149,11 +144,7 @@ func waitForTaskSuccess(task *object.Task) error {
 }
 
 func (deployment *Deployment) getVirtualMachineByUUID(ctx context.Context, uuid string) (*object.VirtualMachine, error) {
-	finder := CreateFinder(deployment.Client)
-	datacenter, datacenterError := finder.DefaultDatacenter(ctx)
-	if datacenterError != nil {
-		log.Fatal(datacenterError)
-	}
+	_, datacenter := createFinderAndDatacenter(deployment.Client)
 	searchIndex := object.NewSearchIndex(deployment.Client.Client)
 	virtualMachineRef, virtualMachineRefError := searchIndex.FindByUuid(ctx, datacenter, uuid, true, nil)
 	if virtualMachineRefError != nil {
@@ -201,7 +192,7 @@ func (server *nodeServer) Create(ctx context.Context, node *node.Node) (*common.
 	if deploymentError != nil {
 		return nil, deploymentError
 	}
-	finder := CreateFinder(deployment.Client)
+	finder, _ := createFinderAndDatacenter(deployment.Client)
 	nodePath := deployment.Configuration.ExerciseRootPath + "/" + deployment.Node.ExerciseName + "/" + deployment.Node.Name
 	virtualMachine, err := finder.VirtualMachine(context.Background(), nodePath)
 	if err != nil {
