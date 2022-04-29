@@ -143,15 +143,15 @@ func waitForTaskSuccess(task *object.Task) error {
 	return fmt.Errorf("failed to perform task: %v", task.Name())
 }
 
-func (deployment *Deployment) getVirtualMachineByUUID(ctx context.Context, uuid string) (*object.VirtualMachine, error) {
+func (deployment *Deployment) getVirtualMachineByUUID(ctx context.Context, uuid string) (virtualMachine *object.VirtualMachine, virtualMachineRefError error) {
 	_, datacenter := createFinderAndDatacenter(deployment.Client)
 	searchIndex := object.NewSearchIndex(deployment.Client.Client)
 	virtualMachineRef, virtualMachineRefError := searchIndex.FindByUuid(ctx, datacenter, uuid, true, nil)
 	if virtualMachineRefError != nil {
-		log.Fatal(virtualMachineRefError)
+		return
 	}
-	virtualMachine := object.NewVirtualMachine(deployment.Client.Client, virtualMachineRef.Reference())
-	return virtualMachine, nil
+	virtualMachine = object.NewVirtualMachine(deployment.Client.Client, virtualMachineRef.Reference())
+	return
 }
 
 func (deployment *Deployment) delete(uuid string) (err error) {
