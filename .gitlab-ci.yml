@@ -32,6 +32,7 @@ build-and-test:
 
 build-and-upload-x86-64bit-linux-release-for-ranger-vmware-node-deployer:
   stage: build
+  needs: ["build-and-test"]
   script:
     - make build-deb
     - DEB_FILE=$(find ../ -maxdepth 1 -type f -name "*.deb")
