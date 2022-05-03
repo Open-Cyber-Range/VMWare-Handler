@@ -1,0 +1,5 @@
+ranger-vmware-node-deployer (1.0.0) stretch; urgency=medium
+
+  * Initial packaging work with dpkg-buildpackage.
+
+ -- Kaarel Allemann <kaarel.allemann@cr14.ee>  Wed, 27 Jul 2022 14:50:24 +0300

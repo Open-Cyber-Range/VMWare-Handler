@@ -49,7 +49,7 @@ func createRandomString(length int) string {
 }
 
 func exerciseCleanup(client *govmomi.Client, folderPath string) (err error) {
-	finder := CreateFinder(client)
+	finder, _, _ := createFinderAndDatacenter(client)
 	ctx := context.Background()
 
 	virtualMachines, err := finder.VirtualMachineList(ctx, folderPath+"/*")
@@ -83,7 +83,7 @@ func exerciseCleanup(client *govmomi.Client, folderPath string) (err error) {
 }
 
 func nodeExists(client *govmomi.Client, exerciseName string, nodeName string) bool {
-	finder := CreateFinder(client)
+	finder, _, _ := createFinderAndDatacenter(client)
 
 	ctx := context.Background()
 	virtualMachine, _ := finder.VirtualMachine(ctx, testConfiguration.ExerciseRootPath+"/"+exerciseName+"/"+nodeName)
@@ -128,7 +128,7 @@ func createNode(t *testing.T, client node.NodeServiceClient, exerciseName string
 		t.Fatalf("Failed to send request: %v", err)
 	}
 	if reply.Value == "" {
-		t.Fatalf("Failed to create node")
+		t.Logf("Failed to retrieve UUID")
 	}
 	return reply
 }
@@ -142,9 +142,9 @@ func TestNodeDeletion(t *testing.T) {
 	}
 	gRPCClient := creategRPCClient(t, configuration.ServerAddress)
 	exerciseName, _ := createExercise(t, VMWareClient)
-	node_id := createNode(t, gRPCClient, exerciseName)
+	virtualMachineUuid := createNode(t, gRPCClient, exerciseName)
 
-	gRPCClient.Delete(context.Background(), node_id)
+	gRPCClient.Delete(context.Background(), virtualMachineUuid)
 	if nodeExists(VMWareClient, exerciseName, "test-node") {
 		t.Fatalf("Node was not deleted")
 	}
@@ -161,18 +161,13 @@ func TestNodeCreation(t *testing.T) {
 	gRPCClient := creategRPCClient(t, configuration.ServerAddress)
 	exerciseName, _ := createExercise(t, VMWareClient)
 
-	reply, err := gRPCClient.Create(context.Background(), &node.Node{
-		Name:         "test-node",
-		TemplateName: "debian10",
-		ExerciseName: exerciseName,
-	})
-	if err != nil {
-		t.Fatalf("Failed to send request: %v", err)
+	reply := createNode(t, gRPCClient, exerciseName)
+	nodeExists := nodeExists(VMWareClient, exerciseName, "test-node")
+
+	if reply.Value == "" && nodeExists {
+		t.Fatalf("Node exists but failed to retrieve UUID")
 	}
-	if reply.Value == "" {
-		t.Fatalf("Failed to create node")
-	}
-	if !nodeExists(VMWareClient, exerciseName, "test-node") {
+	if !nodeExists {
 		t.Fatalf("Node was not created")
 	}
 }
