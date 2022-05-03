@@ -9,7 +9,12 @@
     "go.gopath": "/go"
   },
 
-  "extensions": ["golang.Go", "gitlab.gitlab-workflow"],
+  "extensions": [
+    "golang.Go",
+    "gitlab.gitlab-workflow",
+    "GitHub.copilot",
+    "eamodio.gitlens"
+  ],
 
   "portsAttributes": {
     "9000": {

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"strings"
 
 	common "github.com/open-cyber-range/vmware-node-deployer/grpc/common"
 	node "github.com/open-cyber-range/vmware-node-deployer/grpc/node"
@@ -22,19 +21,22 @@ type Deployment struct {
 	Configuration *Configuration
 }
 
-func CreateFinder(client *govmomi.Client) *find.Finder {
+func createFinderAndDatacenter(client *govmomi.Client) (*find.Finder, *object.Datacenter, error) {
 	finder := find.NewFinder(client.Client, true)
 	ctx := context.Background()
 	datacenter, datacenterError := finder.DefaultDatacenter(ctx)
 	if datacenterError != nil {
-		log.Fatal(datacenterError)
+		return nil, nil, datacenterError
 	}
 	finder.SetDatacenter(datacenter)
-	return finder
+	return finder, datacenter, nil
 }
 
 func findTemplates(client *govmomi.Client, templatePath string) ([]*object.VirtualMachine, error) {
-	finder := CreateFinder(client)
+	finder, _, datacenterError := createFinderAndDatacenter(client)
+	if datacenterError != nil {
+		return nil, datacenterError
+	}
 	ctx := context.Background()
 	return finder.VirtualMachineList(ctx, templatePath)
 }
@@ -84,12 +86,10 @@ func (deployment *Deployment) createOrFindExerciseFolder() (_ *object.Folder, er
 
 func (deployment *Deployment) getResoucePool() (*object.ResourcePool, error) {
 	ctx := context.Background()
-	finder := find.NewFinder(deployment.Client.Client, true)
-	datacenter, datacenterError := finder.DefaultDatacenter(ctx)
+	finder, _, datacenterError := createFinderAndDatacenter(deployment.Client)
 	if datacenterError != nil {
-		return nil, fmt.Errorf("default datacenter not found")
+		return nil, datacenterError
 	}
-	finder.SetDatacenter(datacenter)
 	resourcePool, poolError := finder.ResourcePool(ctx, deployment.Configuration.ResourcePoolPath)
 	if poolError != nil {
 		return nil, poolError
@@ -149,15 +149,23 @@ func waitForTaskSuccess(task *object.Task) error {
 	return fmt.Errorf("failed to perform task: %v", task.Name())
 }
 
-func (deployment *Deployment) delete() (err error) {
-	finder := CreateFinder(deployment.Client)
-	nodePath := deployment.Configuration.ExerciseRootPath + "/" + deployment.Node.ExerciseName + "/" + deployment.Node.Name
-	virtualMachine, err := finder.VirtualMachine(context.Background(), nodePath)
-	if err != nil {
+func (deployment *Deployment) getVirtualMachineByUUID(ctx context.Context, uuid string) (virtualMachine *object.VirtualMachine, virtualMachineRefError error) {
+	_, datacenter, datacenterError := createFinderAndDatacenter(deployment.Client)
+	if datacenterError != nil {
+		return nil, datacenterError
+	}
+	searchIndex := object.NewSearchIndex(deployment.Client.Client)
+	virtualMachineRef, virtualMachineRefError := searchIndex.FindByUuid(ctx, datacenter, uuid, true, nil)
+	if virtualMachineRefError != nil {
 		return
 	}
+	virtualMachine = object.NewVirtualMachine(deployment.Client.Client, virtualMachineRef.Reference())
+	return
+}
 
+func (deployment *Deployment) delete(uuid string) (err error) {
 	ctx := context.Background()
+	virtualMachine, _ := deployment.getVirtualMachineByUUID(ctx, uuid)
 
 	powerOffTask, err := virtualMachine.PowerOff(ctx)
 	if err != nil {
@@ -181,7 +189,7 @@ type nodeServer struct {
 	Configuration *Configuration
 }
 
-func (server *nodeServer) Create(ctx context.Context, node *node.Node) (*common.SimpleResponse, error) {
+func (server *nodeServer) Create(ctx context.Context, node *node.Node) (*common.Identifier, error) {
 	deployment := Deployment{
 		Client:        server.Client,
 		Configuration: server.Configuration,
@@ -191,26 +199,43 @@ func (server *nodeServer) Create(ctx context.Context, node *node.Node) (*common.
 
 	deploymentError := deployment.create()
 	if deploymentError != nil {
-		return &common.SimpleResponse{Message: fmt.Sprintf("Node deployment failed due to: %v", deploymentError), Status: common.SimpleResponse_ERROR}, nil
+		return nil, deploymentError
 	}
+	finder, _, datacenterError := createFinderAndDatacenter(deployment.Client)
+	if datacenterError != nil {
+		return nil, datacenterError
+	}
+	nodePath := deployment.Configuration.ExerciseRootPath + "/" + deployment.Node.ExerciseName + "/" + deployment.Node.Name
+	virtualMachine, err := finder.VirtualMachine(context.Background(), nodePath)
+	if err != nil {
+		return nil, err
+	}
+
 	log.Printf("deployed: %v", node.GetName())
-	return &common.SimpleResponse{Message: "Deployed node: " + node.GetName(), Status: common.SimpleResponse_OK}, nil
+	return &common.Identifier{Value: virtualMachine.UUID(ctx)}, nil
 }
 
 func (server *nodeServer) Delete(ctx context.Context, Identifier *common.Identifier) (*common.SimpleResponse, error) {
-	splitIdentifier := strings.Split(Identifier.GetValue(), "/")
-	node := node.Node{
-		Name:         splitIdentifier[1],
-		ExerciseName: splitIdentifier[0],
-	}
+
+	uuid := Identifier.GetValue()
 	deployment := Deployment{
 		Client:        server.Client,
 		Configuration: server.Configuration,
-		Node:          &node,
 	}
-	log.Printf("Received node for deleting: %v in exercise: %v\n", node.Name, node.ExerciseName)
 
-	deploymentError := deployment.delete()
+	virtualMachine, _ := deployment.getVirtualMachineByUUID(ctx, uuid)
+	nodeName, nodeNameError := virtualMachine.ObjectName(ctx)
+	if nodeNameError != nil {
+		return nil, nodeNameError
+	}
+	node := node.Node{
+		Name: nodeName,
+	}
+	deployment.Node = &node
+
+	log.Printf("Received node for deleting: %v with UUID: %v\n", node.Name, uuid)
+
+	deploymentError := deployment.delete(uuid)
 	if deploymentError != nil {
 		log.Printf("failed to delete node: %v\n", deploymentError)
 		return &common.SimpleResponse{Message: fmt.Sprintf("Node deployment failed due to: %v", deploymentError), Status: common.SimpleResponse_ERROR}, nil
