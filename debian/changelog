@@ -1,5 +1,11 @@
+ranger-vmware-node-deployer (1.1.0) stretch; urgency=medium
+
+  * Node deployment and undeployment use uuids.
+
+ -- Kaarel Allemann <kaarel.allemann@cr14.ee>  Tue, 3 May 2022 15:00:15 +0300
+
 ranger-vmware-node-deployer (1.0.0) stretch; urgency=medium
 
   * Initial packaging work with dpkg-buildpackage.
 
- -- Kaarel Allemann <kaarel.allemann@cr14.ee>  Wed, 27 Jul 2022 14:50:24 +0300
+ -- Kaarel Allemann <kaarel.allemann@cr14.ee>  Wed, 27 Apr 2022 14:50:24 +0300
