@@ -190,7 +190,7 @@ type nodeServer struct {
 	Configuration *Configuration
 }
 
-func (server *nodeServer) Create(ctx context.Context, node *node.Node) (*common.Identifier, error) {
+func (server *nodeServer) Create(ctx context.Context, node *node.Node) (*common.IdentifierResult, error) {
 	deployment := Deployment{
 		Client:        server.Client,
 		Configuration: server.Configuration,
@@ -200,7 +200,10 @@ func (server *nodeServer) Create(ctx context.Context, node *node.Node) (*common.
 
 	deploymentError := deployment.create()
 	if deploymentError != nil {
-		return nil, deploymentError
+		return &common.IdentifierResult{
+			Error: &common.Error{
+				Message: fmt.Sprintf("Node deployment failed due to: %v", deploymentError)},
+		}, deploymentError
 	}
 	finder, _, datacenterError := createFinderAndDatacenter(deployment.Client)
 	if datacenterError != nil {
@@ -213,7 +216,10 @@ func (server *nodeServer) Create(ctx context.Context, node *node.Node) (*common.
 	}
 
 	log.Printf("deployed: %v", node.GetName())
-	return &common.Identifier{Value: virtualMachine.UUID(ctx)}, nil
+	return &common.IdentifierResult{
+		Identifier: &common.Identifier{
+			Value: virtualMachine.UUID(ctx)},
+	}, nil
 }
 
 func (server *nodeServer) Delete(ctx context.Context, Identifier *common.Identifier) (*common.SimpleResponse, error) {

@@ -127,10 +127,10 @@ func createNode(t *testing.T, client node.NodeServiceClient, exerciseName string
 	if err != nil {
 		t.Fatalf("Failed to send request: %v", err)
 	}
-	if reply.Value == "" {
+	if reply.Identifier.Value == "" {
 		t.Logf("Failed to retrieve UUID")
 	}
-	return reply
+	return reply.Identifier
 }
 
 func TestNodeDeletion(t *testing.T) {
