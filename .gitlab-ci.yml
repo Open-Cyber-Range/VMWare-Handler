@@ -1,5 +1,6 @@
 stages:
   - build
+  - deploy
 
 image: $DOCKER_REGISTRY_PULL/go-builder
 
