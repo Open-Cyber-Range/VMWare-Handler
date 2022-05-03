@@ -128,7 +128,7 @@ func createNode(t *testing.T, client node.NodeServiceClient, exerciseName string
 		t.Fatalf("Failed to send request: %v", err)
 	}
 	if reply.Value == "" {
-		t.Fatalf("Failed to create node")
+		t.Logf("Failed to retrieve UUID")
 	}
 	return reply
 }
@@ -161,18 +161,13 @@ func TestNodeCreation(t *testing.T) {
 	gRPCClient := creategRPCClient(t, configuration.ServerAddress)
 	exerciseName, _ := createExercise(t, VMWareClient)
 
-	reply, err := gRPCClient.Create(context.Background(), &node.Node{
-		Name:         "test-node",
-		TemplateName: "debian10",
-		ExerciseName: exerciseName,
-	})
-	if err != nil {
-		t.Fatalf("Failed to send request: %v", err)
+	reply := createNode(t, gRPCClient, exerciseName)
+	nodeExists := nodeExists(VMWareClient, exerciseName, "test-node")
+
+	if reply.Value == "" && nodeExists {
+		t.Fatalf("Node exists but failed to retrieve UUID")
 	}
-	if reply.Value == "" {
-		t.Fatalf("Failed to create node")
-	}
-	if !nodeExists(VMWareClient, exerciseName, "test-node") {
+	if !nodeExists {
 		t.Fatalf("Node was not created")
 	}
 }
