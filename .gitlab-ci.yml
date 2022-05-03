@@ -42,7 +42,7 @@ build-and-upload-x86-64bit-linux-release-for-ranger-vmware-node-deployer:
 
 staging:
   variables:
-    RANGER_VMWARE_NODE_DEPLOYER: true
+    RANGER_VMWARE_NODE_DEPLOYER: "1"
   stage: deploy
   trigger:
     open-cyber-range/internal/support-docker-images
