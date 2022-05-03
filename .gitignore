@@ -1,1 +1,12 @@
-deployer-config.yml
+# config
+config.yml
+
+# gRPC generating files
+grpc/
+!gprc/proto
+
+#debian packaging
+debian/ranger-vmware-node-deployer
+debian/files
+debian/ranger-vmware-node-deployer.substvars
+*.deb

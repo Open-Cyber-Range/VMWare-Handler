@@ -1,0 +1,17 @@
+#!/usr/bin/make -f
+
+clean:
+	make clean
+
+build:
+	make
+
+binary:
+	make install DESTDIR=debian/ranger-vmware-node-deployer
+	strip --strip-all debian/ranger-vmware-node-deployer/var/opt/ranger/bin/ranger-vmware-node-deployer
+	dh_makeshlibs
+	dh_gencontrol
+	dh_builddeb
+
+uninstall:
+	make uninstall DESTDIR=debian/ranger-vmware-node-deployer

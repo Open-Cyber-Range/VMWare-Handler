@@ -1,0 +1,41 @@
+stages:
+  - build
+
+image: $DOCKER_REGISTRY_PULL/go-builder
+
+variables:
+  REPO_NAME: code.ex.c-lab.ee/open-cyber-range/public/vmware-node-deployer
+  GIT_SUBMODULE_STRATEGY: normal
+
+before_script:
+  - mkdir -p "$GOPATH/src/$(dirname $REPO_NAME)"
+  - ln -svf "$CI_PROJECT_DIR" "$GOPATH/src/$REPO_NAME"
+  - cd "$GOPATH/src/$REPO_NAME"
+
+build-and-test:
+  stage: build
+  script:
+    - make build
+    - TEST_VMWARE_USER=$OCR_TEST_VMWARE_USER 
+      TEST_VMWARE_PASSWORD=$OCR_TEST_VMWARE_PASSWORD 
+      TEST_VMWARE_HOSTNAME=$OCR_TEST_VMWARE_HOSTNAME 
+      TEST_VMWARE_TEMPLATE_FOLDER_PATH=$OCR_TEST_VMWARE_TEMPLATE_FOLDER_PATH 
+      TEST_VMWARE_RESOURCE_POOL_PATH=$OCR_TEST_VMWARE_RESOURCE_POOL_PATH 
+      TEST_VMWARE_EXERCISE_ROOT_PATH=$OCR_TEST_VMWARE_EXERCISE_ROOT_PATH 
+      make test
+
+  only:
+    - develop
+    - master
+    - merge_requests
+
+build-and-upload-x86-64bit-linux-release-for-ranger-vmware-node-deployer:
+  stage: build
+  script:
+    - make build-deb
+    - DEB_FILE=$(find ../ -maxdepth 1 -type f -name "*.deb")
+    - 'curl -u $OCR_DEPLOYMENT_USER:$OCR_DEPLOYMENT_PASSWORD -X POST -H "Content-Type: multipart/form-data" --data-binary "@$DEB_FILE" $OCR_APT_REPOSITORY'
+  only:
+    - master
+  trigger:
+    open-cyber-range/internal/support-docker-images
