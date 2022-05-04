@@ -123,14 +123,14 @@ func createNode(t *testing.T, client node.NodeServiceClient, exerciseName string
 		ExerciseName: exerciseName,
 	}
 
-	reply, err := client.Create(context.Background(), &node)
+	identifierResult, err := client.Create(context.Background(), &node)
 	if err != nil {
 		t.Fatalf("Failed to send request: %v", err)
 	}
-	if reply.Identifier.Value == "" {
+	if identifierResult.Identifier.Value == "" {
 		t.Logf("Failed to retrieve UUID")
 	}
-	return reply.Identifier
+	return identifierResult.Identifier
 }
 
 func TestNodeDeletion(t *testing.T) {

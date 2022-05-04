@@ -202,7 +202,7 @@ func (server *nodeServer) Create(ctx context.Context, node *node.Node) (*common.
 	if deploymentError != nil {
 		return &common.IdentifierResult{
 			Error: &common.Error{
-				Message: fmt.Sprintf("Node deployment failed due to: %v", deploymentError)},
+				Message: fmt.Sprintf("Node creation failed due to: %v", deploymentError)},
 		}, deploymentError
 	}
 	finder, _, datacenterError := createFinderAndDatacenter(deployment.Client)
@@ -210,19 +210,20 @@ func (server *nodeServer) Create(ctx context.Context, node *node.Node) (*common.
 		return nil, datacenterError
 	}
 	nodePath := path.Join(deployment.Configuration.ExerciseRootPath, deployment.Node.ExerciseName, deployment.Node.Name)
-	virtualMachine, err := finder.VirtualMachine(context.Background(), nodePath)
-	if err != nil {
-		return nil, err
+	virtualMachine, virtualMachineErr := finder.VirtualMachine(context.Background(), nodePath)
+	if virtualMachineErr != nil {
+		return nil, virtualMachineErr
 	}
 
 	log.Printf("deployed: %v", node.GetName())
 	return &common.IdentifierResult{
 		Identifier: &common.Identifier{
-			Value: virtualMachine.UUID(ctx)},
+			Value: virtualMachine.UUID(ctx),
+		},
 	}, nil
 }
 
-func (server *nodeServer) Delete(ctx context.Context, Identifier *common.Identifier) (*common.SimpleResponse, error) {
+func (server *nodeServer) Delete(ctx context.Context, Identifier *common.Identifier) (*common.SimpleResult, error) {
 
 	uuid := Identifier.GetValue()
 	deployment := Deployment{
@@ -245,10 +246,11 @@ func (server *nodeServer) Delete(ctx context.Context, Identifier *common.Identif
 	deploymentError := deployment.delete(uuid)
 	if deploymentError != nil {
 		log.Printf("failed to delete node: %v\n", deploymentError)
-		return &common.SimpleResponse{Message: fmt.Sprintf("Node deployment failed due to: %v", deploymentError), Status: common.SimpleResponse_ERROR}, nil
+		return &common.SimpleResult{Error: &common.Error{
+			Message: fmt.Sprintf("Node creation failed due to: %v", deploymentError)}}, nil
 	}
 	log.Printf("deleted: %v\n", node.GetName())
-	return &common.SimpleResponse{Message: "Deployed node: " + node.GetName(), Status: common.SimpleResponse_OK}, nil
+	return &common.SimpleResult{}, nil
 }
 
 func RealMain(configuration *Configuration) {
