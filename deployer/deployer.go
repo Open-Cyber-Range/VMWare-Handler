@@ -14,6 +14,8 @@ import (
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/vim25/types"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type Deployment struct {
@@ -190,40 +192,39 @@ type nodeServer struct {
 	Configuration *Configuration
 }
 
-func (server *nodeServer) Create(ctx context.Context, node *node.Node) (*common.IdentifierResult, error) {
+func (server *nodeServer) Create(ctx context.Context, node *node.Node) (*common.Identifier, error) {
 	deployment := Deployment{
 		Client:        server.Client,
 		Configuration: server.Configuration,
 		Node:          node,
 	}
 	log.Printf("received node for deployement: %v in exercise: %v\n", node.Name, node.ExerciseName)
-
 	deploymentError := deployment.create()
 	if deploymentError != nil {
-		return &common.IdentifierResult{
-			Error: &common.Error{
-				Message: fmt.Sprintf("Node creation failed due to: %v", deploymentError)},
-		}, deploymentError
+		status.New(codes.Internal, fmt.Sprintf("Create: deployment error (%v)", deploymentError))
+		return nil, deploymentError
 	}
 	finder, _, datacenterError := createFinderAndDatacenter(deployment.Client)
 	if datacenterError != nil {
+		status.New(codes.Internal, fmt.Sprintf("Create: datacenter error (%v)", datacenterError))
 		return nil, datacenterError
 	}
 	nodePath := path.Join(deployment.Configuration.ExerciseRootPath, deployment.Node.ExerciseName, deployment.Node.Name)
 	virtualMachine, virtualMachineErr := finder.VirtualMachine(context.Background(), nodePath)
 	if virtualMachineErr != nil {
+		status.New(codes.Internal, fmt.Sprintf("Create: VM creation error (%v)", virtualMachineErr))
 		return nil, virtualMachineErr
 	}
 
 	log.Printf("deployed: %v", node.GetName())
-	return &common.IdentifierResult{
-		Identifier: &common.Identifier{
-			Value: virtualMachine.UUID(ctx),
-		},
+
+	status.New(codes.OK, "Node creation successful")
+	return &common.Identifier{
+		Value: virtualMachine.UUID(ctx),
 	}, nil
 }
 
-func (server *nodeServer) Delete(ctx context.Context, Identifier *common.Identifier) (*common.SimpleResult, error) {
+func (server *nodeServer) Delete(ctx context.Context, Identifier *common.Identifier) error {
 
 	uuid := Identifier.GetValue()
 	deployment := Deployment{
@@ -234,7 +235,8 @@ func (server *nodeServer) Delete(ctx context.Context, Identifier *common.Identif
 	virtualMachine, _ := deployment.getVirtualMachineByUUID(ctx, uuid)
 	nodeName, nodeNameError := virtualMachine.ObjectName(ctx)
 	if nodeNameError != nil {
-		return nil, nodeNameError
+		status.New(codes.Internal, fmt.Sprintf("Delete: node name retrieval error (%v)", nodeNameError))
+		return nodeNameError
 	}
 	node := node.Node{
 		Name: nodeName,
@@ -246,11 +248,12 @@ func (server *nodeServer) Delete(ctx context.Context, Identifier *common.Identif
 	deploymentError := deployment.delete(uuid)
 	if deploymentError != nil {
 		log.Printf("failed to delete node: %v\n", deploymentError)
-		return &common.SimpleResult{Error: &common.Error{
-			Message: fmt.Sprintf("Node creation failed due to: %v", deploymentError)}}, nil
+		status.New(codes.Internal, fmt.Sprintf("Delete: Error during deletion (%v)", deploymentError))
+		return deploymentError
 	}
 	log.Printf("deleted: %v\n", node.GetName())
-	return &common.SimpleResult{}, nil
+	status.New(codes.OK, fmt.Sprintf("Node %v deleted", node.GetName()))
+	return nil
 }
 
 func RealMain(configuration *Configuration) {
