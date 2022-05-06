@@ -16,6 +16,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 type Deployment struct {
@@ -224,7 +225,7 @@ func (server *nodeServer) Create(ctx context.Context, node *node.Node) (*common.
 	}, nil
 }
 
-func (server *nodeServer) Delete(ctx context.Context, Identifier *common.Identifier) error {
+func (server *nodeServer) Delete(ctx context.Context, Identifier *common.Identifier) (*emptypb.Empty, error) {
 
 	uuid := Identifier.GetValue()
 	deployment := Deployment{
@@ -236,7 +237,7 @@ func (server *nodeServer) Delete(ctx context.Context, Identifier *common.Identif
 	nodeName, nodeNameError := virtualMachine.ObjectName(ctx)
 	if nodeNameError != nil {
 		status.New(codes.Internal, fmt.Sprintf("Delete: node name retrieval error (%v)", nodeNameError))
-		return nodeNameError
+		return nil, nodeNameError
 	}
 	node := node.Node{
 		Name: nodeName,
@@ -249,11 +250,11 @@ func (server *nodeServer) Delete(ctx context.Context, Identifier *common.Identif
 	if deploymentError != nil {
 		log.Printf("failed to delete node: %v\n", deploymentError)
 		status.New(codes.Internal, fmt.Sprintf("Delete: Error during deletion (%v)", deploymentError))
-		return deploymentError
+		return nil, deploymentError
 	}
 	log.Printf("deleted: %v\n", node.GetName())
 	status.New(codes.OK, fmt.Sprintf("Node %v deleted", node.GetName()))
-	return nil
+	return new(emptypb.Empty), nil
 }
 
 func RealMain(configuration *Configuration) {
