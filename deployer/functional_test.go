@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	common "github.com/open-cyber-range/vmware-node-deployer/grpc/common"
 	node "github.com/open-cyber-range/vmware-node-deployer/grpc/node"
 	"github.com/vmware/govmomi"
 	"google.golang.org/grpc"
@@ -116,21 +115,28 @@ func createExercise(t *testing.T, client *govmomi.Client) (exerciseName string, 
 	return
 }
 
-func createNode(t *testing.T, client node.NodeServiceClient, exerciseName string) *common.Identifier {
-	node := node.Node{
-		Name:         "test-node",
-		TemplateName: "debian10",
-		ExerciseName: exerciseName,
+func createNode(t *testing.T, client node.NodeServiceClient, exerciseName string) *node.NodeIdentifier {
+	nodeDeployment := &node.NodeDeployment{
+		Parameters: &node.DeploymentParameters{
+			Name:         "test-node",
+			TemplateName: "debian10",
+			ExerciseName: exerciseName,
+		},
+		Node: &node.Node{
+			Identifier: &node.NodeIdentifier{
+				NodeType: node.NodeType_vm,
+			},
+		},
 	}
 
-	identifier, err := client.Create(context.Background(), &node)
+	resultNode, err := client.Create(context.Background(), nodeDeployment)
 	if err != nil {
 		t.Fatalf("Failed to send request: %v", err)
 	}
-	if identifier.Value == "" {
+	if resultNode.GetIdentifier().GetValue() == "" {
 		t.Logf("Failed to retrieve UUID")
 	}
-	return identifier
+	return resultNode
 }
 
 func TestNodeDeletion(t *testing.T) {
@@ -142,9 +148,9 @@ func TestNodeDeletion(t *testing.T) {
 	}
 	gRPCClient := creategRPCClient(t, configuration.ServerAddress)
 	exerciseName, _ := createExercise(t, VMWareClient)
-	virtualMachineUuid := createNode(t, gRPCClient, exerciseName)
+	virtualMachineIdentifier := createNode(t, gRPCClient, exerciseName)
 
-	gRPCClient.Delete(context.Background(), virtualMachineUuid)
+	gRPCClient.Delete(context.Background(), virtualMachineIdentifier)
 	if nodeExists(VMWareClient, exerciseName, "test-node") {
 		t.Fatalf("Node was not deleted")
 	}
@@ -161,10 +167,10 @@ func TestNodeCreation(t *testing.T) {
 	gRPCClient := creategRPCClient(t, configuration.ServerAddress)
 	exerciseName, _ := createExercise(t, VMWareClient)
 
-	reply := createNode(t, gRPCClient, exerciseName)
+	nodeIdentifier := createNode(t, gRPCClient, exerciseName)
 	nodeExists := nodeExists(VMWareClient, exerciseName, "test-node")
 
-	if reply.Value == "" && nodeExists {
+	if nodeIdentifier.GetIdentifier().GetValue() == "" && nodeExists {
 		t.Fatalf("Node exists but failed to retrieve UUID")
 	}
 	if !nodeExists {
