@@ -30,13 +30,13 @@ func createNsxtClient() (nsxtClient *nsxt.APIClient, err error) {
 	return
 }
 
-func CreateLogicalSwitch(ctx context.Context, nodeDeployment *node.NodeDeployment) (identifier *node.NodeIdentifier, err error) {
+func CreateVirtualSwitch(ctx context.Context, nodeDeployment *node.NodeDeployment) (identifier *node.NodeIdentifier, err error) {
 	nsxtClient, err := createNsxtClient()
 	if err != nil {
-		status.New(codes.Internal, fmt.Sprintf("CreateLogicalSwitch: client error (%v)", err))
+		status.New(codes.Internal, fmt.Sprintf("CreateVirtualSwitch: client error (%v)", err))
 		return
 	}
-	newLogicalSwitch := manager.LogicalSwitch{
+	newVogicalSwitch := manager.LogicalSwitch{
 		TransportZoneId: transportZone,
 		DisplayName:     nodeDeployment.GetParameters().GetName(),
 		AdminState:      "UP",
@@ -44,20 +44,20 @@ func CreateLogicalSwitch(ctx context.Context, nodeDeployment *node.NodeDeploymen
 		Description:     fmt.Sprintf("Created for exercise: %v", nodeDeployment.GetParameters().GetExerciseName()),
 		Tags:            []nsxtCommon.Tag{{Scope: "policyPath", Tag: fmt.Sprintf("/infra/segments/%v", nodeDeployment.GetParameters().GetName())}},
 	}
-	logicalSwitch, httpResponse, err := nsxtClient.LogicalSwitchingApi.CreateLogicalSwitch(ctx, newLogicalSwitch)
+	virtualSwitch, httpResponse, err := nsxtClient.LogicalSwitchingApi.CreateLogicalSwitch(ctx, newVogicalSwitch)
 	if err != nil {
-		status.New(codes.Internal, fmt.Sprintf("CreateLogicalSwitch: API request error (%v)", err))
+		status.New(codes.Internal, fmt.Sprintf("CreateVirtualSwitch: API request error (%v)", err))
 		return
 	}
 	if httpResponse.StatusCode != http.StatusCreated {
-		status.New(codes.Internal, fmt.Sprintf("CreateLogicalSwitch: Logical Switch not created (%v)", httpResponse.Status))
+		status.New(codes.Internal, fmt.Sprintf("CreateVirtualSwitch: Virtual Switch not created (%v)", httpResponse.Status))
 		return
 	}
 
-	status.New(codes.OK, "Logical Switch creation successful")
+	status.New(codes.OK, "Virtual Switch creation successful")
 	return &node.NodeIdentifier{
 		Identifier: &common.Identifier{
-			Value: logicalSwitch.Id,
+			Value: virtualSwitch.Id,
 		},
 		NodeType: node.NodeType_switch,
 	}, nil

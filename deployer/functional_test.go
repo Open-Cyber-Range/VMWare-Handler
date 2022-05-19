@@ -213,9 +213,9 @@ func TestVirtualSwitchCreation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed create new API client: %v", err)
 	}
-	testVirtualSwitch, err := CreateLogicalSwitch(ctx, createNodeDeploymentOfTypeSwitch())
+	testVirtualSwitch, err := CreateVirtualSwitch(ctx, createNodeDeploymentOfTypeSwitch())
 	if err != nil {
-		t.Fatalf("Failed create new logical switch: %v", err)
+		t.Fatalf("Failed create new virtual switch: %v", err)
 	}
 	fmt.Printf("Created virtual switch: %v", testVirtualSwitch.GetIdentifier().GetValue())
 
