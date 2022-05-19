@@ -7,6 +7,7 @@ import (
 	"os"
 
 	nsxt "github.com/ScottHolden/go-vmware-nsxt"
+	nsxtCommon "github.com/ScottHolden/go-vmware-nsxt/common"
 	"github.com/ScottHolden/go-vmware-nsxt/manager"
 	common "github.com/open-cyber-range/vmware-node-deployer/grpc/common"
 	node "github.com/open-cyber-range/vmware-node-deployer/grpc/node"
@@ -40,6 +41,8 @@ func CreateLogicalSwitch(ctx context.Context, nodeDeployment *node.NodeDeploymen
 		DisplayName:     nodeDeployment.GetParameters().GetName(),
 		AdminState:      "UP",
 		ReplicationMode: "MTEP",
+		Description:     fmt.Sprintf("Created for exercise: %v", nodeDeployment.GetParameters().GetExerciseName()),
+		Tags:            []nsxtCommon.Tag{{Scope: "policyPath", Tag: fmt.Sprintf("/infra/segments/%v", nodeDeployment.GetParameters().GetName())}},
 	}
 	logicalSwitch, httpResponse, err := nsxtClient.LogicalSwitchingApi.CreateLogicalSwitch(ctx, newLogicalSwitch)
 	if err != nil {
