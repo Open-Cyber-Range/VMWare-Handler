@@ -217,7 +217,6 @@ func TestVirtualSwitchCreation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed create new virtual switch: %v", err)
 	}
-	fmt.Printf("Created virtual switch: %v", testVirtualSwitch.GetIdentifier().GetValue())
 
 	if !virtualSwitchExists(t, ctx, nsxtClient, testVirtualSwitch.GetIdentifier().GetValue()) {
 		t.Fatalf("Virtual switch was not created")

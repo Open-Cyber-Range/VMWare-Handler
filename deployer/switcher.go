@@ -15,11 +15,11 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-const transportZone = "a1facc11-3bad-4b25-885f-906fc5b0ac39" // TZ-Kaarli-Overlay
+const transportZoneKOverlay = "a1facc11-3bad-4b25-885f-906fc5b0ac39"
 
 func createNsxtClient() (nsxtClient *nsxt.APIClient, err error) {
 	configuration := nsxt.NewConfiguration()
-	configuration.Host = os.Getenv("NSXT_API") // TODO
+	configuration.Host = os.Getenv("NSXT_API")
 	configuration.DefaultHeader["Authorization"] = os.Getenv("NSXT_AUTH")
 	configuration.Insecure = true
 
@@ -37,7 +37,7 @@ func CreateVirtualSwitch(ctx context.Context, nodeDeployment *node.NodeDeploymen
 		return
 	}
 	newVogicalSwitch := manager.LogicalSwitch{
-		TransportZoneId: transportZone,
+		TransportZoneId: transportZoneKOverlay,
 		DisplayName:     nodeDeployment.GetParameters().GetName(),
 		AdminState:      "UP",
 		ReplicationMode: "MTEP",
