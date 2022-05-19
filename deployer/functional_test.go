@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"net/http"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
+	nsxt "github.com/ScottHolden/go-vmware-nsxt"
 	node "github.com/open-cyber-range/vmware-node-deployer/grpc/node"
 	"github.com/vmware/govmomi"
 	"google.golang.org/grpc"
@@ -81,7 +83,7 @@ func exerciseCleanup(client *govmomi.Client, folderPath string) (err error) {
 	return nil
 }
 
-func nodeExists(client *govmomi.Client, exerciseName string, nodeName string) bool {
+func vmNodeExists(client *govmomi.Client, exerciseName string, nodeName string) bool {
 	finder, _, _ := createFinderAndDatacenter(client)
 
 	ctx := context.Background()
@@ -115,7 +117,7 @@ func createExercise(t *testing.T, client *govmomi.Client) (exerciseName string, 
 	return
 }
 
-func createNode(t *testing.T, client node.NodeServiceClient, exerciseName string) *node.NodeIdentifier {
+func createVmNode(t *testing.T, client node.NodeServiceClient, exerciseName string) *node.NodeIdentifier {
 	nodeDeployment := &node.NodeDeployment{
 		Parameters: &node.DeploymentParameters{
 			Name:         "test-node",
@@ -148,10 +150,10 @@ func TestNodeDeletion(t *testing.T) {
 	}
 	gRPCClient := creategRPCClient(t, configuration.ServerAddress)
 	exerciseName, _ := createExercise(t, VMWareClient)
-	virtualMachineIdentifier := createNode(t, gRPCClient, exerciseName)
+	virtualMachineIdentifier := createVmNode(t, gRPCClient, exerciseName)
 
 	gRPCClient.Delete(context.Background(), virtualMachineIdentifier)
-	if nodeExists(VMWareClient, exerciseName, "test-node") {
+	if vmNodeExists(VMWareClient, exerciseName, "test-node") {
 		t.Fatalf("Node was not deleted")
 	}
 }
@@ -167,13 +169,65 @@ func TestNodeCreation(t *testing.T) {
 	gRPCClient := creategRPCClient(t, configuration.ServerAddress)
 	exerciseName, _ := createExercise(t, VMWareClient)
 
-	nodeIdentifier := createNode(t, gRPCClient, exerciseName)
-	nodeExists := nodeExists(VMWareClient, exerciseName, "test-node")
+	nodeIdentifier := createVmNode(t, gRPCClient, exerciseName)
+	nodeExists := vmNodeExists(VMWareClient, exerciseName, "test-node")
 
 	if nodeIdentifier.GetIdentifier().GetValue() == "" && nodeExists {
 		t.Fatalf("Node exists but failed to retrieve UUID")
 	}
 	if !nodeExists {
 		t.Fatalf("Node was not created")
+	}
+}
+
+func createNodeDeploymentOfTypeSwitch() *node.NodeDeployment {
+	nodeDeployment := &node.NodeDeployment{
+		Parameters: &node.DeploymentParameters{
+			Name:         fmt.Sprintf("test-virtual-switch-%v", createRandomString(5)),
+			ExerciseName: createRandomString(10),
+		},
+		Node: &node.Node{
+			Identifier: &node.NodeIdentifier{
+				NodeType: node.NodeType_switch,
+			},
+		},
+	}
+	return nodeDeployment
+}
+
+func virtualSwitchExists(t *testing.T, ctx context.Context, nsxtClient *nsxt.APIClient, virtualSwitchUuid string) bool {
+	_, httpResponse, err := nsxtClient.LogicalSwitchingApi.GetLogicalSwitch(ctx, virtualSwitchUuid)
+	if err != nil {
+		t.Fatalf("Failed to send request: %v", err)
+	}
+	return httpResponse.StatusCode == http.StatusOK
+}
+
+func TestVirtualSwitchCreation(t *testing.T) {
+	ctx := context.Background()
+	configuration := nsxt.NewConfiguration()
+	configuration.Host = os.Getenv("NSXT_API")
+	configuration.DefaultHeader["Authorization"] = os.Getenv("NSXT_AUTH")
+	configuration.Insecure = true
+	nsxtClient, err := nsxt.NewAPIClient(configuration)
+	if err != nil {
+		t.Fatalf("Failed create new API client: %v", err)
+	}
+	testVirtualSwitch, err := CreateLogicalSwitch(ctx, createNodeDeploymentOfTypeSwitch())
+	if err != nil {
+		t.Fatalf("Failed create new logical switch: %v", err)
+	}
+	fmt.Printf("Created virtual switch: %v", testVirtualSwitch.GetIdentifier().GetValue())
+
+	if !virtualSwitchExists(t, ctx, nsxtClient, testVirtualSwitch.GetIdentifier().GetValue()) {
+		t.Fatalf("Virtual switch was not created")
+	} else {
+		_, err := nsxtClient.LogicalSwitchingApi.DeleteLogicalSwitch(ctx, testVirtualSwitch.GetIdentifier().GetValue(), nil)
+		if err != nil {
+			t.Fatalf("Failed to send request: %v", err)
+		}
+		if virtualSwitchExists(t, ctx, nsxtClient, testVirtualSwitch.GetIdentifier().GetValue()) {
+			t.Logf("Test Virtual switch \" %v \" was not cleaned up", testVirtualSwitch.GetIdentifier().GetValue())
+		}
 	}
 }
