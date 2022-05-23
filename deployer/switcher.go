@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"os"
+	"strings"
 
 	nsxt "github.com/ScottHolden/go-vmware-nsxt"
 	nsxtCommon "github.com/ScottHolden/go-vmware-nsxt/common"
@@ -15,36 +15,55 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-const transportZoneKOverlay = "a1facc11-3bad-4b25-885f-906fc5b0ac39"
-
-func createNsxtClient() (nsxtClient *nsxt.APIClient, err error) {
-	configuration := nsxt.NewConfiguration()
-	configuration.Host = os.Getenv("NSXT_API")
-	configuration.DefaultHeader["Authorization"] = os.Getenv("NSXT_AUTH")
-	configuration.Insecure = true
-
-	nsxtClient, err = nsxt.NewAPIClient(configuration)
+func createNsxtClient(serverConfiguration *Configuration) (nsxtClient *nsxt.APIClient, err error) {
+	nsxtConfiguration := nsxt.NewConfiguration()
+	if serverConfiguration.NsxtApi != "" && serverConfiguration.NsxtAuth != "" && serverConfiguration.TransportZoneName != "" {
+		nsxtConfiguration.Host = serverConfiguration.NsxtApi
+		nsxtConfiguration.DefaultHeader["Authorization"] = serverConfiguration.NsxtAuth
+	} else {
+		return nil, status.Error(codes.InvalidArgument, "NSX-T API, Authorization key and Transport Zone Name must be set")
+	}
+	nsxtConfiguration.Insecure = true
+	nsxtClient, err = nsxt.NewAPIClient(nsxtConfiguration)
 	if err != nil {
 		return
 	}
 	return
 }
 
-func CreateVirtualSwitch(ctx context.Context, nodeDeployment *node.NodeDeployment) (identifier *node.NodeIdentifier, err error) {
-	nsxtClient, err := createNsxtClient()
+func findTransportZoneIdByName(ctx context.Context, nsxtClient *nsxt.APIClient, serverConfiguration *Configuration) (string, error) {
+	transportZones, _, err := nsxtClient.NetworkTransportApi.ListTransportZones(ctx, nil)
+	if err != nil {
+		status.New(codes.Internal, fmt.Sprintf("CreateVirtualSwitch: ListTransportZones error (%v)", err))
+		return "", err
+	}
+	for i, transportNode := range transportZones.Results {
+		if strings.EqualFold(transportZones.Results[i].DisplayName, serverConfiguration.TransportZoneName) {
+			return transportNode.Id, nil
+		}
+	}
+	return "", status.Error(codes.InvalidArgument, "Transport zone not found")
+}
+
+func CreateVirtualSwitch(ctx context.Context, serverConfiguration *Configuration, nodeDeployment *node.NodeDeployment) (identifier *node.NodeIdentifier, err error) {
+	nsxtClient, err := createNsxtClient(serverConfiguration)
 	if err != nil {
 		status.New(codes.Internal, fmt.Sprintf("CreateVirtualSwitch: client error (%v)", err))
 		return
 	}
-	newVogicalSwitch := manager.LogicalSwitch{
-		TransportZoneId: transportZoneKOverlay,
+	transportZoneId, err := findTransportZoneIdByName(ctx, nsxtClient, serverConfiguration)
+	if err != nil {
+		return
+	}
+	newVirtualSwitch := manager.LogicalSwitch{
+		TransportZoneId: transportZoneId,
 		DisplayName:     nodeDeployment.GetParameters().GetName(),
 		AdminState:      "UP",
 		ReplicationMode: "MTEP",
 		Description:     fmt.Sprintf("Created for exercise: %v", nodeDeployment.GetParameters().GetExerciseName()),
 		Tags:            []nsxtCommon.Tag{{Scope: "policyPath", Tag: fmt.Sprintf("/infra/segments/%v", nodeDeployment.GetParameters().GetName())}},
 	}
-	virtualSwitch, httpResponse, err := nsxtClient.LogicalSwitchingApi.CreateLogicalSwitch(ctx, newVogicalSwitch)
+	virtualSwitch, httpResponse, err := nsxtClient.LogicalSwitchingApi.CreateLogicalSwitch(ctx, newVirtualSwitch)
 	if err != nil {
 		status.New(codes.Internal, fmt.Sprintf("CreateVirtualSwitch: API request error (%v)", err))
 		return

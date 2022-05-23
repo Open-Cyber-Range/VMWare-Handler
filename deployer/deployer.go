@@ -197,7 +197,7 @@ type nodeServer struct {
 func (server *nodeServer) Create(ctx context.Context, nodeDeployment *node.NodeDeployment) (*node.NodeIdentifier, error) {
 
 	if nodeDeployment.GetNode().GetIdentifier().GetNodeType() == *node.NodeType_switch.Enum() {
-		nodeIdentifier, err := CreateVirtualSwitch(ctx, nodeDeployment)
+		nodeIdentifier, err := CreateVirtualSwitch(ctx, server.Configuration, nodeDeployment)
 		if err != nil {
 			return nil, err
 		}

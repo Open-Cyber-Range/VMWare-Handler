@@ -8,21 +8,46 @@ import (
 	"os"
 
 	"github.com/vmware/govmomi"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"gopkg.in/yaml.v2"
 )
 
 type Configuration struct {
-	User               string
-	Password           string
-	Hostname           string
-	Insecure           bool
-	TemplateFolderPath string `yaml:"template_folder_path"`
-	ResourcePoolPath   string `yaml:"resource_pool_path"`
-	ExerciseRootPath   string `yaml:"exercise_root_path"`
-	ServerAddress      string `yaml:"server_address"`
+	User               string `yaml:",omitempty"`
+	Password           string `yaml:",omitempty"`
+	Hostname           string `yaml:",omitempty"`
+	Insecure           bool   `yaml:",omitempty"`
+	TemplateFolderPath string `yaml:"template_folder_path,omitempty"`
+	ResourcePoolPath   string `yaml:"resource_pool_path,omitempty"`
+	ExerciseRootPath   string `yaml:"exercise_root_path,omitempty"`
+	ServerAddress      string `yaml:"server_address,omitempty"`
+	NsxtApi            string `yaml:"nsxt_api,omitempty"`
+	NsxtAuth           string `yaml:"nsxt_auth,omitempty"`
+	TransportZoneName  string `yaml:"transport_zone_name,omitempty"`
 }
 
 func (configuration *Configuration) createClient(ctx context.Context) (*govmomi.Client, error) {
+
+	if configuration.User == "" {
+		return nil, status.Error(codes.InvalidArgument, "Vsphere user name not provided")
+	}
+	if configuration.Password == "" {
+		return nil, status.Error(codes.InvalidArgument, "Vsphere password not provided")
+	}
+	if configuration.Hostname == "" {
+		return nil, status.Error(codes.InvalidArgument, "Vsphere host name not provided")
+	}
+	if configuration.TemplateFolderPath == "" {
+		return nil, status.Error(codes.InvalidArgument, "Vsphere template folder path not provided")
+	}
+	if configuration.ExerciseRootPath == "" {
+		return nil, status.Error(codes.InvalidArgument, "Vsphere exercise root path not provided")
+	}
+	if configuration.ServerAddress == "" {
+		return nil, status.Error(codes.InvalidArgument, "Vsphere server address not provided")
+	}
+
 	hostURL, parseError := url.Parse("https://" + configuration.Hostname + "/sdk")
 
 	if parseError != nil {

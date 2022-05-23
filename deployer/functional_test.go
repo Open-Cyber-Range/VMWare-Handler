@@ -26,6 +26,9 @@ var testConfiguration = Configuration{
 	ResourcePoolPath:   os.Getenv("TEST_VMWARE_RESOURCE_POOL_PATH"),
 	ExerciseRootPath:   os.Getenv("TEST_VMWARE_EXERCISE_ROOT_PATH"),
 	ServerAddress:      os.Getenv("TEST_VMWARE_SERVER_ADDRESS"),
+	NsxtApi:            os.Getenv("TEST_NSXT_API"),
+	NsxtAuth:           os.Getenv("TEST_NSXT_AUTH"),
+	TransportZoneName:  os.Getenv("TEST_NSXT_TRANSPORT_ZONE_NAME"),
 }
 
 func startServer(timeout time.Duration) (configuration Configuration) {
@@ -197,7 +200,7 @@ func createNodeDeploymentOfTypeSwitch() *node.NodeDeployment {
 
 func virtualSwitchExists(t *testing.T, ctx context.Context, nsxtClient *nsxt.APIClient, virtualSwitchUuid string) bool {
 	_, httpResponse, err := nsxtClient.LogicalSwitchingApi.GetLogicalSwitch(ctx, virtualSwitchUuid)
-	if err != nil {
+	if err != nil && httpResponse.StatusCode != http.StatusNotFound {
 		t.Fatalf("Failed to send request: %v", err)
 	}
 	return httpResponse.StatusCode == http.StatusOK
@@ -206,18 +209,17 @@ func virtualSwitchExists(t *testing.T, ctx context.Context, nsxtClient *nsxt.API
 func TestVirtualSwitchCreation(t *testing.T) {
 	ctx := context.Background()
 	configuration := nsxt.NewConfiguration()
-	configuration.Host = os.Getenv("NSXT_API")
-	configuration.DefaultHeader["Authorization"] = os.Getenv("NSXT_AUTH")
+	configuration.Host = testConfiguration.NsxtApi
+	configuration.DefaultHeader["Authorization"] = testConfiguration.NsxtAuth
 	configuration.Insecure = true
 	nsxtClient, err := nsxt.NewAPIClient(configuration)
 	if err != nil {
 		t.Fatalf("Failed create new API client: %v", err)
 	}
-	testVirtualSwitch, err := CreateVirtualSwitch(ctx, createNodeDeploymentOfTypeSwitch())
+	testVirtualSwitch, err := CreateVirtualSwitch(ctx, &testConfiguration, createNodeDeploymentOfTypeSwitch())
 	if err != nil {
 		t.Fatalf("Failed create new virtual switch: %v", err)
 	}
-
 	if !virtualSwitchExists(t, ctx, nsxtClient, testVirtualSwitch.GetIdentifier().GetValue()) {
 		t.Fatalf("Virtual switch was not created")
 	} else {
