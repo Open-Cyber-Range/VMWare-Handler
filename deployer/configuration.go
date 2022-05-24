@@ -1,4 +1,4 @@
-package main
+package deployer
 
 import (
 	"context"
@@ -64,7 +64,7 @@ func (configuration *Configuration) createClient(ctx context.Context) (*govmomi.
 	return client, nil
 }
 
-func getConfiguration() (_ *Configuration, err error) {
+func GetConfiguration() (_ *Configuration, err error) {
 	var configuration Configuration
 	commandArgs := os.Args
 	if len(commandArgs) < 2 {

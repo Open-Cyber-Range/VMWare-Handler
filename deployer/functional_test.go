@@ -1,16 +1,14 @@
-package main
+package deployer
 
 import (
 	"context"
 	"fmt"
 	"math/rand"
-	"net/http"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
-	nsxt "github.com/ScottHolden/go-vmware-nsxt"
 	node "github.com/open-cyber-range/vmware-node-deployer/grpc/node"
 	"github.com/vmware/govmomi"
 	"google.golang.org/grpc"
@@ -26,9 +24,6 @@ var testConfiguration = Configuration{
 	ResourcePoolPath:   os.Getenv("TEST_VMWARE_RESOURCE_POOL_PATH"),
 	ExerciseRootPath:   os.Getenv("TEST_VMWARE_EXERCISE_ROOT_PATH"),
 	ServerAddress:      os.Getenv("TEST_VMWARE_SERVER_ADDRESS"),
-	NsxtApi:            os.Getenv("TEST_NSXT_API"),
-	NsxtAuth:           os.Getenv("TEST_NSXT_AUTH"),
-	TransportZoneName:  os.Getenv("TEST_NSXT_TRANSPORT_ZONE_NAME"),
 }
 
 func startServer(timeout time.Duration) (configuration Configuration) {
@@ -180,55 +175,5 @@ func TestNodeCreation(t *testing.T) {
 	}
 	if !nodeExists {
 		t.Fatalf("Node was not created")
-	}
-}
-
-func createNodeDeploymentOfTypeSwitch() *node.NodeDeployment {
-	nodeDeployment := &node.NodeDeployment{
-		Parameters: &node.DeploymentParameters{
-			Name:         fmt.Sprintf("test-virtual-switch-%v", createRandomString(5)),
-			ExerciseName: createRandomString(10),
-		},
-		Node: &node.Node{
-			Identifier: &node.NodeIdentifier{
-				NodeType: node.NodeType_switch,
-			},
-		},
-	}
-	return nodeDeployment
-}
-
-func virtualSwitchExists(t *testing.T, ctx context.Context, nsxtClient *nsxt.APIClient, virtualSwitchUuid string) bool {
-	_, httpResponse, err := nsxtClient.LogicalSwitchingApi.GetLogicalSwitch(ctx, virtualSwitchUuid)
-	if err != nil && httpResponse.StatusCode != http.StatusNotFound {
-		t.Fatalf("Failed to send request: %v", err)
-	}
-	return httpResponse.StatusCode == http.StatusOK
-}
-
-func TestVirtualSwitchCreation(t *testing.T) {
-	ctx := context.Background()
-	configuration := nsxt.NewConfiguration()
-	configuration.Host = testConfiguration.NsxtApi
-	configuration.DefaultHeader["Authorization"] = testConfiguration.NsxtAuth
-	configuration.Insecure = true
-	nsxtClient, err := nsxt.NewAPIClient(configuration)
-	if err != nil {
-		t.Fatalf("Failed create new API client: %v", err)
-	}
-	testVirtualSwitch, err := CreateVirtualSwitch(ctx, &testConfiguration, createNodeDeploymentOfTypeSwitch())
-	if err != nil {
-		t.Fatalf("Failed create new virtual switch: %v", err)
-	}
-	if !virtualSwitchExists(t, ctx, nsxtClient, testVirtualSwitch.GetIdentifier().GetValue()) {
-		t.Fatalf("Virtual switch was not created")
-	} else {
-		_, err := nsxtClient.LogicalSwitchingApi.DeleteLogicalSwitch(ctx, testVirtualSwitch.GetIdentifier().GetValue(), nil)
-		if err != nil {
-			t.Fatalf("Failed to send request: %v", err)
-		}
-		if virtualSwitchExists(t, ctx, nsxtClient, testVirtualSwitch.GetIdentifier().GetValue()) {
-			t.Logf("Test Virtual switch \" %v \" was not cleaned up", testVirtualSwitch.GetIdentifier().GetValue())
-		}
 	}
 }

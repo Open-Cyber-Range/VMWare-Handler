@@ -1,21 +1,26 @@
-package main
+package switcher
 
 import (
 	"context"
 	"fmt"
+	"log"
+	"net"
 	"net/http"
 	"strings"
+	"time"
 
 	nsxt "github.com/ScottHolden/go-vmware-nsxt"
 	nsxtCommon "github.com/ScottHolden/go-vmware-nsxt/common"
 	"github.com/ScottHolden/go-vmware-nsxt/manager"
+	deployer "github.com/open-cyber-range/vmware-node-deployer/deployer"
 	common "github.com/open-cyber-range/vmware-node-deployer/grpc/common"
 	node "github.com/open-cyber-range/vmware-node-deployer/grpc/node"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
-func createNsxtClient(serverConfiguration *Configuration) (nsxtClient *nsxt.APIClient, err error) {
+func createNsxtClient(serverConfiguration *deployer.Configuration) (nsxtClient *nsxt.APIClient, err error) {
 	nsxtConfiguration := nsxt.NewConfiguration()
 	if serverConfiguration.NsxtApi != "" && serverConfiguration.NsxtAuth != "" && serverConfiguration.TransportZoneName != "" {
 		nsxtConfiguration.Host = serverConfiguration.NsxtApi
@@ -31,7 +36,7 @@ func createNsxtClient(serverConfiguration *Configuration) (nsxtClient *nsxt.APIC
 	return
 }
 
-func findTransportZoneIdByName(ctx context.Context, nsxtClient *nsxt.APIClient, serverConfiguration *Configuration) (string, error) {
+func findTransportZoneIdByName(ctx context.Context, nsxtClient *nsxt.APIClient, serverConfiguration *deployer.Configuration) (string, error) {
 	transportZones, _, err := nsxtClient.NetworkTransportApi.ListTransportZones(ctx, nil)
 	if err != nil {
 		status.New(codes.Internal, fmt.Sprintf("CreateVirtualSwitch: ListTransportZones error (%v)", err))
@@ -45,13 +50,14 @@ func findTransportZoneIdByName(ctx context.Context, nsxtClient *nsxt.APIClient, 
 	return "", status.Error(codes.InvalidArgument, "Transport zone not found")
 }
 
-func CreateVirtualSwitch(ctx context.Context, serverConfiguration *Configuration, nodeDeployment *node.NodeDeployment) (identifier *node.NodeIdentifier, err error) {
-	nsxtClient, err := createNsxtClient(serverConfiguration)
-	if err != nil {
-		status.New(codes.Internal, fmt.Sprintf("CreateVirtualSwitch: client error (%v)", err))
-		return
-	}
-	transportZoneId, err := findTransportZoneIdByName(ctx, nsxtClient, serverConfiguration)
+type nsxtNodeServer struct {
+	node.UnimplementedNodeServiceServer
+	Client        *nsxt.APIClient
+	Configuration *deployer.Configuration
+}
+
+func (server *nsxtNodeServer) Create(ctx context.Context, nodeDeployment *node.NodeDeployment) (identifier *node.NodeIdentifier, err error) {
+	transportZoneId, err := findTransportZoneIdByName(ctx, server.Client, server.Configuration)
 	if err != nil {
 		return
 	}
@@ -63,7 +69,8 @@ func CreateVirtualSwitch(ctx context.Context, serverConfiguration *Configuration
 		Description:     fmt.Sprintf("Created for exercise: %v", nodeDeployment.GetParameters().GetExerciseName()),
 		Tags:            []nsxtCommon.Tag{{Scope: "policyPath", Tag: fmt.Sprintf("/infra/segments/%v", nodeDeployment.GetParameters().GetName())}},
 	}
-	virtualSwitch, httpResponse, err := nsxtClient.LogicalSwitchingApi.CreateLogicalSwitch(ctx, newVirtualSwitch)
+
+	virtualSwitch, httpResponse, err := server.Client.LogicalSwitchingApi.CreateLogicalSwitch(ctx, newVirtualSwitch)
 	if err != nil {
 		status.New(codes.Internal, fmt.Sprintf("CreateVirtualSwitch: API request error (%v)", err))
 		return
@@ -80,4 +87,41 @@ func CreateVirtualSwitch(ctx context.Context, serverConfiguration *Configuration
 		},
 		NodeType: node.NodeType_switch,
 	}, nil
+}
+
+func RealMain(serverConfiguration *deployer.Configuration) {
+	nsxtClient, err := createNsxtClient(serverConfiguration)
+	if err != nil {
+		status.New(codes.Internal, fmt.Sprintf("CreateVirtualSwitch: client error (%v)", err))
+		return
+	}
+
+	listeningAddress, addressError := net.Listen("tcp", serverConfiguration.ServerAddress)
+	if addressError != nil {
+		log.Fatalf("failed to listen: %v", addressError)
+	}
+
+	server := grpc.NewServer()
+	node.RegisterNodeServiceServer(server, &nsxtNodeServer{
+		Client:        nsxtClient,
+		Configuration: serverConfiguration,
+	})
+	//???
+	log.Printf("server listening at %v", listeningAddress.Addr())
+	if bindError := server.Serve(listeningAddress); bindError != nil {
+		log.Fatalf("failed to serve: %v", bindError)
+	}
+	time.Sleep(3 * time.Second)
+}
+
+func main() {
+	log.SetPrefix("switcher: ")
+	log.SetFlags(0)
+
+	configuration, configurationError := deployer.GetConfiguration()
+	if configurationError != nil {
+		log.Fatal(configurationError)
+	}
+
+	RealMain(configuration)
 }

@@ -27,9 +27,11 @@ compile-protobuf:
 
 build: compile-protobuf
 	go build -o bin/ranger-vmware-node-deployer ./deployer
+	go build -o bin/ranger-vmware-node-deployer ./switcher
 
 test: build
 	go test -v ./deployer
+	go test -v ./switcher
 
 run: build
 	bin/ranger-vmware-node-deployer config.yml
