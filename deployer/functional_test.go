@@ -140,6 +140,7 @@ func createVmNode(t *testing.T, client node.NodeServiceClient, exerciseName stri
 }
 
 func TestNodeDeletion(t *testing.T) {
+	t.Parallel()
 	configuration := startServer(3 * time.Second)
 	ctx := context.Background()
 	VMWareClient, VMWareClientError := testConfiguration.createClient(ctx)
@@ -157,6 +158,7 @@ func TestNodeDeletion(t *testing.T) {
 }
 
 func TestNodeCreation(t *testing.T) {
+	t.Parallel()
 	configuration := startServer(3 * time.Second)
 
 	ctx := context.Background()

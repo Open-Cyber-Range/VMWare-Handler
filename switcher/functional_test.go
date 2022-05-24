@@ -81,6 +81,7 @@ func startServer(timeout time.Duration) (configuration deployer.Configuration) {
 }
 
 func TestVirtualSwitchCreation(t *testing.T) {
+	t.Parallel()
 	serverConfiguration := startServer(time.Second * 3)
 	ctx := context.Background()
 
