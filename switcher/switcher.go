@@ -20,17 +20,19 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
+func createNsxtConfiguration(serverConfiguration *deployer.Configuration) (nsxtConfiguration *nsxt.Configuration) {
+	nsxtConfiguration = nsxt.NewConfiguration()
+	nsxtConfiguration.Host = serverConfiguration.NsxtApi
+	nsxtConfiguration.DefaultHeader["Authorization"] = serverConfiguration.NsxtAuth
+	nsxtConfiguration.Insecure = serverConfiguration.NsxtInsecure
+	return
+}
+
 func createNsxtClient(serverConfiguration *deployer.Configuration) (nsxtClient *nsxt.APIClient, err error) {
-	nsxtConfiguration := nsxt.NewConfiguration()
-	if serverConfiguration.NsxtApi != "" && serverConfiguration.NsxtAuth != "" && serverConfiguration.TransportZoneName != "" {
-		nsxtConfiguration.Host = serverConfiguration.NsxtApi
-		nsxtConfiguration.DefaultHeader["Authorization"] = serverConfiguration.NsxtAuth
-	} else {
-		return nil, status.Error(codes.InvalidArgument, "NSX-T API, Authorization key and Transport Zone Name must be set")
-	}
-	nsxtConfiguration.Insecure = true
-	nsxtClient, err = nsxt.NewAPIClient(nsxtConfiguration)
-	if err != nil {
+	err = serverConfiguration.ValidateForSwitcher()
+	if err == nil {
+		nsxtConfiguration := createNsxtConfiguration(serverConfiguration)
+		nsxtClient, err = nsxt.NewAPIClient(nsxtConfiguration)
 		return
 	}
 	return
@@ -42,8 +44,8 @@ func findTransportZoneIdByName(ctx context.Context, nsxtClient *nsxt.APIClient, 
 		status.New(codes.Internal, fmt.Sprintf("CreateVirtualSwitch: ListTransportZones error (%v)", err))
 		return "", err
 	}
-	for i, transportNode := range transportZones.Results {
-		if strings.EqualFold(transportZones.Results[i].DisplayName, serverConfiguration.TransportZoneName) {
+	for _, transportNode := range transportZones.Results {
+		if strings.EqualFold(transportNode.DisplayName, serverConfiguration.TransportZoneName) {
 			return transportNode.Id, nil
 		}
 	}
@@ -133,7 +135,7 @@ func (server *nsxtNodeServer) Delete(ctx context.Context, nodeIdentifier *node.N
 		if err != nil {
 			return nil, err
 		}
-		log.Printf("Node deleted: %v\n", nodeIdentifier.GetIdentifier().GetValue())
+		log.Printf("virtual switch deleted: %v\n", nodeIdentifier.GetIdentifier().GetValue())
 		status.New(codes.OK, "Virtual Switch deletion successful")
 		return new(emptypb.Empty), nil
 	}

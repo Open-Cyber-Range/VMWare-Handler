@@ -25,29 +25,49 @@ type Configuration struct {
 	NsxtApi            string `yaml:"nsxt_api,omitempty"`
 	NsxtAuth           string `yaml:"nsxt_auth,omitempty"`
 	TransportZoneName  string `yaml:"transport_zone_name,omitempty"`
+	NsxtInsecure       bool   `yaml:"nsxt_insecure,omitempty"`
+}
+
+func (configuration *Configuration) ValidateForMachiner() error {
+	if configuration.User == "" {
+		return status.Error(codes.InvalidArgument, "Vsphere user name not provided")
+	}
+	if configuration.Password == "" {
+		return status.Error(codes.InvalidArgument, "Vsphere password not provided")
+	}
+	if configuration.Hostname == "" {
+		return status.Error(codes.InvalidArgument, "Vsphere host name not provided")
+	}
+	if configuration.TemplateFolderPath == "" {
+		return status.Error(codes.InvalidArgument, "Vsphere template folder path not provided")
+	}
+	if configuration.ExerciseRootPath == "" {
+		return status.Error(codes.InvalidArgument, "Vsphere exercise root path not provided")
+	}
+	if configuration.ServerAddress == "" {
+		return status.Error(codes.InvalidArgument, "Vsphere server address not provided")
+	}
+	return nil
+}
+
+func (serverConfiguration *Configuration) ValidateForSwitcher() error {
+	if serverConfiguration.NsxtApi == "" {
+		return status.Error(codes.InvalidArgument, "NSX-T API not provided")
+	}
+	if serverConfiguration.NsxtAuth == "" {
+		return status.Error(codes.InvalidArgument, "NSX-T  Authorization key not provided")
+	}
+	if serverConfiguration.TransportZoneName == "" {
+		return status.Error(codes.InvalidArgument, "NSX-T  Transport Zone Name not provided")
+	}
+	return nil
 }
 
 func (configuration *Configuration) createClient(ctx context.Context) (*govmomi.Client, error) {
-
-	if configuration.User == "" {
-		return nil, status.Error(codes.InvalidArgument, "Vsphere user name not provided")
+	validationError := configuration.ValidateForMachiner()
+	if validationError != nil {
+		return nil, validationError
 	}
-	if configuration.Password == "" {
-		return nil, status.Error(codes.InvalidArgument, "Vsphere password not provided")
-	}
-	if configuration.Hostname == "" {
-		return nil, status.Error(codes.InvalidArgument, "Vsphere host name not provided")
-	}
-	if configuration.TemplateFolderPath == "" {
-		return nil, status.Error(codes.InvalidArgument, "Vsphere template folder path not provided")
-	}
-	if configuration.ExerciseRootPath == "" {
-		return nil, status.Error(codes.InvalidArgument, "Vsphere exercise root path not provided")
-	}
-	if configuration.ServerAddress == "" {
-		return nil, status.Error(codes.InvalidArgument, "Vsphere server address not provided")
-	}
-
 	hostURL, parseError := url.Parse("https://" + configuration.Hostname + "/sdk")
 
 	if parseError != nil {

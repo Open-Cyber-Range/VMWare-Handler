@@ -19,6 +19,7 @@ var testConfiguration = deployer.Configuration{
 	NsxtAuth:          fmt.Sprintf("Basic %v", os.Getenv("TEST_NSXT_AUTH")),
 	TransportZoneName: os.Getenv("TEST_NSXT_TRANSPORT_ZONE_NAME"),
 	ServerAddress:     "127.0.0.1",
+	NsxtInsecure:      true,
 }
 
 func createRandomString(length int) string {
@@ -81,7 +82,6 @@ func createVirtualSwitch(t *testing.T, serverConfiguration deployer.Configuratio
 }
 
 func TestVirtualSwitchCreationAndDeletion(t *testing.T) {
-	t.Parallel()
 	serverConfiguration := startServer(time.Second * 3)
 	ctx := context.Background()
 	gRPCClient := creategRPCClient(t, serverConfiguration.ServerAddress)
