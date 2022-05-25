@@ -23,14 +23,14 @@ var testConfiguration = Configuration{
 	TemplateFolderPath: os.Getenv("TEST_VMWARE_TEMPLATE_FOLDER_PATH"),
 	ResourcePoolPath:   os.Getenv("TEST_VMWARE_RESOURCE_POOL_PATH"),
 	ExerciseRootPath:   os.Getenv("TEST_VMWARE_EXERCISE_ROOT_PATH"),
-	ServerAddress:      os.Getenv("TEST_VMWARE_SERVER_ADDRESS"),
+	ServerAddress:      "127.0.0.1",
 }
 
 func startServer(timeout time.Duration) (configuration Configuration) {
 	configuration = testConfiguration
 	rand.Seed(time.Now().UnixNano())
 	randomPort := rand.Intn(10000) + 10000
-	configuration.ServerAddress = fmt.Sprintf("127.0.0.1:%v", randomPort)
+	configuration.ServerAddress = fmt.Sprintf("%v:%v", configuration.ServerAddress, randomPort)
 	go RealMain(&configuration)
 
 	time.Sleep(timeout)

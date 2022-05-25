@@ -18,7 +18,7 @@ var testConfiguration = deployer.Configuration{
 	NsxtApi:           os.Getenv("TEST_NSXT_API"),
 	NsxtAuth:          fmt.Sprintf("Basic %v", os.Getenv("TEST_NSXT_AUTH")),
 	TransportZoneName: os.Getenv("TEST_NSXT_TRANSPORT_ZONE_NAME"),
-	ServerAddress:     os.Getenv("TEST_VMWARE_SERVER_ADDRESS"),
+	ServerAddress:     "127.0.0.1",
 }
 
 func createRandomString(length int) string {
@@ -63,7 +63,7 @@ func startServer(timeout time.Duration) (configuration deployer.Configuration) {
 	configuration = testConfiguration
 	rand.Seed(time.Now().UnixNano())
 	randomPort := rand.Intn(10000) + 10000
-	configuration.ServerAddress = fmt.Sprintf("127.0.0.1:%v", randomPort)
+	configuration.ServerAddress = fmt.Sprintf("%v:%v", configuration.ServerAddress, randomPort)
 	go RealMain(&configuration)
 
 	time.Sleep(timeout)
