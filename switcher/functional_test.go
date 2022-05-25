@@ -8,18 +8,17 @@ import (
 	"testing"
 	"time"
 
-	deployer "github.com/open-cyber-range/vmware-node-deployer/deployer"
 	node "github.com/open-cyber-range/vmware-node-deployer/grpc/node"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-var testConfiguration = deployer.Configuration{
+var testConfiguration = Configuration{
 	NsxtApi:           os.Getenv("TEST_NSXT_API"),
 	NsxtAuth:          fmt.Sprintf("Basic %v", os.Getenv("TEST_NSXT_AUTH")),
 	TransportZoneName: os.Getenv("TEST_NSXT_TRANSPORT_ZONE_NAME"),
 	ServerAddress:     "127.0.0.1",
-	NsxtInsecure:      true,
+	Insecure:          true,
 }
 
 func createRandomString(length int) string {
@@ -60,7 +59,7 @@ func creategRPCClient(t *testing.T, serverPath string) node.NodeServiceClient {
 	})
 	return node.NewNodeServiceClient(connection)
 }
-func startServer(timeout time.Duration) (configuration deployer.Configuration) {
+func startServer(timeout time.Duration) (configuration Configuration) {
 	configuration = testConfiguration
 	rand.Seed(time.Now().UnixNano())
 	randomPort := rand.Intn(10000) + 10000
@@ -71,7 +70,7 @@ func startServer(timeout time.Duration) (configuration deployer.Configuration) {
 	return configuration
 }
 
-func createVirtualSwitch(t *testing.T, serverConfiguration deployer.Configuration) (*node.NodeIdentifier, error) {
+func createVirtualSwitch(t *testing.T, serverConfiguration Configuration) (*node.NodeIdentifier, error) {
 	gRPCClient := creategRPCClient(t, serverConfiguration.ServerAddress)
 	nodeDeployment := createNodeDeploymentOfTypeSwitch()
 	testVirtualSwitch, err := gRPCClient.Create(context.Background(), nodeDeployment)

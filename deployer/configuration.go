@@ -22,13 +22,9 @@ type Configuration struct {
 	ResourcePoolPath   string `yaml:"resource_pool_path,omitempty"`
 	ExerciseRootPath   string `yaml:"exercise_root_path,omitempty"`
 	ServerAddress      string `yaml:"server_address,omitempty"`
-	NsxtApi            string `yaml:"nsxt_api,omitempty"`
-	NsxtAuth           string `yaml:"nsxt_auth,omitempty"`
-	TransportZoneName  string `yaml:"transport_zone_name,omitempty"`
-	NsxtInsecure       bool   `yaml:"nsxt_insecure,omitempty"`
 }
 
-func (configuration *Configuration) ValidateForMachiner() error {
+func (configuration *Configuration) Validate() error {
 	if configuration.User == "" {
 		return status.Error(codes.InvalidArgument, "Vsphere user name not provided")
 	}
@@ -50,21 +46,8 @@ func (configuration *Configuration) ValidateForMachiner() error {
 	return nil
 }
 
-func (serverConfiguration *Configuration) ValidateForSwitcher() error {
-	if serverConfiguration.NsxtApi == "" {
-		return status.Error(codes.InvalidArgument, "NSX-T API not provided")
-	}
-	if serverConfiguration.NsxtAuth == "" {
-		return status.Error(codes.InvalidArgument, "NSX-T  Authorization key not provided")
-	}
-	if serverConfiguration.TransportZoneName == "" {
-		return status.Error(codes.InvalidArgument, "NSX-T  Transport Zone Name not provided")
-	}
-	return nil
-}
-
 func (configuration *Configuration) createClient(ctx context.Context) (*govmomi.Client, error) {
-	validationError := configuration.ValidateForMachiner()
+	validationError := configuration.Validate()
 	if validationError != nil {
 		return nil, validationError
 	}

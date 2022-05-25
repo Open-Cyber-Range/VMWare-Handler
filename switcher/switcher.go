@@ -11,7 +11,6 @@ import (
 	nsxt "github.com/ScottHolden/go-vmware-nsxt"
 	nsxtCommon "github.com/ScottHolden/go-vmware-nsxt/common"
 	"github.com/ScottHolden/go-vmware-nsxt/manager"
-	deployer "github.com/open-cyber-range/vmware-node-deployer/deployer"
 	common "github.com/open-cyber-range/vmware-node-deployer/grpc/common"
 	node "github.com/open-cyber-range/vmware-node-deployer/grpc/node"
 	"google.golang.org/grpc"
@@ -20,16 +19,16 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-func createNsxtConfiguration(serverConfiguration *deployer.Configuration) (nsxtConfiguration *nsxt.Configuration) {
+func createNsxtConfiguration(serverConfiguration *Configuration) (nsxtConfiguration *nsxt.Configuration) {
 	nsxtConfiguration = nsxt.NewConfiguration()
 	nsxtConfiguration.Host = serverConfiguration.NsxtApi
 	nsxtConfiguration.DefaultHeader["Authorization"] = serverConfiguration.NsxtAuth
-	nsxtConfiguration.Insecure = serverConfiguration.NsxtInsecure
+	nsxtConfiguration.Insecure = serverConfiguration.Insecure
 	return
 }
 
-func createNsxtClient(serverConfiguration *deployer.Configuration) (nsxtClient *nsxt.APIClient, err error) {
-	err = serverConfiguration.ValidateForSwitcher()
+func createNsxtClient(serverConfiguration *Configuration) (nsxtClient *nsxt.APIClient, err error) {
+	err = serverConfiguration.Validate()
 	if err == nil {
 		nsxtConfiguration := createNsxtConfiguration(serverConfiguration)
 		nsxtClient, err = nsxt.NewAPIClient(nsxtConfiguration)
@@ -38,7 +37,7 @@ func createNsxtClient(serverConfiguration *deployer.Configuration) (nsxtClient *
 	return
 }
 
-func findTransportZoneIdByName(ctx context.Context, nsxtClient *nsxt.APIClient, serverConfiguration *deployer.Configuration) (string, error) {
+func findTransportZoneIdByName(ctx context.Context, nsxtClient *nsxt.APIClient, serverConfiguration Configuration) (string, error) {
 	transportZones, _, err := nsxtClient.NetworkTransportApi.ListTransportZones(ctx, nil)
 	if err != nil {
 		status.New(codes.Internal, fmt.Sprintf("CreateVirtualSwitch: ListTransportZones error (%v)", err))
@@ -55,7 +54,7 @@ func findTransportZoneIdByName(ctx context.Context, nsxtClient *nsxt.APIClient, 
 type nsxtNodeServer struct {
 	node.UnimplementedNodeServiceServer
 	Client        *nsxt.APIClient
-	Configuration *deployer.Configuration
+	Configuration Configuration
 }
 
 func (server *nsxtNodeServer) Create(ctx context.Context, nodeDeployment *node.NodeDeployment) (identifier *node.NodeIdentifier, err error) {
@@ -142,7 +141,7 @@ func (server *nsxtNodeServer) Delete(ctx context.Context, nodeIdentifier *node.N
 	return nil, status.Error(codes.InvalidArgument, "DeleteVirtualSwitch: Node is not a virtual switch")
 }
 
-func RealMain(serverConfiguration *deployer.Configuration) {
+func RealMain(serverConfiguration *Configuration) {
 	nsxtClient, err := createNsxtClient(serverConfiguration)
 	if err != nil {
 		status.New(codes.Internal, fmt.Sprintf("CreateVirtualSwitch: client error (%v)", err))
@@ -157,7 +156,7 @@ func RealMain(serverConfiguration *deployer.Configuration) {
 	server := grpc.NewServer()
 	node.RegisterNodeServiceServer(server, &nsxtNodeServer{
 		Client:        nsxtClient,
-		Configuration: serverConfiguration,
+		Configuration: *serverConfiguration,
 	})
 	log.Printf("server listening at %v", listeningAddress.Addr())
 	if bindError := server.Serve(listeningAddress); bindError != nil {
@@ -169,7 +168,7 @@ func main() {
 	log.SetPrefix("switcher: ")
 	log.SetFlags(0)
 
-	configuration, configurationError := deployer.GetConfiguration()
+	configuration, configurationError := GetConfiguration()
 	if configurationError != nil {
 		log.Fatal(configurationError)
 	}
