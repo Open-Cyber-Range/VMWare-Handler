@@ -7,7 +7,6 @@ import (
 	"net"
 	"net/http"
 	"strings"
-	"time"
 
 	nsxt "github.com/ScottHolden/go-vmware-nsxt"
 	nsxtCommon "github.com/ScottHolden/go-vmware-nsxt/common"
@@ -18,6 +17,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 func createNsxtClient(serverConfiguration *deployer.Configuration) (nsxtClient *nsxt.APIClient, err error) {
@@ -57,17 +57,19 @@ type nsxtNodeServer struct {
 }
 
 func (server *nsxtNodeServer) Create(ctx context.Context, nodeDeployment *node.NodeDeployment) (identifier *node.NodeIdentifier, err error) {
+	virtualSwitchDisplayName := nodeDeployment.GetParameters().GetName()
+	log.Printf("received request for switch creation: %v\n", virtualSwitchDisplayName)
 	transportZoneId, err := findTransportZoneIdByName(ctx, server.Client, server.Configuration)
 	if err != nil {
 		return
 	}
 	newVirtualSwitch := manager.LogicalSwitch{
 		TransportZoneId: transportZoneId,
-		DisplayName:     nodeDeployment.GetParameters().GetName(),
+		DisplayName:     virtualSwitchDisplayName,
 		AdminState:      "UP",
 		ReplicationMode: "MTEP",
 		Description:     fmt.Sprintf("Created for exercise: %v", nodeDeployment.GetParameters().GetExerciseName()),
-		Tags:            []nsxtCommon.Tag{{Scope: "policyPath", Tag: fmt.Sprintf("/infra/segments/%v", nodeDeployment.GetParameters().GetName())}},
+		Tags:            []nsxtCommon.Tag{{Scope: "policyPath", Tag: fmt.Sprintf("/infra/segments/%v", virtualSwitchDisplayName)}},
 	}
 
 	virtualSwitch, httpResponse, err := server.Client.LogicalSwitchingApi.CreateLogicalSwitch(ctx, newVirtualSwitch)
@@ -80,6 +82,7 @@ func (server *nsxtNodeServer) Create(ctx context.Context, nodeDeployment *node.N
 		return
 	}
 
+	log.Printf("virtual switch created: %v in transport zone: %v\n", virtualSwitch.Id, virtualSwitch.TransportZoneId)
 	status.New(codes.OK, "Virtual Switch creation successful")
 	return &node.NodeIdentifier{
 		Identifier: &common.Identifier{
@@ -87,6 +90,54 @@ func (server *nsxtNodeServer) Create(ctx context.Context, nodeDeployment *node.N
 		},
 		NodeType: node.NodeType_switch,
 	}, nil
+}
+
+func delete(ctx context.Context, nsxtClient *nsxt.APIClient, virtualSwitchUuid string) error {
+	switchExists, err := virtualSwitchExists(ctx, nsxtClient, virtualSwitchUuid)
+	if err != nil {
+		return err
+	}
+	if !switchExists {
+		return status.Error(codes.InvalidArgument, fmt.Sprintf("DeleteVirtualSwitch: Switch UUID \" %v \" not found", virtualSwitchUuid))
+
+	} else {
+		_, err := nsxtClient.LogicalSwitchingApi.DeleteLogicalSwitch(ctx, virtualSwitchUuid, nil)
+		if err != nil {
+			status.New(codes.Internal, fmt.Sprintf("DeleteVirtualSwitch: API request error (%v)", err))
+			return err
+		}
+		switchExists, err = virtualSwitchExists(ctx, nsxtClient, virtualSwitchUuid)
+		if err != nil {
+			return err
+		}
+		if switchExists {
+			return status.Error(codes.Internal, fmt.Sprintf("DeleteVirtualSwitch: Switch UUID \" %v \" was not deleted", virtualSwitchUuid))
+		}
+	}
+	return nil
+}
+
+func virtualSwitchExists(ctx context.Context, nsxtClient *nsxt.APIClient, virtualSwitchUuid string) (bool, error) {
+	_, httpResponse, err := nsxtClient.LogicalSwitchingApi.GetLogicalSwitch(ctx, virtualSwitchUuid)
+	if err != nil && httpResponse.StatusCode != http.StatusNotFound {
+		return false, err
+	}
+	return httpResponse.StatusCode == http.StatusOK, nil
+}
+
+func (server *nsxtNodeServer) Delete(ctx context.Context, nodeIdentifier *node.NodeIdentifier) (*emptypb.Empty, error) {
+	if *nodeIdentifier.GetNodeType().Enum() == *node.NodeType_switch.Enum() {
+		log.Printf("Received switch for deleting: UUID: %v\n", nodeIdentifier.GetIdentifier().GetValue())
+
+		err := delete(ctx, server.Client, nodeIdentifier.GetIdentifier().GetValue())
+		if err != nil {
+			return nil, err
+		}
+		log.Printf("Node deleted: %v\n", nodeIdentifier.GetIdentifier().GetValue())
+		status.New(codes.OK, "Virtual Switch deletion successful")
+		return new(emptypb.Empty), nil
+	}
+	return nil, status.Error(codes.InvalidArgument, "DeleteVirtualSwitch: Node is not a virtual switch")
 }
 
 func RealMain(serverConfiguration *deployer.Configuration) {
@@ -106,12 +157,10 @@ func RealMain(serverConfiguration *deployer.Configuration) {
 		Client:        nsxtClient,
 		Configuration: serverConfiguration,
 	})
-	//???
 	log.Printf("server listening at %v", listeningAddress.Addr())
 	if bindError := server.Serve(listeningAddress); bindError != nil {
 		log.Fatalf("failed to serve: %v", bindError)
 	}
-	time.Sleep(3 * time.Second)
 }
 
 func main() {

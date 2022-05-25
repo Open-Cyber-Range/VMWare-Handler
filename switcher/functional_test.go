@@ -4,12 +4,10 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
-	"net/http"
 	"os"
 	"testing"
 	"time"
 
-	nsxt "github.com/ScottHolden/go-vmware-nsxt"
 	deployer "github.com/open-cyber-range/vmware-node-deployer/deployer"
 	node "github.com/open-cyber-range/vmware-node-deployer/grpc/node"
 	"google.golang.org/grpc"
@@ -48,14 +46,6 @@ func createNodeDeploymentOfTypeSwitch() *node.NodeDeployment {
 	return nodeDeployment
 }
 
-func virtualSwitchExists(t *testing.T, ctx context.Context, nsxtClient *nsxt.APIClient, virtualSwitchUuid string) bool {
-	_, httpResponse, err := nsxtClient.LogicalSwitchingApi.GetLogicalSwitch(ctx, virtualSwitchUuid)
-	if err != nil && httpResponse.StatusCode != http.StatusNotFound {
-		t.Fatalf("Failed to send request: %v", err)
-	}
-	return httpResponse.StatusCode == http.StatusOK
-}
-
 func creategRPCClient(t *testing.T, serverPath string) node.NodeServiceClient {
 	connection, connectionError := grpc.Dial(serverPath, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if connectionError != nil {
@@ -80,42 +70,27 @@ func startServer(timeout time.Duration) (configuration deployer.Configuration) {
 	return configuration
 }
 
-func TestVirtualSwitchCreation(t *testing.T) {
+func createVirtualSwitch(t *testing.T, serverConfiguration deployer.Configuration) (*node.NodeIdentifier, error) {
+	gRPCClient := creategRPCClient(t, serverConfiguration.ServerAddress)
+	nodeDeployment := createNodeDeploymentOfTypeSwitch()
+	testVirtualSwitch, err := gRPCClient.Create(context.Background(), nodeDeployment)
+	if err != nil {
+		return nil, err
+	}
+	return testVirtualSwitch, nil
+}
+
+func TestVirtualSwitchCreationAndDeletion(t *testing.T) {
 	t.Parallel()
 	serverConfiguration := startServer(time.Second * 3)
 	ctx := context.Background()
-
-	nsxtConfiguration := nsxt.NewConfiguration()
-	nsxtConfiguration.Host = serverConfiguration.NsxtApi
-	nsxtConfiguration.DefaultHeader["Authorization"] = serverConfiguration.NsxtAuth
-	nsxtConfiguration.Insecure = true
-	nsxtClient, err := nsxt.NewAPIClient(nsxtConfiguration)
-	if err != nil {
-		t.Fatalf("Failed create new API client: %v", err)
-	}
-
 	gRPCClient := creategRPCClient(t, serverConfiguration.ServerAddress)
-	server := grpc.NewServer()
-	node.RegisterNodeServiceServer(server, &nsxtNodeServer{
-		Client:        nsxtClient,
-		Configuration: &serverConfiguration,
-	})
-
-	nodeDeployment := createNodeDeploymentOfTypeSwitch()
-
-	testVirtualSwitch, err := gRPCClient.Create(ctx, nodeDeployment)
+	nodeIdentifier, err := createVirtualSwitch(t, serverConfiguration)
 	if err != nil {
-		t.Fatalf("Failed create new virtual switch: %v", err)
+		t.Fatalf("Failed to create new virtual switch: %v", err)
 	}
-	if !virtualSwitchExists(t, ctx, nsxtClient, testVirtualSwitch.GetIdentifier().GetValue()) {
-		t.Fatalf("Virtual switch was not created")
-	} else {
-		_, err := nsxtClient.LogicalSwitchingApi.DeleteLogicalSwitch(ctx, testVirtualSwitch.GetIdentifier().GetValue(), nil)
-		if err != nil {
-			t.Fatalf("Failed to send request: %v", err)
-		}
-		if virtualSwitchExists(t, ctx, nsxtClient, testVirtualSwitch.GetIdentifier().GetValue()) {
-			t.Logf("Test Virtual switch \" %v \" was not cleaned up", testVirtualSwitch.GetIdentifier().GetValue())
-		}
+	_, err = gRPCClient.Delete(ctx, nodeIdentifier)
+	if err != nil {
+		t.Fatalf("Failed to delete test virtual switch: %v", err)
 	}
 }
