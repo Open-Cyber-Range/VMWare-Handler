@@ -28,7 +28,7 @@ compile-protobuf:
 build: compile-protobuf build-machiner build-switcher
 
 build-machiner: compile-protobuf
-	go build -o bin/ranger-vmware-node-deployer ./deployer
+	go build -o bin/ranger-vmware-node-deployer ./machiner
 
 build-switcher: compile-protobuf
 	go build -o bin/ranger-vmware-node-deployer ./switcher
@@ -36,7 +36,7 @@ build-switcher: compile-protobuf
 test: build test-deployer test-switcher
 
 test-deployer: build-machiner
-	go test -v ./deployer
+	go test -v ./machiner
 
 test-switcher: build-switcher
 	go test -v ./switcher
