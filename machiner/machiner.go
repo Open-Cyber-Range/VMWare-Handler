@@ -287,7 +287,7 @@ func RealMain(configuration *Configuration) {
 }
 
 func main() {
-	log.SetPrefix("deployer: ")
+	log.SetPrefix("machiner: ")
 	log.SetFlags(0)
 
 	configuration, configurationError := GetConfiguration()

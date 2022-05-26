@@ -9,6 +9,7 @@ import (
 	"time"
 
 	node "github.com/open-cyber-range/vmware-node-deployer/grpc/node"
+	"github.com/open-cyber-range/vmware-node-deployer/library"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -21,21 +22,11 @@ var testConfiguration = Configuration{
 	Insecure:          true,
 }
 
-func createRandomString(length int) string {
-	rand.Seed(time.Now().UnixNano())
-	const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	result := make([]byte, length)
-	for i := range result {
-		result[i] = chars[rand.Intn(len(chars))]
-	}
-	return string(result)
-}
-
 func createNodeDeploymentOfTypeSwitch() *node.NodeDeployment {
 	nodeDeployment := &node.NodeDeployment{
 		Parameters: &node.DeploymentParameters{
-			Name:         fmt.Sprintf("test-virtual-switch-%v", createRandomString(5)),
-			ExerciseName: createRandomString(10),
+			Name:         fmt.Sprintf("test-virtual-switch-%v", library.CreateRandomString(5)),
+			ExerciseName: library.CreateRandomString(10),
 		},
 		Node: &node.Node{
 			Identifier: &node.NodeIdentifier{

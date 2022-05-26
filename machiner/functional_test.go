@@ -10,6 +10,7 @@ import (
 	"time"
 
 	node "github.com/open-cyber-range/vmware-node-deployer/grpc/node"
+	"github.com/open-cyber-range/vmware-node-deployer/library"
 	"github.com/vmware/govmomi"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -35,16 +36,6 @@ func startServer(timeout time.Duration) (configuration Configuration) {
 
 	time.Sleep(timeout)
 	return configuration
-}
-
-func createRandomString(length int) string {
-	rand.Seed(time.Now().UnixNano())
-	const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	result := make([]byte, length)
-	for i := range result {
-		result[i] = chars[rand.Intn(len(chars))]
-	}
-	return string(result)
 }
 
 func exerciseCleanup(client *govmomi.Client, folderPath string) (err error) {
@@ -104,7 +95,7 @@ func creategRPCClient(t *testing.T, serverPath string) node.NodeServiceClient {
 }
 
 func createExercise(t *testing.T, client *govmomi.Client) (exerciseName string, fullExercisePath string) {
-	exerciseName = createRandomString(10)
+	exerciseName = library.CreateRandomString(10)
 	fullExercisePath = testConfiguration.ExerciseRootPath + "/" + exerciseName
 	t.Cleanup(func() {
 		cleanupError := exerciseCleanup(client, fullExercisePath)
