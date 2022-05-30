@@ -12,6 +12,7 @@ import (
 	node "github.com/open-cyber-range/vmware-node-deployer/grpc/node"
 	"github.com/open-cyber-range/vmware-node-deployer/library"
 	"github.com/vmware/govmomi"
+	"github.com/vmware/govmomi/vim25/mo"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -25,6 +26,11 @@ var testConfiguration = Configuration{
 	ResourcePoolPath:   os.Getenv("TEST_VMWARE_RESOURCE_POOL_PATH"),
 	ExerciseRootPath:   os.Getenv("TEST_VMWARE_EXERCISE_ROOT_PATH"),
 	ServerAddress:      "127.0.0.1",
+}
+
+var virtualMachineHardwareConfiguration = &node.Configuration{
+	Cpu: 2,
+	Ram: 2147483648, // 2024mb
 }
 
 func startServer(timeout time.Duration) (configuration Configuration) {
@@ -117,10 +123,7 @@ func createVmNode(t *testing.T, client node.NodeServiceClient, exerciseName stri
 			Identifier: &node.NodeIdentifier{
 				NodeType: node.NodeType_vm,
 			},
-			Configuration: &node.Configuration{
-				Cpu: 2,
-				Ram: 2147483648, //2gb
-			},
+			Configuration: virtualMachineHardwareConfiguration,
 		},
 	}
 
@@ -132,6 +135,41 @@ func createVmNode(t *testing.T, client node.NodeServiceClient, exerciseName stri
 		t.Logf("Failed to retrieve UUID")
 	}
 	return resultNode
+}
+func getVmConfigurations(client *govmomi.Client, exerciseName string, nodeName string) (managedVirtualMachine mo.VirtualMachine, err error) {
+	finder, _, _ := createFinderAndDatacenter(client)
+
+	ctx := context.Background()
+	virtualMachine, _ := finder.VirtualMachine(ctx, "functional-tests"+"/"+exerciseName+"/"+nodeName)
+
+	err = virtualMachine.Properties(ctx, virtualMachine.Reference(), []string{}, &managedVirtualMachine)
+	if err != nil {
+		return managedVirtualMachine, err
+	}
+	return managedVirtualMachine, nil
+}
+
+func TestVerifyNodeCpuAndMemory(t *testing.T) {
+	t.Parallel()
+	configuration := startServer(3 * time.Second)
+	ctx := context.Background()
+	VMWareClient, VMWareClientError := testConfiguration.createClient(ctx)
+	if VMWareClientError != nil {
+		t.Fatalf("Failed to send request: %v", VMWareClientError)
+	}
+	gRPCClient := creategRPCClient(t, configuration.ServerAddress)
+	exerciseName, _ := createExercise(t, VMWareClient)
+	createVmNode(t, gRPCClient, exerciseName)
+	managedVirtualMachine, err := getVmConfigurations(VMWareClient, exerciseName, "test-node")
+	if err != nil {
+		t.Fatalf("Failed to retrieve VM configuration: %v", err)
+	}
+	if managedVirtualMachine.Config.Hardware.NumCPU != int32(virtualMachineHardwareConfiguration.Cpu) {
+		t.Fatalf("Expected %v CPUs, got %v", virtualMachineHardwareConfiguration.Cpu, managedVirtualMachine.Config.Hardware.NumCPU)
+	}
+	if managedVirtualMachine.Config.Hardware.MemoryMB != int32(virtualMachineHardwareConfiguration.Ram >> 20) {
+		t.Fatalf("Expected %v of memory, got %v", (virtualMachineHardwareConfiguration.Ram >> 20), managedVirtualMachine.Config.Hardware.MemoryMB)
+	}
 }
 
 func TestNodeDeletion(t *testing.T) {
