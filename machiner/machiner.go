@@ -1,4 +1,4 @@
-package main
+package deployer
 
 import (
 	"context"
@@ -23,6 +23,7 @@ type Deployment struct {
 	Client        *govmomi.Client
 	Node          *node.Node
 	Configuration *Configuration
+	Parameters    *node.DeploymentParameters
 }
 
 func createFinderAndDatacenter(client *govmomi.Client) (*find.Finder, *object.Datacenter, error) {
@@ -53,7 +54,7 @@ func (deployment *Deployment) getTemplate() (*object.VirtualMachine, error) {
 
 	var template *object.VirtualMachine
 	for _, templateCandidate := range templates {
-		if templateCandidate.Name() == deployment.Node.TemplateName {
+		if templateCandidate.Name() == deployment.Parameters.TemplateName {
 			template = templateCandidate
 		}
 	}
@@ -68,7 +69,7 @@ func (deployment *Deployment) getTemplate() (*object.VirtualMachine, error) {
 func (deployment *Deployment) createOrFindExerciseFolder() (_ *object.Folder, err error) {
 	finder := find.NewFinder(deployment.Client.Client, true)
 	ctx := context.Background()
-	folderPath := path.Join(deployment.Configuration.ExerciseRootPath, deployment.Node.ExerciseName)
+	folderPath := path.Join(deployment.Configuration.ExerciseRootPath, deployment.Parameters.ExerciseName)
 
 	existingFolder, _ := finder.Folder(ctx, folderPath)
 	if existingFolder != nil {
@@ -80,7 +81,7 @@ func (deployment *Deployment) createOrFindExerciseFolder() (_ *object.Folder, er
 		return
 	}
 
-	exerciseFolder, err := baseFolder.CreateFolder(ctx, deployment.Node.ExerciseName)
+	exerciseFolder, err := baseFolder.CreateFolder(ctx, deployment.Parameters.ExerciseName)
 	if err != nil {
 		return
 	}
@@ -116,13 +117,22 @@ func (deployment *Deployment) create() (err error) {
 		return
 	}
 	resourcePoolReference := resourcePool.Reference()
+
+	vmConfiguration := types.VirtualMachineConfigSpec{}
+	if deployment.Node.Configuration != nil {
+		ramBytesAsMegabytes := (int64(deployment.Node.Configuration.GetRam()) >> 20)
+		vmConfiguration.NumCPUs = int32(deployment.Node.Configuration.GetCpu())
+		vmConfiguration.MemoryMB = ramBytesAsMegabytes
+	}
+
 	cloneSpesifcation := types.VirtualMachineCloneSpec{
 		PowerOn: true,
+		Config:  &vmConfiguration,
 		Location: types.VirtualMachineRelocateSpec{
 			Pool: &resourcePoolReference,
 		},
 	}
-	task, err := template.Clone(context.Background(), exersiceFolder, deployment.Node.Name, cloneSpesifcation)
+	task, err := template.Clone(context.Background(), exersiceFolder, deployment.Parameters.Name, cloneSpesifcation)
 	if err != nil {
 		return
 	}
@@ -193,13 +203,15 @@ type nodeServer struct {
 	Configuration *Configuration
 }
 
-func (server *nodeServer) Create(ctx context.Context, node *node.Node) (*common.Identifier, error) {
+func (server *nodeServer) Create(ctx context.Context, nodeDeployment *node.NodeDeployment) (*node.NodeIdentifier, error) {
+
 	deployment := Deployment{
 		Client:        server.Client,
 		Configuration: server.Configuration,
-		Node:          node,
+		Node:          nodeDeployment.Node,
+		Parameters:    nodeDeployment.Parameters,
 	}
-	log.Printf("received node for deployement: %v in exercise: %v\n", node.Name, node.ExerciseName)
+	log.Printf("received node for deployement: %v in exercise: %v\n", nodeDeployment.Parameters.Name, nodeDeployment.Parameters.ExerciseName)
 	deploymentError := deployment.create()
 	if deploymentError != nil {
 		status.New(codes.Internal, fmt.Sprintf("Create: deployment error (%v)", deploymentError))
@@ -210,24 +222,27 @@ func (server *nodeServer) Create(ctx context.Context, node *node.Node) (*common.
 		status.New(codes.Internal, fmt.Sprintf("Create: datacenter error (%v)", datacenterError))
 		return nil, datacenterError
 	}
-	nodePath := path.Join(deployment.Configuration.ExerciseRootPath, deployment.Node.ExerciseName, deployment.Node.Name)
+	nodePath := path.Join(deployment.Configuration.ExerciseRootPath, deployment.Parameters.ExerciseName, deployment.Parameters.Name)
 	virtualMachine, virtualMachineErr := finder.VirtualMachine(context.Background(), nodePath)
 	if virtualMachineErr != nil {
 		status.New(codes.Internal, fmt.Sprintf("Create: VM creation error (%v)", virtualMachineErr))
 		return nil, virtualMachineErr
 	}
 
-	log.Printf("deployed: %v", node.GetName())
+	log.Printf("deployed: %v", nodeDeployment.Parameters.GetName())
 
 	status.New(codes.OK, "Node creation successful")
-	return &common.Identifier{
-		Value: virtualMachine.UUID(ctx),
+	return &node.NodeIdentifier{
+		Identifier: &common.Identifier{
+			Value: virtualMachine.UUID(ctx),
+		},
+		NodeType: node.NodeType_vm,
 	}, nil
 }
 
-func (server *nodeServer) Delete(ctx context.Context, Identifier *common.Identifier) (*emptypb.Empty, error) {
+func (server *nodeServer) Delete(ctx context.Context, nodeIdentifier *node.NodeIdentifier) (*emptypb.Empty, error) {
 
-	uuid := Identifier.GetValue()
+	uuid := nodeIdentifier.Identifier.GetValue()
 	deployment := Deployment{
 		Client:        server.Client,
 		Configuration: server.Configuration,
@@ -239,12 +254,12 @@ func (server *nodeServer) Delete(ctx context.Context, Identifier *common.Identif
 		status.New(codes.Internal, fmt.Sprintf("Delete: node name retrieval error (%v)", nodeNameError))
 		return nil, nodeNameError
 	}
-	node := node.Node{
+	parameters := node.DeploymentParameters{
 		Name: nodeName,
 	}
-	deployment.Node = &node
+	deployment.Parameters = &parameters
 
-	log.Printf("Received node for deleting: %v with UUID: %v\n", node.Name, uuid)
+	log.Printf("Received node for deleting: %v with UUID: %v\n", parameters.Name, uuid)
 
 	deploymentError := deployment.delete(uuid)
 	if deploymentError != nil {
@@ -252,8 +267,8 @@ func (server *nodeServer) Delete(ctx context.Context, Identifier *common.Identif
 		status.New(codes.Internal, fmt.Sprintf("Delete: Error during deletion (%v)", deploymentError))
 		return nil, deploymentError
 	}
-	log.Printf("deleted: %v\n", node.GetName())
-	status.New(codes.OK, fmt.Sprintf("Node %v deleted", node.GetName()))
+	log.Printf("deleted: %v\n", parameters.GetName())
+	status.New(codes.OK, fmt.Sprintf("Node %v deleted", parameters.GetName()))
 	return new(emptypb.Empty), nil
 }
 
@@ -281,10 +296,10 @@ func RealMain(configuration *Configuration) {
 }
 
 func main() {
-	log.SetPrefix("deployer: ")
+	log.SetPrefix("machiner: ")
 	log.SetFlags(0)
 
-	configuration, configurationError := getConfiguration()
+	configuration, configurationError := GetConfiguration()
 	if configurationError != nil {
 		log.Fatal(configurationError)
 	}

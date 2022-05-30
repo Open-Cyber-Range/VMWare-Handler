@@ -25,11 +25,21 @@ compile-protobuf:
 	--go-grpc_opt=module=github.com/open-cyber-range/vmware-node-deployer/grpc \
 	--proto_path=grpc/proto src/node.proto src/common.proto
 
-build: compile-protobuf
-	go build -o bin/ranger-vmware-node-deployer ./deployer
+build: compile-protobuf build-machiner build-switcher
 
-test: build
-	go test -v ./deployer
+build-machiner: compile-protobuf
+	go build -o bin/ranger-vmware-node-deployer ./machiner
+
+build-switcher: compile-protobuf
+	go build -o bin/ranger-vmware-node-deployer ./switcher
+
+test: build test-machiner test-switcher
+
+test-machiner: build-machiner
+	go test -v ./machiner
+
+test-switcher: build-switcher
+	go test -v ./switcher
 
 run: build
 	bin/ranger-vmware-node-deployer config.yml

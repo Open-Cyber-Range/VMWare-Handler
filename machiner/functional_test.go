@@ -1,17 +1,19 @@
-package main
+package deployer
 
 import (
 	"context"
 	"fmt"
 	"math/rand"
 	"os"
+	"path"
 	"strings"
 	"testing"
 	"time"
 
-	common "github.com/open-cyber-range/vmware-node-deployer/grpc/common"
 	node "github.com/open-cyber-range/vmware-node-deployer/grpc/node"
+	"github.com/open-cyber-range/vmware-node-deployer/library"
 	"github.com/vmware/govmomi"
+	"github.com/vmware/govmomi/vim25/mo"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -24,28 +26,23 @@ var testConfiguration = Configuration{
 	TemplateFolderPath: os.Getenv("TEST_VMWARE_TEMPLATE_FOLDER_PATH"),
 	ResourcePoolPath:   os.Getenv("TEST_VMWARE_RESOURCE_POOL_PATH"),
 	ExerciseRootPath:   os.Getenv("TEST_VMWARE_EXERCISE_ROOT_PATH"),
-	ServerAddress:      os.Getenv("TEST_VMWARE_SERVER_ADDRESS"),
+	ServerAddress:      "127.0.0.1",
+}
+
+var virtualMachineHardwareConfiguration = &node.Configuration{
+	Cpu: 2,
+	Ram: 2147483648, // 2048mb
 }
 
 func startServer(timeout time.Duration) (configuration Configuration) {
 	configuration = testConfiguration
 	rand.Seed(time.Now().UnixNano())
 	randomPort := rand.Intn(10000) + 10000
-	configuration.ServerAddress = fmt.Sprintf("127.0.0.1:%v", randomPort)
+	configuration.ServerAddress = fmt.Sprintf("%v:%v", configuration.ServerAddress, randomPort)
 	go RealMain(&configuration)
 
 	time.Sleep(timeout)
 	return configuration
-}
-
-func createRandomString(length int) string {
-	rand.Seed(time.Now().UnixNano())
-	const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	result := make([]byte, length)
-	for i := range result {
-		result[i] = chars[rand.Intn(len(chars))]
-	}
-	return string(result)
 }
 
 func exerciseCleanup(client *govmomi.Client, folderPath string) (err error) {
@@ -82,11 +79,11 @@ func exerciseCleanup(client *govmomi.Client, folderPath string) (err error) {
 	return nil
 }
 
-func nodeExists(client *govmomi.Client, exerciseName string, nodeName string) bool {
+func vmNodeExists(client *govmomi.Client, exerciseName string, nodeName string) bool {
 	finder, _, _ := createFinderAndDatacenter(client)
 
 	ctx := context.Background()
-	virtualMachine, _ := finder.VirtualMachine(ctx, testConfiguration.ExerciseRootPath+"/"+exerciseName+"/"+nodeName)
+	virtualMachine, _ := finder.VirtualMachine(ctx, path.Join(testConfiguration.ExerciseRootPath, exerciseName, nodeName))
 	return virtualMachine != nil
 }
 
@@ -105,8 +102,8 @@ func creategRPCClient(t *testing.T, serverPath string) node.NodeServiceClient {
 }
 
 func createExercise(t *testing.T, client *govmomi.Client) (exerciseName string, fullExercisePath string) {
-	exerciseName = createRandomString(10)
-	fullExercisePath = testConfiguration.ExerciseRootPath + "/" + exerciseName
+	exerciseName = library.CreateRandomString(10)
+	fullExercisePath = path.Join(testConfiguration.ExerciseRootPath, exerciseName)
 	t.Cleanup(func() {
 		cleanupError := exerciseCleanup(client, fullExercisePath)
 		if cleanupError != nil {
@@ -116,24 +113,45 @@ func createExercise(t *testing.T, client *govmomi.Client) (exerciseName string, 
 	return
 }
 
-func createNode(t *testing.T, client node.NodeServiceClient, exerciseName string) *common.Identifier {
-	node := node.Node{
-		Name:         "test-node",
-		TemplateName: "debian10",
-		ExerciseName: exerciseName,
+func createVmNode(t *testing.T, client node.NodeServiceClient, exerciseName string) *node.NodeIdentifier {
+	nodeDeployment := &node.NodeDeployment{
+		Parameters: &node.DeploymentParameters{
+			Name:         "test-node",
+			TemplateName: "debian10",
+			ExerciseName: exerciseName,
+		},
+		Node: &node.Node{
+			Identifier: &node.NodeIdentifier{
+				NodeType: node.NodeType_vm,
+			},
+			Configuration: virtualMachineHardwareConfiguration,
+		},
 	}
 
-	identifier, err := client.Create(context.Background(), &node)
+	resultNode, err := client.Create(context.Background(), nodeDeployment)
 	if err != nil {
 		t.Fatalf("Failed to send request: %v", err)
 	}
-	if identifier.Value == "" {
+	if resultNode.GetIdentifier().GetValue() == "" {
 		t.Logf("Failed to retrieve UUID")
 	}
-	return identifier
+	return resultNode
+}
+func getVmConfigurations(client *govmomi.Client, exerciseName string, nodeName string) (managedVirtualMachine mo.VirtualMachine, err error) {
+	finder, _, _ := createFinderAndDatacenter(client)
+
+	ctx := context.Background()
+	virtualMachine, _ := finder.VirtualMachine(ctx, path.Join("functional-tests", exerciseName, nodeName))
+
+	err = virtualMachine.Properties(ctx, virtualMachine.Reference(), []string{}, &managedVirtualMachine)
+	if err != nil {
+		return managedVirtualMachine, err
+	}
+	return managedVirtualMachine, nil
 }
 
-func TestNodeDeletion(t *testing.T) {
+func TestVerifyNodeCpuAndMemory(t *testing.T) {
+	t.Parallel()
 	configuration := startServer(3 * time.Second)
 	ctx := context.Background()
 	VMWareClient, VMWareClientError := testConfiguration.createClient(ctx)
@@ -142,15 +160,39 @@ func TestNodeDeletion(t *testing.T) {
 	}
 	gRPCClient := creategRPCClient(t, configuration.ServerAddress)
 	exerciseName, _ := createExercise(t, VMWareClient)
-	virtualMachineUuid := createNode(t, gRPCClient, exerciseName)
+	createVmNode(t, gRPCClient, exerciseName)
+	managedVirtualMachine, err := getVmConfigurations(VMWareClient, exerciseName, "test-node")
+	if err != nil {
+		t.Fatalf("Failed to retrieve VM configuration: %v", err)
+	}
+	if managedVirtualMachine.Config.Hardware.NumCPU != int32(virtualMachineHardwareConfiguration.Cpu) {
+		t.Fatalf("Expected %v CPUs, got %v", virtualMachineHardwareConfiguration.Cpu, managedVirtualMachine.Config.Hardware.NumCPU)
+	}
+	if managedVirtualMachine.Config.Hardware.MemoryMB != int32(virtualMachineHardwareConfiguration.Ram>>20) {
+		t.Fatalf("Expected %v of memory, got %v", (virtualMachineHardwareConfiguration.Ram >> 20), managedVirtualMachine.Config.Hardware.MemoryMB)
+	}
+}
 
-	gRPCClient.Delete(context.Background(), virtualMachineUuid)
-	if nodeExists(VMWareClient, exerciseName, "test-node") {
+func TestNodeDeletion(t *testing.T) {
+	t.Parallel()
+	configuration := startServer(3 * time.Second)
+	ctx := context.Background()
+	VMWareClient, VMWareClientError := testConfiguration.createClient(ctx)
+	if VMWareClientError != nil {
+		t.Fatalf("Failed to send request: %v", VMWareClientError)
+	}
+	gRPCClient := creategRPCClient(t, configuration.ServerAddress)
+	exerciseName, _ := createExercise(t, VMWareClient)
+	virtualMachineIdentifier := createVmNode(t, gRPCClient, exerciseName)
+
+	gRPCClient.Delete(context.Background(), virtualMachineIdentifier)
+	if vmNodeExists(VMWareClient, exerciseName, "test-node") {
 		t.Fatalf("Node was not deleted")
 	}
 }
 
 func TestNodeCreation(t *testing.T) {
+	t.Parallel()
 	configuration := startServer(3 * time.Second)
 
 	ctx := context.Background()
@@ -161,10 +203,10 @@ func TestNodeCreation(t *testing.T) {
 	gRPCClient := creategRPCClient(t, configuration.ServerAddress)
 	exerciseName, _ := createExercise(t, VMWareClient)
 
-	reply := createNode(t, gRPCClient, exerciseName)
-	nodeExists := nodeExists(VMWareClient, exerciseName, "test-node")
+	nodeIdentifier := createVmNode(t, gRPCClient, exerciseName)
+	nodeExists := vmNodeExists(VMWareClient, exerciseName, "test-node")
 
-	if reply.Value == "" && nodeExists {
+	if nodeIdentifier.GetIdentifier().GetValue() == "" && nodeExists {
 		t.Fatalf("Node exists but failed to retrieve UUID")
 	}
 	if !nodeExists {
