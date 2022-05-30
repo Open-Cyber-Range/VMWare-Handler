@@ -83,7 +83,7 @@ func vmNodeExists(client *govmomi.Client, exerciseName string, nodeName string) 
 	finder, _, _ := createFinderAndDatacenter(client)
 
 	ctx := context.Background()
-	virtualMachine, _ := finder.VirtualMachine(ctx, testConfiguration.ExerciseRootPath+"/"+exerciseName+"/"+nodeName)
+	virtualMachine, _ := finder.VirtualMachine(ctx, path.Join(testConfiguration.ExerciseRootPath, exerciseName, nodeName))
 	return virtualMachine != nil
 }
 
@@ -103,7 +103,7 @@ func creategRPCClient(t *testing.T, serverPath string) node.NodeServiceClient {
 
 func createExercise(t *testing.T, client *govmomi.Client) (exerciseName string, fullExercisePath string) {
 	exerciseName = library.CreateRandomString(10)
-	fullExercisePath = testConfiguration.ExerciseRootPath + "/" + exerciseName
+	fullExercisePath = path.Join(testConfiguration.ExerciseRootPath, exerciseName)
 	t.Cleanup(func() {
 		cleanupError := exerciseCleanup(client, fullExercisePath)
 		if cleanupError != nil {
