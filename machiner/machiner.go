@@ -117,8 +117,17 @@ func (deployment *Deployment) create() (err error) {
 		return
 	}
 	resourcePoolReference := resourcePool.Reference()
+
+	vmConfiguration := types.VirtualMachineConfigSpec{}
+	if deployment.Node.Configuration != nil {
+		ramBytesAsMegabytes := (int64(deployment.Node.Configuration.GetRam()) >> 20)
+		vmConfiguration.NumCPUs = int32(deployment.Node.Configuration.GetCpu())
+		vmConfiguration.MemoryMB = ramBytesAsMegabytes
+	}
+
 	cloneSpesifcation := types.VirtualMachineCloneSpec{
 		PowerOn: true,
+		Config:  &vmConfiguration,
 		Location: types.VirtualMachineRelocateSpec{
 			Pool: &resourcePoolReference,
 		},

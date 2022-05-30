@@ -117,6 +117,10 @@ func createVmNode(t *testing.T, client node.NodeServiceClient, exerciseName stri
 			Identifier: &node.NodeIdentifier{
 				NodeType: node.NodeType_vm,
 			},
+			Configuration: &node.Configuration{
+				Cpu: 2,
+				Ram: 2147483648, //2gb
+			},
 		},
 	}
 
