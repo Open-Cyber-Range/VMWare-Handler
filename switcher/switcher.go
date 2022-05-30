@@ -20,20 +20,12 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-func createNsxtConfiguration(serverConfiguration *Configuration) (nsxtConfiguration *nsxt.Configuration) {
-	nsxtConfiguration = nsxt.NewConfiguration()
-	nsxtConfiguration.Host = serverConfiguration.NsxtApi
-	nsxtConfiguration.DefaultHeader["Authorization"] = serverConfiguration.NsxtAuth
-	nsxtConfiguration.Insecure = serverConfiguration.Insecure
-	return
-}
-
 func createNsxtClient(serverConfiguration *Configuration) (nsxtClient *nsxt.APIClient, err error) {
 	err = serverConfiguration.Validate()
 	if err != nil {
 		return
 	}
-	nsxtConfiguration := createNsxtConfiguration(serverConfiguration)
+	nsxtConfiguration := CreateNsxtConfiguration(serverConfiguration)
 	nsxtClient, err = nsxt.NewAPIClient(nsxtConfiguration)
 	return
 }
@@ -101,7 +93,6 @@ func delete(ctx context.Context, nsxtClient *nsxt.APIClient, virtualSwitchUuid s
 	}
 	if !switchExists {
 		return status.Error(codes.InvalidArgument, fmt.Sprintf("DeleteVirtualSwitch: Switch UUID \" %v \" not found", virtualSwitchUuid))
-
 	} else {
 		_, err := nsxtClient.LogicalSwitchingApi.DeleteLogicalSwitch(ctx, virtualSwitchUuid, nil)
 		if err != nil {

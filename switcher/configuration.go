@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"os"
 
+	nsxt "github.com/ScottHolden/go-vmware-nsxt"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"gopkg.in/yaml.v2"
@@ -50,4 +51,12 @@ func GetConfiguration() (_ *Configuration, err error) {
 	}
 
 	return &configuration, nil
+}
+
+func CreateNsxtConfiguration(serverConfiguration *Configuration) (nsxtConfiguration *nsxt.Configuration) {
+	nsxtConfiguration = nsxt.NewConfiguration()
+	nsxtConfiguration.Host = serverConfiguration.NsxtApi
+	nsxtConfiguration.DefaultHeader["Authorization"] = serverConfiguration.NsxtAuth
+	nsxtConfiguration.Insecure = serverConfiguration.Insecure
+	return
 }
