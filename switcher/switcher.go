@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"path"
 	"strings"
 
 	nsxt "github.com/ScottHolden/go-vmware-nsxt"
@@ -29,11 +30,11 @@ func createNsxtConfiguration(serverConfiguration *Configuration) (nsxtConfigurat
 
 func createNsxtClient(serverConfiguration *Configuration) (nsxtClient *nsxt.APIClient, err error) {
 	err = serverConfiguration.Validate()
-	if err == nil {
-		nsxtConfiguration := createNsxtConfiguration(serverConfiguration)
-		nsxtClient, err = nsxt.NewAPIClient(nsxtConfiguration)
+	if err != nil {
 		return
 	}
+	nsxtConfiguration := createNsxtConfiguration(serverConfiguration)
+	nsxtClient, err = nsxt.NewAPIClient(nsxtConfiguration)
 	return
 }
 
@@ -70,7 +71,7 @@ func (server *nsxtNodeServer) Create(ctx context.Context, nodeDeployment *node.N
 		AdminState:      "UP",
 		ReplicationMode: "MTEP",
 		Description:     fmt.Sprintf("Created for exercise: %v", nodeDeployment.GetParameters().GetExerciseName()),
-		Tags:            []nsxtCommon.Tag{{Scope: "policyPath", Tag: fmt.Sprintf("/infra/segments/%v", virtualSwitchDisplayName)}},
+		Tags:            []nsxtCommon.Tag{{Scope: "policyPath", Tag: path.Join("/infra/segments", virtualSwitchDisplayName)}},
 	}
 
 	virtualSwitch, httpResponse, err := server.Client.LogicalSwitchingApi.CreateLogicalSwitch(ctx, newVirtualSwitch)

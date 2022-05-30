@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"path"
 	"strings"
 	"testing"
 	"time"
@@ -140,7 +141,7 @@ func getVmConfigurations(client *govmomi.Client, exerciseName string, nodeName s
 	finder, _, _ := createFinderAndDatacenter(client)
 
 	ctx := context.Background()
-	virtualMachine, _ := finder.VirtualMachine(ctx, "functional-tests"+"/"+exerciseName+"/"+nodeName)
+	virtualMachine, _ := finder.VirtualMachine(ctx, path.Join("functional-tests", exerciseName, nodeName))
 
 	err = virtualMachine.Properties(ctx, virtualMachine.Reference(), []string{}, &managedVirtualMachine)
 	if err != nil {
@@ -167,7 +168,7 @@ func TestVerifyNodeCpuAndMemory(t *testing.T) {
 	if managedVirtualMachine.Config.Hardware.NumCPU != int32(virtualMachineHardwareConfiguration.Cpu) {
 		t.Fatalf("Expected %v CPUs, got %v", virtualMachineHardwareConfiguration.Cpu, managedVirtualMachine.Config.Hardware.NumCPU)
 	}
-	if managedVirtualMachine.Config.Hardware.MemoryMB != int32(virtualMachineHardwareConfiguration.Ram >> 20) {
+	if managedVirtualMachine.Config.Hardware.MemoryMB != int32(virtualMachineHardwareConfiguration.Ram>>20) {
 		t.Fatalf("Expected %v of memory, got %v", (virtualMachineHardwareConfiguration.Ram >> 20), managedVirtualMachine.Config.Hardware.MemoryMB)
 	}
 }
