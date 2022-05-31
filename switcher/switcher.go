@@ -12,6 +12,7 @@ import (
 	nsxt "github.com/ScottHolden/go-vmware-nsxt"
 	nsxtCommon "github.com/ScottHolden/go-vmware-nsxt/common"
 	"github.com/ScottHolden/go-vmware-nsxt/manager"
+	"github.com/open-cyber-range/vmware-node-deployer/grpc/capability"
 	common "github.com/open-cyber-range/vmware-node-deployer/grpc/common"
 	node "github.com/open-cyber-range/vmware-node-deployer/grpc/node"
 	"google.golang.org/grpc"
@@ -131,6 +132,13 @@ func (server *nsxtNodeServer) Delete(ctx context.Context, nodeIdentifier *node.N
 		return new(emptypb.Empty), nil
 	}
 	return nil, status.Error(codes.InvalidArgument, "DeleteVirtualSwitch: Node is not a virtual switch")
+}
+
+func (server *nsxtNodeServer) GetCapability() (*capability.CapabilityResult, error) {
+	status.New(codes.OK, "Switcher reporting for duty")
+	return &capability.CapabilityResult{
+		Type: *capability.CapabilityResult_Switch.Enum(),
+	}, nil
 }
 
 func RealMain(serverConfiguration *Configuration) {

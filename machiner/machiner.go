@@ -7,6 +7,7 @@ import (
 	"net"
 	"path"
 
+	"github.com/open-cyber-range/vmware-node-deployer/grpc/capability"
 	common "github.com/open-cyber-range/vmware-node-deployer/grpc/common"
 	node "github.com/open-cyber-range/vmware-node-deployer/grpc/node"
 	"github.com/vmware/govmomi"
@@ -270,6 +271,13 @@ func (server *nodeServer) Delete(ctx context.Context, nodeIdentifier *node.NodeI
 	log.Printf("deleted: %v\n", parameters.GetName())
 	status.New(codes.OK, fmt.Sprintf("Node %v deleted", parameters.GetName()))
 	return new(emptypb.Empty), nil
+}
+
+func (server *nodeServer) GetCapability() (*capability.CapabilityResult, error) {
+	status.New(codes.OK, "Machiner reporting for duty")
+	return &capability.CapabilityResult{
+		Type: *capability.CapabilityResult_VirtualMachine.Enum(),
+	}, nil
 }
 
 func RealMain(configuration *Configuration) {
