@@ -273,10 +273,12 @@ func (server *nodeServer) Delete(ctx context.Context, nodeIdentifier *node.NodeI
 	return new(emptypb.Empty), nil
 }
 
-func (server *nodeServer) GetCapability() (*capability.CapabilityResult, error) {
+func (server *nodeServer) GetCapabilities() (*capability.Capabilities, error) {
 	status.New(codes.OK, "Machiner reporting for duty")
-	return &capability.CapabilityResult{
-		Type: *capability.CapabilityResult_VirtualMachine.Enum(),
+	return &capability.Capabilities{
+		Values: []capability.Capabilities_DeployerTypes{
+			*capability.Capabilities_VirtualMachine.Enum(),
+		},
 	}, nil
 }
 

@@ -134,10 +134,12 @@ func (server *nsxtNodeServer) Delete(ctx context.Context, nodeIdentifier *node.N
 	return nil, status.Error(codes.InvalidArgument, "DeleteVirtualSwitch: Node is not a virtual switch")
 }
 
-func (server *nsxtNodeServer) GetCapability() (*capability.CapabilityResult, error) {
+func (server *nsxtNodeServer) GetCapabilities() (*capability.Capabilities, error) {
 	status.New(codes.OK, "Switcher reporting for duty")
-	return &capability.CapabilityResult{
-		Type: *capability.CapabilityResult_Switch.Enum(),
+	return &capability.Capabilities{
+		Values: []capability.Capabilities_DeployerTypes{
+			*capability.Capabilities_Switch.Enum(),
+		},
 	}, nil
 }
 
