@@ -33,7 +33,7 @@ build-and-test:
     - master
     - merge_requests
 
-build-and-upload-x86-64bit-linux-release-for-ranger-vmware-node-deployer:
+build-and-upload-x86-64bit-linux-release-for-ranger-vmware-handlers:
   stage: build
   needs: ["build-and-test"]
   script:
