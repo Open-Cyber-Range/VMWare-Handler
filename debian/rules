@@ -8,7 +8,8 @@ build:
 
 binary:
 	make install DESTDIR=debian/ranger-vmware-handlers
-	strip --strip-all debian/ranger-vmware-vmware-handlers/var/opt/ranger/bin/ranger-vmware-handlers
+	strip --strip-all debian/ranger-vmware-vmware-handlers/var/opt/ranger/bin/ranger-vmware-machiner
+	strip --strip-all debian/ranger-vmware-vmware-handlers/var/opt/ranger/bin/ranger-vmware-switcher
 	dh_makeshlibs
 	dh_gencontrol
 	dh_builddeb
