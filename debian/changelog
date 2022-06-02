@@ -1,4 +1,4 @@
-ranger-vmware-handler (2.0.0) stretch; urgency=medium
+ranger-vmware-handlers (2.0.0) stretch; urgency=medium
 
   * Split switcher and machiner logic for handling networks and VMs respecitvly
 
