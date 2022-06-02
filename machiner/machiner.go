@@ -7,8 +7,8 @@ import (
 	"net"
 	"path"
 
-	common "github.com/open-cyber-range/vmware-node-deployer/grpc/common"
-	node "github.com/open-cyber-range/vmware-node-deployer/grpc/node"
+	common "github.com/open-cyber-range/vmware-handler/grpc/common"
+	node "github.com/open-cyber-range/vmware-handler/grpc/node"
 	"github.com/vmware/govmomi"
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"

@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	node "github.com/open-cyber-range/vmware-node-deployer/grpc/node"
-	"github.com/open-cyber-range/vmware-node-deployer/library"
+	node "github.com/open-cyber-range/vmware-handler/grpc/node"
+	"github.com/open-cyber-range/vmware-handler/library"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
