@@ -66,7 +66,7 @@ func (deployment *Deployment) getTemplate() (*object.VirtualMachine, error) {
 	return template, nil
 }
 
-func (deployment *Deployment) createOrFindExerciseFolder() (_ *object.Folder, err error) {
+func (deployment *Deployment) createOrFindExerciseFolder(call_count int) (_ *object.Folder, err error) {
 	finder := find.NewFinder(deployment.Client.Client, true)
 	ctx := context.Background()
 	folderPath := path.Join(deployment.Configuration.ExerciseRootPath, deployment.Parameters.ExerciseName)
@@ -83,6 +83,9 @@ func (deployment *Deployment) createOrFindExerciseFolder() (_ *object.Folder, er
 
 	exerciseFolder, err := baseFolder.CreateFolder(ctx, deployment.Parameters.ExerciseName)
 	if err != nil {
+		if call_count < 3 {
+			return deployment.createOrFindExerciseFolder(call_count + 1)
+		}
 		return
 	}
 
@@ -108,7 +111,7 @@ func (deployment *Deployment) create() (err error) {
 	if err != nil {
 		return
 	}
-	exersiceFolder, err := deployment.createOrFindExerciseFolder()
+	exersiceFolder, err := deployment.createOrFindExerciseFolder(0)
 	if err != nil {
 		return
 	}
