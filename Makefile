@@ -3,7 +3,8 @@
 all: build
 
 clean:
-	rm -f bin/ranger-vmware-handler
+	rm -f bin/ranger-vmware-*
+	rm -f ../*.deb
 
 install:
 	mkdir -p ${DESTDIR}/var/opt/ranger/bin
@@ -64,5 +65,5 @@ uninstall:
 	-rm -f $(DESTDIR)/etc/systemd/system/ranger-vmware-switcher.service
 	-rm -f $(DESTDIR)/lib/systemd/system/ranger-vmware-switcher.service
 
-build-deb:
+build-deb: clean build
 	env DH_VERBOSE=1 dpkg-buildpackage -b --no-sign
