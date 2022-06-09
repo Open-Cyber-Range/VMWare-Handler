@@ -207,6 +207,10 @@ type nodeServer struct {
 	Configuration *Configuration
 }
 
+type capabilityServer struct {
+	capability.UnimplementedCapabilityServer
+}
+
 func (server *nodeServer) Create(ctx context.Context, nodeDeployment *node.NodeDeployment) (*node.NodeIdentifier, error) {
 
 	deployment := Deployment{
@@ -276,7 +280,7 @@ func (server *nodeServer) Delete(ctx context.Context, nodeIdentifier *node.NodeI
 	return new(emptypb.Empty), nil
 }
 
-func (server *nodeServer) GetCapabilities() (*capability.Capabilities, error) {
+func (server *capabilityServer) GetCapabilities(context.Context, *emptypb.Empty) (*capability.Capabilities, error) {
 	status.New(codes.OK, "Machiner reporting for duty")
 	return &capability.Capabilities{
 		Values: []capability.Capabilities_DeployerTypes{
@@ -302,6 +306,9 @@ func RealMain(configuration *Configuration) {
 		Client:        client,
 		Configuration: configuration,
 	})
+
+	capability.RegisterCapabilityServer(server, &capabilityServer{})
+
 	log.Printf("server listening at %v", listeningAddress.Addr())
 	if bindError := server.Serve(listeningAddress); bindError != nil {
 		log.Fatalf("failed to serve: %v", bindError)

@@ -51,6 +51,10 @@ type nsxtNodeServer struct {
 	Configuration Configuration
 }
 
+type capabilityServer struct {
+	capability.UnimplementedCapabilityServer
+}
+
 func (server *nsxtNodeServer) Create(ctx context.Context, nodeDeployment *node.NodeDeployment) (identifier *node.NodeIdentifier, err error) {
 	virtualSwitchDisplayName := nodeDeployment.GetParameters().GetName()
 	log.Printf("received request for switch creation: %v\n", virtualSwitchDisplayName)
@@ -134,7 +138,7 @@ func (server *nsxtNodeServer) Delete(ctx context.Context, nodeIdentifier *node.N
 	return nil, status.Error(codes.InvalidArgument, "DeleteVirtualSwitch: Node is not a virtual switch")
 }
 
-func (server *nsxtNodeServer) GetCapabilities() (*capability.Capabilities, error) {
+func (server *capabilityServer) GetCapabilities(context.Context, *emptypb.Empty) (*capability.Capabilities, error) {
 	status.New(codes.OK, "Switcher reporting for duty")
 	return &capability.Capabilities{
 		Values: []capability.Capabilities_DeployerTypes{
@@ -160,6 +164,9 @@ func RealMain(serverConfiguration *Configuration) {
 		Client:        nsxtClient,
 		Configuration: *serverConfiguration,
 	})
+
+	capability.RegisterCapabilityServer(server, &capabilityServer{})
+
 	log.Printf("server listening at %v", listeningAddress.Addr())
 	if bindError := server.Serve(listeningAddress); bindError != nil {
 		log.Fatalf("failed to serve: %v", bindError)
