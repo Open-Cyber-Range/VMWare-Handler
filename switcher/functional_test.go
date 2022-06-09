@@ -8,10 +8,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/open-cyber-range/vmware-handler/grpc/capability"
 	node "github.com/open-cyber-range/vmware-handler/grpc/node"
 	"github.com/open-cyber-range/vmware-handler/library"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 var testConfiguration = Configuration{
@@ -50,6 +52,21 @@ func creategRPCClient(t *testing.T, serverPath string) node.NodeServiceClient {
 	})
 	return node.NewNodeServiceClient(connection)
 }
+
+func createCapabilityClient(t *testing.T, serverPath string) capability.CapabilityClient {
+	connection, connectionError := grpc.Dial(serverPath, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if connectionError != nil {
+		t.Fatalf("did not connect: %v", connectionError)
+	}
+	t.Cleanup(func() {
+		connectionError := connection.Close()
+		if connectionError != nil {
+			t.Fatalf("Failed to close connection: %v", connectionError)
+		}
+	})
+	return capability.NewCapabilityClient(connection)
+}
+
 func startServer(timeout time.Duration) (configuration Configuration) {
 	configuration = testConfiguration
 	rand.Seed(time.Now().UnixNano())
@@ -82,5 +99,21 @@ func TestVirtualSwitchCreationAndDeletion(t *testing.T) {
 	_, err = gRPCClient.Delete(ctx, nodeIdentifier)
 	if err != nil {
 		t.Fatalf("Failed to delete test virtual switch: %v", err)
+	}
+
+}
+
+func TestSwitcherCapability(t *testing.T) {
+	t.Parallel()
+	serverConfiguration := startServer(time.Second * 3)
+	ctx := context.Background()
+	capabilityClient := createCapabilityClient(t, serverConfiguration.ServerAddress)
+	handlerCapabilities, err := capabilityClient.GetCapabilities(ctx, new(emptypb.Empty))
+	if err != nil {
+		t.Fatalf("Failed to get deployer capability: %v", err)
+	}
+	handlerCapability := handlerCapabilities.GetValues()[0]
+	if handlerCapability.Number() != capability.Capabilities_Switch.Number() {
+		t.Fatalf("Capability service returned incorrect value: expected: %v, got: %v", capability.Capabilities_Switch.Enum(), handlerCapability.Enum())
 	}
 }
