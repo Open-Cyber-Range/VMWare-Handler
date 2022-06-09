@@ -25,11 +25,13 @@ compile-protobuf:
 	protoc --go_out=grpc --go-grpc_out=grpc \
 	--go_opt=Msrc/common.proto=github.com/open-cyber-range/vmware-handler/grpc/common \
 	--go_opt=Msrc/node.proto=github.com/open-cyber-range/vmware-handler/grpc/node \
+	--go_opt=Msrc/capability.proto=github.com/open-cyber-range/vmware-handler/grpc/capability \
 	--go-grpc_opt=Msrc/common.proto=github.com/open-cyber-range/vmware-handler/grpc/common \
 	--go-grpc_opt=Msrc/node.proto=github.com/open-cyber-range/vmware-handler/grpc/node  \
+	--go-grpc_opt=Msrc/capability.proto=github.com/open-cyber-range/vmware-handler/grpc/capability  \
 	--go_opt=module=github.com/open-cyber-range/vmware-handler/grpc \
 	--go-grpc_opt=module=github.com/open-cyber-range/vmware-handler/grpc \
-	--proto_path=grpc/proto src/node.proto src/common.proto
+	--proto_path=grpc/proto src/node.proto src/common.proto src/capability.proto
 
 build: compile-protobuf build-machiner build-switcher
 
