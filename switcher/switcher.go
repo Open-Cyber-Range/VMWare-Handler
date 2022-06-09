@@ -1,4 +1,4 @@
-package switcher
+package main
 
 import (
 	"context"
@@ -12,9 +12,9 @@ import (
 	nsxt "github.com/ScottHolden/go-vmware-nsxt"
 	nsxtCommon "github.com/ScottHolden/go-vmware-nsxt/common"
 	"github.com/ScottHolden/go-vmware-nsxt/manager"
-	"github.com/open-cyber-range/vmware-node-deployer/grpc/capability"
-	common "github.com/open-cyber-range/vmware-node-deployer/grpc/common"
-	node "github.com/open-cyber-range/vmware-node-deployer/grpc/node"
+	"github.com/open-cyber-range/vmware-handler/grpc/capability"
+	common "github.com/open-cyber-range/vmware-handler/grpc/common"
+	node "github.com/open-cyber-range/vmware-handler/grpc/node"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

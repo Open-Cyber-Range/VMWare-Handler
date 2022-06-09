@@ -33,19 +33,19 @@ build-and-test:
     - master
     - merge_requests
 
-build-and-upload-x86-64bit-linux-release-for-ranger-vmware-node-deployer:
+build-and-upload-x86-64bit-linux-release-for-ranger-vmware-handlers:
   stage: build
   needs: ["build-and-test"]
   script:
     - make build-deb
     - DEB_FILE=$(find ../ -maxdepth 1 -type f -name "*.deb")
-    - 'curl -u $OCR_DEPLOYMENT_USER:$OCR_DEPLOYMENT_PASSWORD -X POST -H "Content-Type: multipart/form-data" --data-binary "@$DEB_FILE" $OCR_APT_REPOSITORY'
+    - 'curl --fail -u $OCR_DEPLOYMENT_USER:$OCR_DEPLOYMENT_PASSWORD -X POST -H "Content-Type: multipart/form-data" --data-binary "@$DEB_FILE" $OCR_APT_REPOSITORY'
   only:
     - master
 
 staging:
   variables:
-    RANGER_VMWARE_NODE_DEPLOYER: "1"
+    RANGER_VMWARE_HANLDER: "1"
   stage: deploy
   trigger:
     open-cyber-range/internal/support-docker-images

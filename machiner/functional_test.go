@@ -1,4 +1,4 @@
-package deployer
+package main
 
 import (
 	"context"
@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	node "github.com/open-cyber-range/vmware-node-deployer/grpc/node"
-	"github.com/open-cyber-range/vmware-node-deployer/library"
+	node "github.com/open-cyber-range/vmware-handler/grpc/node"
+	"github.com/open-cyber-range/vmware-handler/library"
 	"github.com/vmware/govmomi"
 	"github.com/vmware/govmomi/vim25/mo"
 	"google.golang.org/grpc"

@@ -1,4 +1,4 @@
-module github.com/open-cyber-range/vmware-node-deployer
+module github.com/open-cyber-range/vmware-handler
 
 go 1.17
 

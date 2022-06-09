@@ -7,11 +7,12 @@ build:
 	make
 
 binary:
-	make install DESTDIR=debian/ranger-vmware-node-deployer
-	strip --strip-all debian/ranger-vmware-node-deployer/var/opt/ranger/bin/ranger-vmware-node-deployer
+	make install DESTDIR=debian/ranger-vmware-handlers
+	strip --strip-all debian/ranger-vmware-handlers/var/opt/ranger/bin/ranger-vmware-machiner
+	strip --strip-all debian/ranger-vmware-handlers/var/opt/ranger/bin/ranger-vmware-switcher
 	dh_makeshlibs
 	dh_gencontrol
 	dh_builddeb
 
 uninstall:
-	make uninstall DESTDIR=debian/ranger-vmware-node-deployer
+	make uninstall DESTDIR=debian/ranger-vmware-handlers

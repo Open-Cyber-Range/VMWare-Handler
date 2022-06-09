@@ -1,4 +1,4 @@
-package deployer
+package main
 
 import (
 	"context"
@@ -7,9 +7,9 @@ import (
 	"net"
 	"path"
 
-	"github.com/open-cyber-range/vmware-node-deployer/grpc/capability"
-	common "github.com/open-cyber-range/vmware-node-deployer/grpc/common"
-	node "github.com/open-cyber-range/vmware-node-deployer/grpc/node"
+	"github.com/open-cyber-range/vmware-handler/grpc/capability"
+	common "github.com/open-cyber-range/vmware-handler/grpc/common"
+	node "github.com/open-cyber-range/vmware-handler/grpc/node"
 	"github.com/vmware/govmomi"
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
@@ -67,7 +67,7 @@ func (deployment *Deployment) getTemplate() (*object.VirtualMachine, error) {
 	return template, nil
 }
 
-func (deployment *Deployment) createOrFindExerciseFolder() (_ *object.Folder, err error) {
+func (deployment *Deployment) createOrFindExerciseFolder(call_count int) (_ *object.Folder, err error) {
 	finder := find.NewFinder(deployment.Client.Client, true)
 	ctx := context.Background()
 	folderPath := path.Join(deployment.Configuration.ExerciseRootPath, deployment.Parameters.ExerciseName)
@@ -84,6 +84,9 @@ func (deployment *Deployment) createOrFindExerciseFolder() (_ *object.Folder, er
 
 	exerciseFolder, err := baseFolder.CreateFolder(ctx, deployment.Parameters.ExerciseName)
 	if err != nil {
+		if call_count < 3 {
+			return deployment.createOrFindExerciseFolder(call_count + 1)
+		}
 		return
 	}
 
@@ -109,7 +112,7 @@ func (deployment *Deployment) create() (err error) {
 	if err != nil {
 		return
 	}
-	exersiceFolder, err := deployment.createOrFindExerciseFolder()
+	exersiceFolder, err := deployment.createOrFindExerciseFolder(0)
 	if err != nil {
 		return
 	}

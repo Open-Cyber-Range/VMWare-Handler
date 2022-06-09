@@ -1,9 +1,9 @@
 [Unit]
-Description=ranger-vmware-node-deployer
+Description=ranger-vmware-switcher
 After=network.target
 
 [Service]
-ExecStart=/var/opt/ranger/bin/ranger-vmware-node-deployer /etc/opt/ranger/ranger-vmware-node-deployer/config.yml
+ExecStart=/var/opt/ranger/bin/ranger-vmware-switcher /etc/opt/ranger/ranger-vmware-switcher/config.yml
 Type=simple
 User=root
 Group=root

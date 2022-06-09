@@ -1,12 +1,13 @@
 # config
-config.yml
+machiner-config.yml
+swithcer-config.yml
 
 # gRPC generating files
 grpc/
 !gprc/proto
 
 #debian packaging
-debian/ranger-vmware-node-deployer
+debian/ranger-vmware-handlers
 debian/files
-debian/ranger-vmware-node-deployer.substvars
+debian/ranger-vmware-handlers.substvars
 *.deb
