@@ -1,3 +1,9 @@
+ranger-vmware-handlers (2.1.0) stretch; urgency=medium
+
+  * Add support for Capabilities service
+
+ -- Rait Rotšan <rait.rotsan@cr14.ee>  Thu, 09 Jun 2022 14:51:49 +0300
+
 ranger-vmware-handlers (2.0.1) stretch; urgency=medium
 
   * Split switcher and machiner logic for handling networks and VMs respecitvly
