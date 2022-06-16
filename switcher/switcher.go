@@ -153,6 +153,8 @@ func RealMain(serverConfiguration *Configuration) {
 		status.New(codes.Internal, fmt.Sprintf("CreateVirtualSwitch: client error (%v)", err))
 		return
 	}
+	// TODO confirm if timeout needs to be checked here as well
+	// go utils.CheckHealthEndpoint(nsxtClient, serverConfiguration.HealthCheckInterval)
 
 	listeningAddress, addressError := net.Listen("tcp", serverConfiguration.ServerAddress)
 	if addressError != nil {

@@ -14,14 +14,15 @@ import (
 )
 
 type Configuration struct {
-	User               string `yaml:",omitempty"`
-	Password           string `yaml:",omitempty"`
-	Hostname           string `yaml:",omitempty"`
-	Insecure           bool   `yaml:",omitempty"`
-	TemplateFolderPath string `yaml:"template_folder_path,omitempty"`
-	ResourcePoolPath   string `yaml:"resource_pool_path,omitempty"`
-	ExerciseRootPath   string `yaml:"exercise_root_path,omitempty"`
-	ServerAddress      string `yaml:"server_address,omitempty"`
+	User                string `yaml:",omitempty"`
+	Password            string `yaml:",omitempty"`
+	Hostname            string `yaml:",omitempty"`
+	Insecure            bool   `yaml:",omitempty"`
+	TemplateFolderPath  string `yaml:"template_folder_path,omitempty"`
+	ResourcePoolPath    string `yaml:"resource_pool_path,omitempty"`
+	ExerciseRootPath    string `yaml:"exercise_root_path,omitempty"`
+	ServerAddress       string `yaml:"server_address,omitempty"`
+	HealthCheckInterval int    `yaml:"health_check_interval"`
 }
 
 func (configuration *Configuration) Validate() error {

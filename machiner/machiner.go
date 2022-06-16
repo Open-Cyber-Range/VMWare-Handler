@@ -3,13 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
-	"net"
-	"path"
-
 	"github.com/open-cyber-range/vmware-handler/grpc/capability"
 	common "github.com/open-cyber-range/vmware-handler/grpc/common"
 	node "github.com/open-cyber-range/vmware-handler/grpc/node"
+	"github.com/open-cyber-range/vmware-handler/utils"
 	"github.com/vmware/govmomi"
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
@@ -18,6 +15,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"log"
+	"net"
+	"path"
 )
 
 type Deployment struct {
@@ -295,6 +295,8 @@ func RealMain(configuration *Configuration) {
 	if clientError != nil {
 		log.Fatal(clientError)
 	}
+
+	go utils.CheckHealthEndpoint(client, configuration.HealthCheckInterval)
 
 	listeningAddress, addressError := net.Listen("tcp", configuration.ServerAddress)
 	if addressError != nil {
