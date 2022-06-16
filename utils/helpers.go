@@ -31,6 +31,5 @@ func CheckHealthEndpoint(client *govmomi.Client, healthCheckInterval int) {
 		if health.Status != "GREEN" {
 			log.Fatal("API health status is bad")
 		}
-		log.Printf("Health %v", health.Status)
 	}
 }
