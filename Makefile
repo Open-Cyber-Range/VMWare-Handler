@@ -33,7 +33,7 @@ compile-protobuf:
 	--go-grpc_opt=module=github.com/open-cyber-range/vmware-handler/grpc \
 	--proto_path=grpc/proto src/node.proto src/common.proto src/capability.proto
 
-build: compile-protobuf build-machiner build-switcher
+build: compile-protobuf build-machiner build-switcher build-templater
 
 build-machiner: compile-protobuf
 	go build -o bin/ranger-vmware-machiner ./machiner
@@ -41,7 +41,10 @@ build-machiner: compile-protobuf
 build-switcher: compile-protobuf
 	go build -o bin/ranger-vmware-switcher ./switcher
 
-test: build test-machiner test-switcher
+build-templater: compile-protobuf
+	go build -o bin/ranger-vmware-templater ./templater
+
+test: build test-machiner test-switcher test-templater
 
 test-machiner: build-machiner
 	go test -v ./machiner
@@ -49,11 +52,17 @@ test-machiner: build-machiner
 test-switcher: build-switcher
 	go test -v ./switcher
 
-run-machiner: build
+test-templater: build-templater
+	go test -v ./templater
+
+run-machiner: build-machiner
 	bin/ranger-vmware-machiner machiner-config.yml
 
-run-switcher: build
+run-switcher: build-switcher
 	bin/ranger-vmware-switcher switcher-config.yml
+
+run-templater: build-templater
+	bin/ranger-vmware-templater
 
 test-and-build: test build
 
