@@ -18,15 +18,14 @@ import (
 )
 
 type Configuration struct {
-	User                string `yaml:",omitempty"`
-	Password            string `yaml:",omitempty"`
-	Hostname            string `yaml:",omitempty"`
-	Insecure            bool   `yaml:",omitempty"`
-	TemplateFolderPath  string `yaml:"template_folder_path,omitempty"`
-	ResourcePoolPath    string `yaml:"resource_pool_path,omitempty"`
-	ExerciseRootPath    string `yaml:"exercise_root_path,omitempty"`
-	ServerAddress       string `yaml:"server_address,omitempty"`
-	HealthCheckInterval int    `yaml:"health_check_interval,omitempty"`
+	User               string `yaml:",omitempty"`
+	Password           string `yaml:",omitempty"`
+	Hostname           string `yaml:",omitempty"`
+	Insecure           bool   `yaml:",omitempty"`
+	TemplateFolderPath string `yaml:"template_folder_path,omitempty"`
+	ResourcePoolPath   string `yaml:"resource_pool_path,omitempty"`
+	ExerciseRootPath   string `yaml:"exercise_root_path,omitempty"`
+	ServerAddress      string `yaml:"server_address,omitempty"`
 }
 
 func (configuration *Configuration) Validate() error {
@@ -48,9 +47,6 @@ func (configuration *Configuration) Validate() error {
 	if configuration.ServerAddress == "" {
 		return status.Error(codes.InvalidArgument, "Vsphere server address not provided")
 	}
-	if configuration.HealthCheckInterval == 0 {
-		return status.Error(codes.InvalidArgument, "Vsphere health check interval not provided")
-	}
 	return nil
 }
 
@@ -68,7 +64,7 @@ func (configuration *Configuration) createClient(ctx context.Context) (*govmomi.
 	hostURL.User = url.UserPassword(configuration.User, configuration.Password)
 	soapClient := soap.NewClient(hostURL, configuration.Insecure)
 	vimClient, _ := vim25.NewClient(ctx, soapClient)
-	vimClient.RoundTripper = keepalive.NewHandlerSOAP(vimClient.RoundTripper, time.Duration(configuration.HealthCheckInterval)*time.Second, nil)
+	vimClient.RoundTripper = keepalive.NewHandlerSOAP(vimClient.RoundTripper, time.Duration(10)*time.Minute, nil)
 	sessionManager := session.NewManager(vimClient)
 	client := &govmomi.Client{
 		Client:         vimClient,
