@@ -6,7 +6,6 @@ import (
 	"github.com/open-cyber-range/vmware-handler/grpc/capability"
 	common "github.com/open-cyber-range/vmware-handler/grpc/common"
 	node "github.com/open-cyber-range/vmware-handler/grpc/node"
-	"github.com/open-cyber-range/vmware-handler/utils"
 	"github.com/vmware/govmomi"
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
@@ -295,8 +294,6 @@ func RealMain(configuration *Configuration) {
 	if clientError != nil {
 		log.Fatal(clientError)
 	}
-
-	go utils.CheckHealthEndpoint(client, configuration.HealthCheckInterval)
 
 	listeningAddress, addressError := net.Listen("tcp", configuration.ServerAddress)
 	if addressError != nil {
