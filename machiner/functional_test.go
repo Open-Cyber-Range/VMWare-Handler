@@ -21,14 +21,15 @@ import (
 )
 
 var testConfiguration = Configuration{
-	User:               os.Getenv("TEST_VMWARE_USER"),
-	Password:           os.Getenv("TEST_VMWARE_PASSWORD"),
-	Hostname:           os.Getenv("TEST_VMWARE_HOSTNAME"),
-	Insecure:           true,
-	TemplateFolderPath: os.Getenv("TEST_VMWARE_TEMPLATE_FOLDER_PATH"),
-	ResourcePoolPath:   os.Getenv("TEST_VMWARE_RESOURCE_POOL_PATH"),
-	ExerciseRootPath:   os.Getenv("TEST_VMWARE_EXERCISE_ROOT_PATH"),
-	ServerAddress:      "127.0.0.1",
+	User:                os.Getenv("TEST_VMWARE_USER"),
+	Password:            os.Getenv("TEST_VMWARE_PASSWORD"),
+	Hostname:            os.Getenv("TEST_VMWARE_HOSTNAME"),
+	Insecure:            true,
+	TemplateFolderPath:  os.Getenv("TEST_VMWARE_TEMPLATE_FOLDER_PATH"),
+	ResourcePoolPath:    os.Getenv("TEST_VMWARE_RESOURCE_POOL_PATH"),
+	ExerciseRootPath:    os.Getenv("TEST_VMWARE_EXERCISE_ROOT_PATH"),
+	ServerAddress:       "127.0.0.1",
+	HealthCheckInterval: 5,
 }
 
 var virtualMachineHardwareConfiguration = &node.Configuration{
