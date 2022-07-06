@@ -24,9 +24,11 @@ install:
 compile-protobuf:
 	protoc --go_out=grpc --go-grpc_out=grpc \
 	--go_opt=Msrc/common.proto=github.com/open-cyber-range/vmware-handler/grpc/common \
+	--go_opt=Msrc/template.proto=github.com/open-cyber-range/vmware-handler/grpc/template \
 	--go_opt=Msrc/node.proto=github.com/open-cyber-range/vmware-handler/grpc/node \
 	--go_opt=Msrc/capability.proto=github.com/open-cyber-range/vmware-handler/grpc/capability \
 	--go-grpc_opt=Msrc/common.proto=github.com/open-cyber-range/vmware-handler/grpc/common \
+	--go-grpc_opt=Msrc/template.proto=github.com/open-cyber-range/vmware-handler/grpc/template \
 	--go-grpc_opt=Msrc/node.proto=github.com/open-cyber-range/vmware-handler/grpc/node  \
 	--go-grpc_opt=Msrc/capability.proto=github.com/open-cyber-range/vmware-handler/grpc/capability  \
 	--go_opt=module=github.com/open-cyber-range/vmware-handler/grpc \
