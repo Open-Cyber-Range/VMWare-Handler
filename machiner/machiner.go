@@ -3,10 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
-	"net"
-	"path"
-
 	"github.com/open-cyber-range/vmware-handler/grpc/capability"
 	common "github.com/open-cyber-range/vmware-handler/grpc/common"
 	node "github.com/open-cyber-range/vmware-handler/grpc/node"
@@ -18,6 +14,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"log"
+	"net"
+	"path"
 )
 
 type Deployment struct {

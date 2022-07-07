@@ -3,14 +3,18 @@ package main
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
-	"net/url"
-	"os"
-
 	"github.com/vmware/govmomi"
+	"github.com/vmware/govmomi/session"
+	"github.com/vmware/govmomi/session/keepalive"
+	"github.com/vmware/govmomi/vim25"
+	"github.com/vmware/govmomi/vim25/soap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"gopkg.in/yaml.v2"
+	"io/ioutil"
+	"net/url"
+	"os"
+	"time"
 )
 
 type Configuration struct {
@@ -58,8 +62,16 @@ func (configuration *Configuration) createClient(ctx context.Context) (*govmomi.
 	}
 
 	hostURL.User = url.UserPassword(configuration.User, configuration.Password)
-	client, clientError := govmomi.NewClient(ctx, hostURL, configuration.Insecure)
+	soapClient := soap.NewClient(hostURL, configuration.Insecure)
+	vimClient, _ := vim25.NewClient(ctx, soapClient)
+	vimClient.RoundTripper = keepalive.NewHandlerSOAP(vimClient.RoundTripper, time.Duration(10)*time.Minute, nil)
+	sessionManager := session.NewManager(vimClient)
+	client := &govmomi.Client{
+		Client:         vimClient,
+		SessionManager: sessionManager,
+	}
 
+	clientError := client.Login(ctx, hostURL.User)
 	if clientError != nil {
 		return nil, fmt.Errorf("failed to setup the client: %s", clientError)
 	}
