@@ -10,6 +10,7 @@ import (
 	"github.com/open-cyber-range/vmware-handler/grpc/capability"
 	common "github.com/open-cyber-range/vmware-handler/grpc/common"
 	node "github.com/open-cyber-range/vmware-handler/grpc/node"
+	"github.com/open-cyber-range/vmware-handler/library"
 	"github.com/vmware/govmomi"
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
@@ -207,10 +208,6 @@ type nodeServer struct {
 	Configuration *Configuration
 }
 
-type capabilityServer struct {
-	capability.UnimplementedCapabilityServer
-}
-
 func (server *nodeServer) Create(ctx context.Context, nodeDeployment *node.NodeDeployment) (*node.NodeIdentifier, error) {
 
 	deployment := Deployment{
@@ -280,15 +277,6 @@ func (server *nodeServer) Delete(ctx context.Context, nodeIdentifier *node.NodeI
 	return new(emptypb.Empty), nil
 }
 
-func (server *capabilityServer) GetCapabilities(context.Context, *emptypb.Empty) (*capability.Capabilities, error) {
-	status.New(codes.OK, "Machiner reporting for duty")
-	return &capability.Capabilities{
-		Values: []capability.Capabilities_DeployerTypes{
-			*capability.Capabilities_VirtualMachine.Enum(),
-		},
-	}, nil
-}
-
 func RealMain(configuration *Configuration) {
 	ctx := context.Background()
 	client, clientError := configuration.createClient(ctx)
@@ -307,7 +295,11 @@ func RealMain(configuration *Configuration) {
 		Configuration: configuration,
 	})
 
-	capability.RegisterCapabilityServer(server, &capabilityServer{})
+	capabilityServer := library.NewCapabilityServer([]capability.Capabilities_DeployerTypes{
+		*capability.Capabilities_VirtualMachine.Enum(),
+	})
+
+	capability.RegisterCapabilityServer(server, &capabilityServer)
 
 	log.Printf("server listening at %v", listeningAddress.Addr())
 	if bindError := server.Serve(listeningAddress); bindError != nil {
