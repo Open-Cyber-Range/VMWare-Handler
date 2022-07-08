@@ -1,0 +1,19 @@
+make --dry-run --always-make --keep-going --print-directory
+make: Entering directory '/workspaces/vmware-node-deployer'
+protoc --go_out=grpc --go-grpc_out=grpc \
+--go_opt=Msrc/common.proto=github.com/open-cyber-range/vmware-handler/grpc/common \
+--go_opt=Msrc/template.proto=github.com/open-cyber-range/vmware-handler/grpc/template \
+--go_opt=Msrc/node.proto=github.com/open-cyber-range/vmware-handler/grpc/node \
+--go_opt=Msrc/capability.proto=github.com/open-cyber-range/vmware-handler/grpc/capability \
+--go-grpc_opt=Msrc/common.proto=github.com/open-cyber-range/vmware-handler/grpc/common \
+--go-grpc_opt=Msrc/template.proto=github.com/open-cyber-range/vmware-handler/grpc/template \
+--go-grpc_opt=Msrc/node.proto=github.com/open-cyber-range/vmware-handler/grpc/node  \
+--go-grpc_opt=Msrc/capability.proto=github.com/open-cyber-range/vmware-handler/grpc/capability  \
+--go_opt=module=github.com/open-cyber-range/vmware-handler/grpc \
+--go-grpc_opt=module=github.com/open-cyber-range/vmware-handler/grpc \
+--proto_path=grpc/proto src/node.proto src/common.proto src/capability.proto
+go build -o bin/ranger-vmware-machiner ./machiner
+go build -o bin/ranger-vmware-switcher ./switcher
+go build -o bin/ranger-vmware-templater ./templater
+make: Leaving directory '/workspaces/vmware-node-deployer'
+ 

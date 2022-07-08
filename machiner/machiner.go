@@ -12,7 +12,6 @@ import (
 	node "github.com/open-cyber-range/vmware-handler/grpc/node"
 	"github.com/open-cyber-range/vmware-handler/library"
 	"github.com/vmware/govmomi"
-	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/vim25/types"
 	"google.golang.org/grpc"
@@ -22,54 +21,17 @@ import (
 )
 
 type Deployment struct {
-	Client        *govmomi.Client
+	Client        *library.VMWareClient
 	Node          *node.Node
 	Configuration *Configuration
 	Parameters    *node.DeploymentParameters
 }
 
-func createFinderAndDatacenter(client *govmomi.Client) (*find.Finder, *object.Datacenter, error) {
-	finder := find.NewFinder(client.Client, true)
-	ctx := context.Background()
-	datacenter, datacenterError := finder.DefaultDatacenter(ctx)
-	if datacenterError != nil {
-		return nil, nil, datacenterError
-	}
-	finder.SetDatacenter(datacenter)
-	return finder, datacenter, nil
-}
-
-func findTemplates(client *govmomi.Client, templatePath string) ([]*object.VirtualMachine, error) {
-	finder, _, datacenterError := createFinderAndDatacenter(client)
-	if datacenterError != nil {
-		return nil, datacenterError
-	}
-	ctx := context.Background()
-	return finder.VirtualMachineList(ctx, templatePath)
-}
-
-func (deployment *Deployment) getTemplate() (*object.VirtualMachine, error) {
-	templates, templatesError := findTemplates(deployment.Client, deployment.Configuration.TemplateFolderPath)
-	if templatesError != nil {
-		return nil, templatesError
-	}
-
-	var template *object.VirtualMachine
-	for _, templateCandidate := range templates {
-		if templateCandidate.Name() == deployment.Parameters.TemplateName {
-			template = templateCandidate
-		}
-	}
-
-	if template == nil {
-		return nil, fmt.Errorf("template not found")
-	}
-
-	return template, nil
-}
-
 func (deployment *Deployment) createOrFindExerciseFolder(call_count int) (_ *object.Folder, err error) {
-	finder := find.NewFinder(deployment.Client.Client, true)
+	finder, _, err := deployment.Client.CreateFinderAndDatacenter()
+	if err != nil {
+		return
+	}
 	ctx := context.Background()
 	folderPath := path.Join(deployment.Configuration.ExerciseRootPath, deployment.Parameters.ExerciseName)
 
@@ -96,7 +58,7 @@ func (deployment *Deployment) createOrFindExerciseFolder(call_count int) (_ *obj
 
 func (deployment *Deployment) getResoucePool() (*object.ResourcePool, error) {
 	ctx := context.Background()
-	finder, _, datacenterError := createFinderAndDatacenter(deployment.Client)
+	finder, _, datacenterError := deployment.Client.CreateFinderAndDatacenter()
 	if datacenterError != nil {
 		return nil, datacenterError
 	}
@@ -109,7 +71,7 @@ func (deployment *Deployment) getResoucePool() (*object.ResourcePool, error) {
 }
 
 func (deployment *Deployment) create() (err error) {
-	template, err := deployment.getTemplate()
+	template, err := deployment.Client.GetTemplate(deployment.Parameters.TemplateName)
 	if err != nil {
 		return
 	}
@@ -169,16 +131,16 @@ func waitForTaskSuccess(task *object.Task) error {
 }
 
 func (deployment *Deployment) getVirtualMachineByUUID(ctx context.Context, uuid string) (virtualMachine *object.VirtualMachine, virtualMachineRefError error) {
-	_, datacenter, datacenterError := createFinderAndDatacenter(deployment.Client)
+	_, datacenter, datacenterError := deployment.Client.CreateFinderAndDatacenter()
 	if datacenterError != nil {
 		return nil, datacenterError
 	}
-	searchIndex := object.NewSearchIndex(deployment.Client.Client)
+	searchIndex := object.NewSearchIndex(deployment.Client.Client.Client)
 	virtualMachineRef, virtualMachineRefError := searchIndex.FindByUuid(ctx, datacenter, uuid, true, nil)
 	if virtualMachineRefError != nil {
 		return
 	}
-	virtualMachine = object.NewVirtualMachine(deployment.Client.Client, virtualMachineRef.Reference())
+	virtualMachine = object.NewVirtualMachine(deployment.Client.Client.Client, virtualMachineRef.Reference())
 	return
 }
 
@@ -209,9 +171,9 @@ type nodeServer struct {
 }
 
 func (server *nodeServer) Create(ctx context.Context, nodeDeployment *node.NodeDeployment) (*node.NodeIdentifier, error) {
-
+	vmwareClient := library.NewVMWareClient(server.Client, server.Configuration.TemplateFolderPath)
 	deployment := Deployment{
-		Client:        server.Client,
+		Client:        &vmwareClient,
 		Configuration: server.Configuration,
 		Node:          nodeDeployment.Node,
 		Parameters:    nodeDeployment.Parameters,
@@ -222,7 +184,7 @@ func (server *nodeServer) Create(ctx context.Context, nodeDeployment *node.NodeD
 		status.New(codes.Internal, fmt.Sprintf("Create: deployment error (%v)", deploymentError))
 		return nil, deploymentError
 	}
-	finder, _, datacenterError := createFinderAndDatacenter(deployment.Client)
+	finder, _, datacenterError := vmwareClient.CreateFinderAndDatacenter()
 	if datacenterError != nil {
 		status.New(codes.Internal, fmt.Sprintf("Create: datacenter error (%v)", datacenterError))
 		return nil, datacenterError
@@ -246,10 +208,10 @@ func (server *nodeServer) Create(ctx context.Context, nodeDeployment *node.NodeD
 }
 
 func (server *nodeServer) Delete(ctx context.Context, nodeIdentifier *node.NodeIdentifier) (*emptypb.Empty, error) {
-
+	vmwareClient := library.NewVMWareClient(server.Client, server.Configuration.TemplateFolderPath)
 	uuid := nodeIdentifier.Identifier.GetValue()
 	deployment := Deployment{
-		Client:        server.Client,
+		Client:        &vmwareClient,
 		Configuration: server.Configuration,
 	}
 
@@ -279,7 +241,7 @@ func (server *nodeServer) Delete(ctx context.Context, nodeIdentifier *node.NodeI
 
 func RealMain(configuration *Configuration) {
 	ctx := context.Background()
-	client, clientError := configuration.createClient(ctx)
+	client, clientError := configuration.VMWareConfiguration.CreateClient(ctx)
 	if clientError != nil {
 		log.Fatal(clientError)
 	}
@@ -316,5 +278,5 @@ func main() {
 		log.Fatal(configurationError)
 	}
 
-	RealMain(configuration)
+	RealMain(&configuration)
 }

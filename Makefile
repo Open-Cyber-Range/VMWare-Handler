@@ -46,9 +46,10 @@ build-switcher: compile-protobuf
 build-templater: compile-protobuf
 	go build -o bin/ranger-vmware-templater ./templater
 
+
 test: build test-machiner test-switcher test-templater
 
-test-machiner: build-machiner
+test-machiner:
 	go test -v ./machiner
 
 test-switcher: build-switcher
@@ -56,6 +57,9 @@ test-switcher: build-switcher
 
 test-templater: build-templater
 	go test -v ./templater
+
+test-library:
+	go test -v ./library
 
 run-machiner: build-machiner
 	bin/ranger-vmware-machiner machiner-config.yml

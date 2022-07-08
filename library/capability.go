@@ -14,8 +14,8 @@ type CapabilityServer struct {
 	capability.UnimplementedCapabilityServer
 }
 
-func NewCapabilityServer(capabilities []capability.Capabilities_DeployerTypes) *CapabilityServer {
-	return &CapabilityServer{
+func NewCapabilityServer(capabilities []capability.Capabilities_DeployerTypes) CapabilityServer {
+	return CapabilityServer{
 		wrappedCapabilities: capability.Capabilities{
 			Values: capabilities,
 		},
@@ -23,6 +23,6 @@ func NewCapabilityServer(capabilities []capability.Capabilities_DeployerTypes) *
 }
 
 func (server *CapabilityServer) GetCapabilities(context.Context, *emptypb.Empty) (*capability.Capabilities, error) {
-	status.New(codes.OK, "Machiner reporting for duty")
+	status.New(codes.OK, "OK")
 	return &server.wrappedCapabilities, nil
 }
