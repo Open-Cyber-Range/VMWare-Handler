@@ -11,3 +11,6 @@ debian/ranger-vmware-handlers
 debian/files
 debian/ranger-vmware-handlers.substvars
 *.deb
+
+#IDEs
+/.vscode/*.log
