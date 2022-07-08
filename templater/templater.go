@@ -12,30 +12,6 @@ import (
 	"google.golang.org/grpc"
 )
 
-// func createNsxtClient(serverConfiguration *Configuration) (nsxtClient *nsxt.APIClient, err error) {
-// 	err = serverConfiguration.Validate()
-// 	if err != nil {
-// 		return
-// 	}
-// 	nsxtConfiguration := CreateNsxtConfiguration(serverConfiguration)
-// 	nsxtClient, err = nsxt.NewAPIClient(nsxtConfiguration)
-// 	return
-// }
-
-// func findTransportZoneIdByName(ctx context.Context, nsxtClient *nsxt.APIClient, serverConfiguration Configuration) (string, error) {
-// 	transportZones, _, err := nsxtClient.NetworkTransportApi.ListTransportZones(ctx, nil)
-// 	if err != nil {
-// 		status.New(codes.Internal, fmt.Sprintf("CreateVirtualSwitch: ListTransportZones error (%v)", err))
-// 		return "", err
-// 	}
-// 	for _, transportNode := range transportZones.Results {
-// 		if strings.EqualFold(transportNode.DisplayName, serverConfiguration.TransportZoneName) {
-// 			return transportNode.Id, nil
-// 		}
-// 	}
-// 	return "", status.Error(codes.InvalidArgument, "Transport zone not found")
-// }
-
 type templaterServer struct {
 	node.UnimplementedNodeServiceServer
 	Client        *govmomi.Client
