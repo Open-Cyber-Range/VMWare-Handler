@@ -1,0 +1,28 @@
+version: '3'
+
+services:
+  go-development:
+    image: nexus.ex.c-lab.ee:8003/go-development:latest
+    command: /bin/sh -c "while sleep 1000; do :; done"
+    volumes:
+      - ..:/workspace:cached
+      - ./deputy-cli-configuration.toml:/home/vscode/.deputy/configuration.toml
+      - /home/kaarel/deputy-packages/small-ova-package:/small-ova-package
+    user: vscode
+    ports:
+      - 8080:8080
+
+  deputy-package-server:
+    image: nexus.ex.c-lab.ee:8003/deputy-package-server:latest
+    volumes:
+      - ./deputy-packages:/var/opt/deputy/deputy-package-server/package
+      - ./deputy-repository:/var/opt/deputy/deputy-package-server/repository
+    environment:
+      - RUST_LOG=debug
+
+  index-repository:
+    image: nexus.ex.c-lab.ee:8003/deputy-repository-server
+    volumes:
+      - ./deputy-repository/.git:/srv/git/index.git
+    ports:
+      - 8081:80
