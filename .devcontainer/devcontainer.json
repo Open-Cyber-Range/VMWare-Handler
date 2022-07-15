@@ -1,5 +1,5 @@
 {
-  "name": "Deputy devcontainer",
+  "name": "VMWare handler devcontainer",
   "dockerComposeFile": "docker-compose.yml",
   "service": "go-development",
   "settings": {
