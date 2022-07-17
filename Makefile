@@ -33,7 +33,7 @@ compile-protobuf:
 	--go-grpc_opt=Msrc/capability.proto=github.com/open-cyber-range/vmware-handler/grpc/capability  \
 	--go_opt=module=github.com/open-cyber-range/vmware-handler/grpc \
 	--go-grpc_opt=module=github.com/open-cyber-range/vmware-handler/grpc \
-	--proto_path=grpc/proto src/node.proto src/common.proto src/capability.proto
+	--proto_path=grpc/proto src/node.proto src/common.proto src/capability.proto src/template.proto
 
 build: compile-protobuf build-machiner build-switcher build-templater
 

@@ -48,20 +48,6 @@ func startServer(timeout time.Duration) (configuration Configuration) {
 	return configuration
 }
 
-func createCapabilityClient(t *testing.T, serverPath string) capability.CapabilityClient {
-	connection, connectionError := grpc.Dial(serverPath, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if connectionError != nil {
-		t.Fatalf("did not connect: %v", connectionError)
-	}
-	t.Cleanup(func() {
-		connectionError := connection.Close()
-		if connectionError != nil {
-			t.Fatalf("Failed to close connection: %v", connectionError)
-		}
-	})
-	return capability.NewCapabilityClient(connection)
-}
-
 func exerciseCleanup(client *library.VMWareClient, folderPath string) (err error) {
 	finder, _, _ := client.CreateFinderAndDatacenter()
 	ctx := context.Background()
@@ -238,7 +224,7 @@ func TestSwitcherCapability(t *testing.T) {
 	t.Parallel()
 	serverConfiguration := startServer(time.Second * 3)
 	ctx := context.Background()
-	capabilityClient := createCapabilityClient(t, serverConfiguration.ServerAddress)
+	capabilityClient := library.CreateCapabilityClient(t, serverConfiguration.ServerAddress)
 	handlerCapabilities, err := capabilityClient.GetCapabilities(ctx, new(emptypb.Empty))
 	if err != nil {
 		t.Fatalf("Failed to get deployer capability: %v", err)
