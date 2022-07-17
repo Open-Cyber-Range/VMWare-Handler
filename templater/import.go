@@ -2,12 +2,14 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"io/ioutil"
 	"log"
 
 	"github.com/vmware/govmomi/govc/importx"
 	"github.com/vmware/govmomi/ovf"
 	"github.com/vmware/govmomi/vim25"
+	"github.com/vmware/govmomi/vim25/types"
 )
 
 func (templateDeployment *TemplateDeployment) readOvf(filePath string, client *vim25.Client) (ovfBytes []byte, err error) {
@@ -32,7 +34,7 @@ func (templateDeployment *TemplateDeployment) readEnvelope(ovfBytes []byte) (env
 	return
 }
 
-func (templateDeployment *TemplateDeployment) ImportOVA(filePath string, client *vim25.Client) (err error) {
+func (templateDeployment *TemplateDeployment) ImportOVA(filePath string, client *vim25.Client, cheksum string) (err error) {
 	ovfBytes, err := templateDeployment.readOvf(filePath, client)
 	if err != nil {
 		return
@@ -42,6 +44,26 @@ func (templateDeployment *TemplateDeployment) ImportOVA(filePath string, client 
 		return
 	}
 	log.Printf("Envelope %+v", envelope)
+
+	cisp := types.OvfCreateImportSpecParams{
+		EntityName: cheksum,
+	}
+	uploadManager := ovf.NewManager(templateDeployment.Client.Client.Client)
+	ctx := context.Background()
+
+	resourcePool, err := templateDeployment.Client.GetResoucePool(templateDeployment.Configuration.ResourcePoolPath)
+	if err != nil {
+		return
+	}
+	datastore, err := templateDeployment.Client.GetDatastore("")
+	if err != nil {
+		return
+	}
+
+	importSpec, err := uploadManager.CreateImportSpec(ctx, string(ovfBytes), resourcePool, datastore, cisp)
+	if err != nil {
+		return
+	}
 
 	return
 }

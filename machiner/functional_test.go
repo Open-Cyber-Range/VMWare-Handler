@@ -27,8 +27,8 @@ var testConfiguration = Configuration{
 		Insecure:           true,
 		TemplateFolderPath: os.Getenv("TEST_VMWARE_TEMPLATE_FOLDER_PATH"),
 		ServerAddress:      "127.0.0.1",
+		ResourcePoolPath:   os.Getenv("TEST_VMWARE_RESOURCE_POOL_PATH"),
 	},
-	ResourcePoolPath: os.Getenv("TEST_VMWARE_RESOURCE_POOL_PATH"),
 	ExerciseRootPath: os.Getenv("TEST_VMWARE_EXERCISE_ROOT_PATH"),
 }
 

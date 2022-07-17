@@ -27,8 +27,9 @@ type templaterServer struct {
 }
 
 type TemplateDeployment struct {
-	Client *library.VMWareClient
-	source *common.Source
+	Client        *library.VMWareClient
+	source        *common.Source
+	Configuration library.VMWareConfiguration
 }
 
 func createRandomPackagePath() (string, error) {
@@ -89,14 +90,14 @@ func getVirtualMachineInfo(packegeDataMap *map[string]interface{}) (virtualMachi
 	return
 }
 
-func (templateDeployment *TemplateDeployment) handleTemplateBasedOnType(packageData map[string]interface{}, packagePath string) (err error) {
+func (templateDeployment *TemplateDeployment) handleTemplateBasedOnType(packageData map[string]interface{}, packagePath, cheksum string) (err error) {
 	virtualMachine, err := getVirtualMachineInfo(&packageData)
 	if err != nil {
 		return
 	}
 	switch virtualMachine.Type {
 	case "OVA":
-		templateDeployment.ImportOVA(path.Join(packagePath, virtualMachine.FilePath), templateDeployment.Client.Client.Client)
+		templateDeployment.ImportOVA(path.Join(packagePath, virtualMachine.FilePath), templateDeployment.Client.Client.Client, cheksum)
 	}
 	return nil
 }
@@ -111,7 +112,7 @@ func (templateDeployment *TemplateDeployment) createTemplate(packagePath string)
 	if err != nil {
 		return
 	}
-	templateDeployment.handleTemplateBasedOnType(packageData, packagePath)
+	templateDeployment.handleTemplateBasedOnType(packageData, packagePath, checksum)
 
 	return nil
 }
@@ -121,8 +122,9 @@ func (server *templaterServer) Create(ctx context.Context, source *common.Source
 
 	vmwareClient := library.NewVMWareClient(server.Client, server.Configuration.TemplateFolderPath)
 	templateDeployment := TemplateDeployment{
-		Client: &vmwareClient,
-		source: source,
+		Client:        &vmwareClient,
+		source:        source,
+		Configuration: server.Configuration,
 	}
 	packagePath, downloadError := templateDeployment.downloadPackage()
 	if downloadError != nil {

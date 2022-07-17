@@ -20,6 +20,7 @@ type VMWareConfiguration struct {
 	Insecure           bool   `yaml:",omitempty"`
 	TemplateFolderPath string `yaml:"template_folder_path,omitempty"`
 	ServerAddress      string `yaml:"server_address,omitempty"`
+	ResourcePoolPath   string `yaml:"resource_pool_path,omitempty"`
 }
 
 func (configuration *VMWareConfiguration) ValidateVMWare() error {

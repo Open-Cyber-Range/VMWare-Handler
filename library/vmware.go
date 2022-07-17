@@ -60,3 +60,27 @@ func (client *VMWareClient) GetTemplate(templateName string) (*object.VirtualMac
 
 	return template, nil
 }
+
+func (client *VMWareClient) GetResoucePool(resourcePoolPath string) (*object.ResourcePool, error) {
+	ctx := context.Background()
+	finder, _, datacenterError := client.CreateFinderAndDatacenter()
+	if datacenterError != nil {
+		return nil, datacenterError
+	}
+	resourcePool, poolError := finder.ResourcePool(ctx, resourcePoolPath)
+	if poolError != nil {
+		return nil, poolError
+	}
+
+	return resourcePool, nil
+}
+
+func (client *VMWareClient) GetDatastore(datastorePath string) (datastore *object.Datastore, err error) {
+	ctx := context.Background()
+	finder, _, err := client.CreateFinderAndDatacenter()
+	if err != nil {
+		return
+	}
+	datastore, err = finder.Datastore(ctx, datastorePath)
+	return
+}

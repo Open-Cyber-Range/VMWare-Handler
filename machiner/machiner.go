@@ -56,20 +56,6 @@ func (deployment *Deployment) createOrFindExerciseFolder(call_count int) (_ *obj
 	return exerciseFolder, nil
 }
 
-func (deployment *Deployment) getResoucePool() (*object.ResourcePool, error) {
-	ctx := context.Background()
-	finder, _, datacenterError := deployment.Client.CreateFinderAndDatacenter()
-	if datacenterError != nil {
-		return nil, datacenterError
-	}
-	resourcePool, poolError := finder.ResourcePool(ctx, deployment.Configuration.ResourcePoolPath)
-	if poolError != nil {
-		return nil, poolError
-	}
-
-	return resourcePool, nil
-}
-
 func (deployment *Deployment) create() (err error) {
 	template, err := deployment.Client.GetTemplate(deployment.Parameters.TemplateName)
 	if err != nil {
@@ -79,7 +65,7 @@ func (deployment *Deployment) create() (err error) {
 	if err != nil {
 		return
 	}
-	resourcePool, err := deployment.getResoucePool()
+	resourcePool, err := deployment.Client.GetResoucePool(deployment.Configuration.ResourcePoolPath)
 	if err != nil {
 		return
 	}

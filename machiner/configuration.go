@@ -13,7 +13,6 @@ import (
 
 type Configuration struct {
 	library.VMWareConfiguration
-	ResourcePoolPath string `yaml:"resource_pool_path,omitempty"`
 	ExerciseRootPath string `yaml:"exercise_root_path,omitempty"`
 }
 
