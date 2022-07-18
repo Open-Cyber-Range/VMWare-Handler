@@ -3,6 +3,7 @@ package library
 import (
 	"context"
 	"fmt"
+	"path"
 
 	"github.com/vmware/govmomi"
 	"github.com/vmware/govmomi/find"
@@ -41,6 +42,17 @@ func (client *VMWareClient) findTemplates() ([]*object.VirtualMachine, error) {
 	return finder.VirtualMachineList(ctx, client.templatePath)
 }
 
+func (client *VMWareClient) GetTemplateFolder() (*object.Folder, error) {
+	finder, _, datacenterError := client.CreateFinderAndDatacenter()
+	if datacenterError != nil {
+		return nil, datacenterError
+	}
+	ctx := context.Background()
+	templateDirectoryPath := path.Dir(client.templatePath)
+
+	return finder.Folder(ctx, templateDirectoryPath)
+}
+
 func (client *VMWareClient) GetTemplate(templateName string) (*object.VirtualMachine, error) {
 	templates, templatesError := client.findTemplates()
 	if templatesError != nil {
@@ -61,7 +73,7 @@ func (client *VMWareClient) GetTemplate(templateName string) (*object.VirtualMac
 	return template, nil
 }
 
-func (client *VMWareClient) GetResoucePool(resourcePoolPath string) (*object.ResourcePool, error) {
+func (client *VMWareClient) GetResourcePool(resourcePoolPath string) (*object.ResourcePool, error) {
 	ctx := context.Background()
 	finder, _, datacenterError := client.CreateFinderAndDatacenter()
 	if datacenterError != nil {

@@ -97,9 +97,9 @@ func (templateDeployment *TemplateDeployment) handleTemplateBasedOnType(packageD
 	}
 	switch virtualMachine.Type {
 	case "OVA":
-		templateDeployment.ImportOVA(path.Join(packagePath, virtualMachine.FilePath), templateDeployment.Client.Client.Client, cheksum)
+		err = templateDeployment.ImportOVA(path.Join(packagePath, virtualMachine.FilePath), templateDeployment.Client.Client.Client, cheksum)
 	}
-	return nil
+	return
 }
 
 func (templateDeployment *TemplateDeployment) createTemplate(packagePath string) (err error) {
@@ -112,9 +112,9 @@ func (templateDeployment *TemplateDeployment) createTemplate(packagePath string)
 	if err != nil {
 		return
 	}
-	templateDeployment.handleTemplateBasedOnType(packageData, packagePath, checksum)
+	err = templateDeployment.handleTemplateBasedOnType(packageData, packagePath, checksum)
 
-	return nil
+	return
 }
 
 func (server *templaterServer) Create(ctx context.Context, source *common.Source) (*common.Identifier, error) {

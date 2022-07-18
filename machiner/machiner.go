@@ -65,7 +65,7 @@ func (deployment *Deployment) create() (err error) {
 	if err != nil {
 		return
 	}
-	resourcePool, err := deployment.Client.GetResoucePool(deployment.Configuration.ResourcePoolPath)
+	resourcePool, err := deployment.Client.GetResourcePool(deployment.Configuration.VMWareConfiguration.ResourcePoolPath)
 	if err != nil {
 		return
 	}

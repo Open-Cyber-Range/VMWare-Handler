@@ -51,11 +51,11 @@ func (templateDeployment *TemplateDeployment) ImportOVA(filePath string, client 
 	uploadManager := ovf.NewManager(templateDeployment.Client.Client.Client)
 	ctx := context.Background()
 
-	resourcePool, err := templateDeployment.Client.GetResoucePool(templateDeployment.Configuration.ResourcePoolPath)
+	resourcePool, err := templateDeployment.Client.GetResourcePool(templateDeployment.Configuration.ResourcePoolPath)
 	if err != nil {
 		return
 	}
-	datastore, err := templateDeployment.Client.GetDatastore("")
+	datastore, err := templateDeployment.Client.GetDatastore("/Datacenter/datastore/datastore2")
 	if err != nil {
 		return
 	}
@@ -64,6 +64,16 @@ func (templateDeployment *TemplateDeployment) ImportOVA(filePath string, client 
 	if err != nil {
 		return
 	}
+	log.Printf("ImportSpec %+v", importSpec)
+	folder, err := templateDeployment.Client.GetTemplateFolder()
+	if err != nil {
+		return
+	}
+	lease, err := resourcePool.ImportVApp(ctx, importSpec.ImportSpec, folder, nil)
+	if err != nil {
+		return
+	}
+	log.Printf("Lease %+v", lease)
 
 	return
 }

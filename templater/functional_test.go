@@ -22,6 +22,7 @@ var testConfiguration = library.VMWareConfiguration{
 	Hostname:           os.Getenv("TEST_VMWARE_HOSTNAME"),
 	Insecure:           true,
 	TemplateFolderPath: os.Getenv("TEST_VMWARE_TEMPLATE_FOLDER_PATH"),
+	ResourcePoolPath:   os.Getenv("TEST_VMWARE_RESOURCE_POOL_PATH"),
 	ServerAddress:      "127.0.0.1",
 }
 
