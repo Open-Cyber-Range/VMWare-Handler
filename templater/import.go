@@ -7,18 +7,18 @@ import (
 	"log"
 
 	"github.com/vmware/govmomi/govc/importx"
+	"github.com/vmware/govmomi/nfc"
 	"github.com/vmware/govmomi/ovf"
 	"github.com/vmware/govmomi/vim25"
+	"github.com/vmware/govmomi/vim25/soap"
 	"github.com/vmware/govmomi/vim25/types"
 )
 
-func (templateDeployment *TemplateDeployment) readOvf(filePath string, client *vim25.Client) (ovfBytes []byte, err error) {
-	ovaArchive := importx.TapeArchive{
-		Path: filePath,
-		Opener: importx.Opener{
-			Client: client,
-		},
-	}
+type Archive struct {
+	importx.TapeArchive
+}
+
+func (templateDeployment *TemplateDeployment) readOvf(ovaArchive *Archive, filePath string, client *vim25.Client) (ovfBytes []byte, err error) {
 	reader, _, err := ovaArchive.Open("*.ovf")
 	if err != nil {
 		return
@@ -35,7 +35,15 @@ func (templateDeployment *TemplateDeployment) readEnvelope(ovfBytes []byte) (env
 }
 
 func (templateDeployment *TemplateDeployment) ImportOVA(filePath string, client *vim25.Client, cheksum string) (err error) {
-	ovfBytes, err := templateDeployment.readOvf(filePath, client)
+	ovaArchive := Archive{
+		TapeArchive: importx.TapeArchive{
+			Path: filePath,
+			Opener: importx.Opener{
+				Client: client,
+			},
+		},
+	}
+	ovfBytes, err := templateDeployment.readOvf(&ovaArchive, filePath, client)
 	if err != nil {
 		return
 	}
@@ -75,5 +83,36 @@ func (templateDeployment *TemplateDeployment) ImportOVA(filePath string, client 
 	}
 	log.Printf("Lease %+v", lease)
 
+	info, err := lease.Wait(ctx, importSpec.FileItem)
+	if err != nil {
+		return
+	}
+
+	updater := lease.StartUpdater(ctx, info)
+	defer updater.Done()
+
+	for _, i := range info.Items {
+		ovaArchive.Upload(ctx, lease, i)
+		if err != nil {
+			return
+		}
+	}
+
 	return
+}
+
+func (archive *Archive) Upload(ctx context.Context, lease *nfc.Lease, item nfc.FileItem) error {
+	file := item.Path
+
+	f, size, err := archive.Open(file)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	opts := soap.Upload{
+		ContentLength: size,
+	}
+
+	return lease.Upload(ctx, item, f, opts)
 }
