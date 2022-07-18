@@ -16,17 +16,18 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-var testConfiguration = library.VMWareConfiguration{
+var testConfiguration = library.Configuration{
 	User:               os.Getenv("TEST_VMWARE_USER"),
 	Password:           os.Getenv("TEST_VMWARE_PASSWORD"),
 	Hostname:           os.Getenv("TEST_VMWARE_HOSTNAME"),
 	Insecure:           true,
 	TemplateFolderPath: os.Getenv("TEST_VMWARE_TEMPLATE_FOLDER_PATH"),
 	ResourcePoolPath:   os.Getenv("TEST_VMWARE_RESOURCE_POOL_PATH"),
+	DatastorePath:      os.Getenv("TEST_VMWARE_DATASTORE_PATH"),
 	ServerAddress:      "127.0.0.1",
 }
 
-func startServer(timeout time.Duration) (configuration library.VMWareConfiguration, err error) {
+func startServer(timeout time.Duration) (configuration library.Configuration, err error) {
 	configuration = testConfiguration
 	rand.Seed(time.Now().UnixNano())
 	randomPort, err := freeport.GetFreePort()

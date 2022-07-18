@@ -23,13 +23,13 @@ import (
 type templaterServer struct {
 	template.UnimplementedTemplateServiceServer
 	Client        *govmomi.Client
-	Configuration library.VMWareConfiguration
+	Configuration library.Configuration
 }
 
 type TemplateDeployment struct {
 	Client        *library.VMWareClient
 	source        *common.Source
-	Configuration library.VMWareConfiguration
+	Configuration library.Configuration
 }
 
 func createRandomPackagePath() (string, error) {
@@ -146,7 +146,7 @@ func (server *templaterServer) Create(ctx context.Context, source *common.Source
 	}, nil
 }
 
-func RealMain(configuration library.VMWareConfiguration) {
+func RealMain(configuration library.Configuration) {
 	ctx := context.Background()
 	client, clientError := configuration.CreateClient(ctx)
 	if clientError != nil {
@@ -179,7 +179,8 @@ func main() {
 	log.SetPrefix("templater: ")
 	log.SetFlags(0)
 
-	configuration, configurationError := library.GetConfiguration()
+	configuration, configurationError := library.NewValidator().SetRequireDatastorePath(true).GetConfiguration()
+
 	if configurationError != nil {
 		log.Fatal(configurationError)
 	}

@@ -65,7 +65,7 @@ func (templateDeployment *TemplateDeployment) ImportOVA(filePath string, client 
 	if err != nil {
 		return
 	}
-	datastore, err := templateDeployment.Client.GetDatastore("/Datacenter/datastore/datastore2")
+	datastore, err := templateDeployment.Client.GetDatastore(templateDeployment.Configuration.DatastorePath)
 	if err != nil {
 		return
 	}

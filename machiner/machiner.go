@@ -23,7 +23,7 @@ import (
 type Deployment struct {
 	Client        *library.VMWareClient
 	Node          *node.Node
-	Configuration *Configuration
+	Configuration *library.Configuration
 	Parameters    *node.DeploymentParameters
 }
 
@@ -65,7 +65,7 @@ func (deployment *Deployment) create() (err error) {
 	if err != nil {
 		return
 	}
-	resourcePool, err := deployment.Client.GetResourcePool(deployment.Configuration.VMWareConfiguration.ResourcePoolPath)
+	resourcePool, err := deployment.Client.GetResourcePool(deployment.Configuration.ResourcePoolPath)
 	if err != nil {
 		return
 	}
@@ -153,7 +153,7 @@ func (deployment *Deployment) delete(uuid string) (err error) {
 type nodeServer struct {
 	node.UnimplementedNodeServiceServer
 	Client        *govmomi.Client
-	Configuration *Configuration
+	Configuration *library.Configuration
 }
 
 func (server *nodeServer) Create(ctx context.Context, nodeDeployment *node.NodeDeployment) (*node.NodeIdentifier, error) {
@@ -225,9 +225,9 @@ func (server *nodeServer) Delete(ctx context.Context, nodeIdentifier *node.NodeI
 	return new(emptypb.Empty), nil
 }
 
-func RealMain(configuration *Configuration) {
+func RealMain(configuration *library.Configuration) {
 	ctx := context.Background()
-	client, clientError := configuration.VMWareConfiguration.CreateClient(ctx)
+	client, clientError := configuration.CreateClient(ctx)
 	if clientError != nil {
 		log.Fatal(clientError)
 	}
@@ -258,8 +258,7 @@ func RealMain(configuration *Configuration) {
 func main() {
 	log.SetPrefix("machiner: ")
 	log.SetFlags(0)
-
-	configuration, configurationError := GetConfiguration()
+	configuration, configurationError := library.NewValidator().SetRequireExerciseRootPath(true).GetConfiguration()
 	if configurationError != nil {
 		log.Fatal(configurationError)
 	}

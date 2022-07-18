@@ -19,17 +19,15 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-var testConfiguration = Configuration{
-	VMWareConfiguration: library.VMWareConfiguration{
-		User:               os.Getenv("TEST_VMWARE_USER"),
-		Password:           os.Getenv("TEST_VMWARE_PASSWORD"),
-		Hostname:           os.Getenv("TEST_VMWARE_HOSTNAME"),
-		Insecure:           true,
-		TemplateFolderPath: os.Getenv("TEST_VMWARE_TEMPLATE_FOLDER_PATH"),
-		ServerAddress:      "127.0.0.1",
-		ResourcePoolPath:   os.Getenv("TEST_VMWARE_RESOURCE_POOL_PATH"),
-	},
-	ExerciseRootPath: os.Getenv("TEST_VMWARE_EXERCISE_ROOT_PATH"),
+var testConfiguration = library.Configuration{
+	User:               os.Getenv("TEST_VMWARE_USER"),
+	Password:           os.Getenv("TEST_VMWARE_PASSWORD"),
+	Hostname:           os.Getenv("TEST_VMWARE_HOSTNAME"),
+	Insecure:           true,
+	TemplateFolderPath: os.Getenv("TEST_VMWARE_TEMPLATE_FOLDER_PATH"),
+	ServerAddress:      "127.0.0.1",
+	ResourcePoolPath:   os.Getenv("TEST_VMWARE_RESOURCE_POOL_PATH"),
+	ExerciseRootPath:   os.Getenv("TEST_VMWARE_EXERCISE_ROOT_PATH"),
 }
 
 var virtualMachineHardwareConfiguration = &node.Configuration{
@@ -37,7 +35,7 @@ var virtualMachineHardwareConfiguration = &node.Configuration{
 	Ram: 2147483648, // 2048mb
 }
 
-func startServer(timeout time.Duration) (configuration Configuration) {
+func startServer(timeout time.Duration) (configuration library.Configuration) {
 	configuration = testConfiguration
 	rand.Seed(time.Now().UnixNano())
 	randomPort := rand.Intn(10000) + 10000
@@ -157,7 +155,7 @@ func TestVerifyNodeCpuAndMemory(t *testing.T) {
 	t.Parallel()
 	configuration := startServer(3 * time.Second)
 	ctx := context.Background()
-	govomiClient, govomiClientError := testConfiguration.VMWareConfiguration.CreateClient(ctx)
+	govomiClient, govomiClientError := testConfiguration.CreateClient(ctx)
 	if govomiClientError != nil {
 		t.Fatalf("Failed to send request: %v", govomiClientError)
 	}
@@ -181,7 +179,7 @@ func TestNodeDeletion(t *testing.T) {
 	t.Parallel()
 	configuration := startServer(3 * time.Second)
 	ctx := context.Background()
-	govomiClient, govomiClientError := testConfiguration.VMWareConfiguration.CreateClient(ctx)
+	govomiClient, govomiClientError := testConfiguration.CreateClient(ctx)
 	if govomiClientError != nil {
 		t.Fatalf("Failed to send request: %v", govomiClientError)
 	}
@@ -201,7 +199,7 @@ func TestNodeCreation(t *testing.T) {
 	configuration := startServer(3 * time.Second)
 
 	ctx := context.Background()
-	govomiClient, govomiClientError := testConfiguration.VMWareConfiguration.CreateClient(ctx)
+	govomiClient, govomiClientError := testConfiguration.CreateClient(ctx)
 	if govomiClientError != nil {
 		t.Fatalf("Failed to send request: %v", govomiClientError)
 	}
