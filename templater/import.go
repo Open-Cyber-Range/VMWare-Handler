@@ -36,7 +36,7 @@ func (templateDeployment *TemplateDeployment) readEnvelope(ovfBytes []byte) (env
 	return
 }
 
-func (templateDeployment *TemplateDeployment) ImportOVA(filePath string, client *vim25.Client, cheksum string) (importObject *types.ManagedObjectReference, err error) {
+func (templateDeployment *TemplateDeployment) ImportOVA(filePath string, client *vim25.Client) (importObject *types.ManagedObjectReference, err error) {
 	ovaArchive := Archive{
 		TapeArchive: importx.TapeArchive{
 			Path: filePath,
@@ -56,7 +56,7 @@ func (templateDeployment *TemplateDeployment) ImportOVA(filePath string, client 
 	log.Printf("Envelope %+v", envelope)
 
 	cisp := types.OvfCreateImportSpecParams{
-		EntityName: cheksum,
+		EntityName: templateDeployment.templateName,
 	}
 	uploadManager := ovf.NewManager(templateDeployment.Client.Client.Client)
 	ctx := context.Background()

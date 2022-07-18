@@ -9,6 +9,7 @@ import (
 	"net"
 	"os/exec"
 	"path"
+	"strings"
 
 	"github.com/open-cyber-range/vmware-handler/grpc/capability"
 	"github.com/open-cyber-range/vmware-handler/grpc/common"
@@ -30,6 +31,7 @@ type TemplateDeployment struct {
 	Client        *library.VMWareClient
 	source        *common.Source
 	Configuration library.Configuration
+	templateName  string
 }
 
 func createRandomPackagePath() (string, error) {
@@ -54,13 +56,13 @@ func (templateDeployment *TemplateDeployment) downloadPackage() (packagePath str
 	return path.Join(packageBasePath, directories[0]), nil
 }
 
-func (templateDeployment *TemplateDeployment) getPackageChecksum() (checksum string, err error) {
-	checksumCommand := exec.Command("deputy", "checksum", templateDeployment.source.Name, "-v", templateDeployment.source.Version)
+func getPackageChecksum(name string, version string) (checksum string, err error) {
+	checksumCommand := exec.Command("deputy", "checksum", name, "-v", version)
 	output, err := checksumCommand.Output()
 	if err != nil {
 		return
 	}
-	checksum = string(output)
+	checksum = strings.TrimSpace(string(output))
 	return
 }
 
@@ -90,59 +92,77 @@ func getVirtualMachineInfo(packegeDataMap *map[string]interface{}) (virtualMachi
 	return
 }
 
-func (templateDeployment *TemplateDeployment) handleTemplateBasedOnType(packageData map[string]interface{}, packagePath, cheksum string) (err error) {
+func (templateDeployment *TemplateDeployment) handleTemplateBasedOnType(packageData map[string]interface{}, packagePath string) (err error) {
 	virtualMachine, err := getVirtualMachineInfo(&packageData)
 	if err != nil {
 		return
 	}
 	switch virtualMachine.Type {
 	case "OVA":
-		_, err = templateDeployment.ImportOVA(path.Join(packagePath, virtualMachine.FilePath), templateDeployment.Client.Client.Client, cheksum)
+		_, err = templateDeployment.ImportOVA(path.Join(packagePath, virtualMachine.FilePath), templateDeployment.Client.Client.Client)
 	}
 	return
 }
 
 func (templateDeployment *TemplateDeployment) createTemplate(packagePath string) (err error) {
-	checksum, err := templateDeployment.getPackageChecksum()
-	if err != nil {
-		return
-	}
-	log.Printf("Calculated checksum: %v\n", checksum)
 	packageData, err := templateDeployment.getPackageData(packagePath)
 	if err != nil {
 		return
 	}
-	err = templateDeployment.handleTemplateBasedOnType(packageData, packagePath, checksum)
+	err = templateDeployment.handleTemplateBasedOnType(packageData, packagePath)
 
 	return
 }
 
 func (server *templaterServer) Create(ctx context.Context, source *common.Source) (*common.Identifier, error) {
-	log.Printf("Received template pacakge: %v, version: %v\n", source.Name, source.Version)
+	log.Printf("Received template package: %v, version: %v\n", source.Name, source.Version)
 
 	vmwareClient := library.NewVMWareClient(server.Client, server.Configuration.TemplateFolderPath)
-	templateDeployment := TemplateDeployment{
-		Client:        &vmwareClient,
-		source:        source,
-		Configuration: server.Configuration,
+	checksum, checksumError := getPackageChecksum(source.Name, source.Version)
+	if checksumError != nil {
+		status.New(codes.Internal, fmt.Sprintf("Create: failed to get package checksum (%v)", checksumError))
+		return nil, checksumError
 	}
-	packagePath, downloadError := templateDeployment.downloadPackage()
-	if downloadError != nil {
-		status.New(codes.NotFound, fmt.Sprintf("Create: failed to download package (%v)", downloadError))
-		return nil, downloadError
-	}
-	log.Printf("Downloaded package to: %v\n", packagePath)
 
-	deployError := templateDeployment.createTemplate(packagePath)
-	if deployError != nil {
-		status.New(codes.Internal, fmt.Sprintf("Create: failed to deploy template (%v)", deployError))
-		return nil, deployError
+	templateName := fmt.Sprintf("%v-%v-%v", source.Name, source.Version, checksum)
+	templateExists, templateExistsError := vmwareClient.DoesTemplateExist(templateName)
+	if templateExistsError != nil {
+		status.New(codes.Internal, fmt.Sprintf("Create: failed to get information about template from VSphere(%v)", templateExistsError))
+		return nil, templateExistsError
 	}
-	log.Printf("Deployed template: %v, version: %v\n", source.Name, source.Version)
+
+	if templateExists {
+		log.Printf("Template already deployed: %v, version: %v\n", source.Name, source.Version)
+	} else {
+		templateDeployment := TemplateDeployment{
+			Client:        &vmwareClient,
+			source:        source,
+			Configuration: server.Configuration,
+			templateName:  templateName,
+		}
+		packagePath, downloadError := templateDeployment.downloadPackage()
+		if downloadError != nil {
+			status.New(codes.NotFound, fmt.Sprintf("Create: failed to download package (%v)", downloadError))
+			return nil, downloadError
+		}
+		log.Printf("Downloaded package to: %v\n", packagePath)
+
+		deployError := templateDeployment.createTemplate(packagePath)
+		if deployError != nil {
+			status.New(codes.Internal, fmt.Sprintf("Create: failed to deploy template (%v)", deployError))
+			return nil, deployError
+		}
+		log.Printf("Deployed template: %v, version: %v\n", source.Name, source.Version)
+	}
+	deployedTemplate, deloyedTemplateError := vmwareClient.GetTemplateByName(templateName)
+	if deloyedTemplateError != nil {
+		status.New(codes.Internal, fmt.Sprintf("Create: failed to get deployed template (%v)", deloyedTemplateError))
+		return nil, deloyedTemplateError
+	}
 
 	status.New(codes.OK, "Node creation successful")
 	return &common.Identifier{
-		Value: "asdasdsad",
+		Value: deployedTemplate.UUID(ctx),
 	}, nil
 }
 

@@ -42,6 +42,28 @@ func (client *VMWareClient) findTemplates() ([]*object.VirtualMachine, error) {
 	return finder.VirtualMachineList(ctx, client.templatePath)
 }
 
+func (client *VMWareClient) DoesTemplateExist(name string) (value bool, err error) {
+	templates, err := client.findTemplates()
+	if err != nil {
+		return
+	}
+	for _, template := range templates {
+		if template.Name() == name {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (client *VMWareClient) GetTemplateByName(name string) (virtualMachine *object.VirtualMachine, err error) {
+	finder, _, datacenterError := client.CreateFinderAndDatacenter()
+	if datacenterError != nil {
+		return nil, datacenterError
+	}
+	ctx := context.Background()
+	return finder.VirtualMachine(ctx, path.Join(path.Dir(client.templatePath), name))
+}
+
 func (client *VMWareClient) GetTemplateFolder() (*object.Folder, error) {
 	finder, _, datacenterError := client.CreateFinderAndDatacenter()
 	if datacenterError != nil {
