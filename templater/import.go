@@ -3,8 +3,10 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io/ioutil"
 	"log"
+	"path"
 
 	"github.com/vmware/govmomi/govc/importx"
 	"github.com/vmware/govmomi/nfc"
@@ -34,7 +36,7 @@ func (templateDeployment *TemplateDeployment) readEnvelope(ovfBytes []byte) (env
 	return
 }
 
-func (templateDeployment *TemplateDeployment) ImportOVA(filePath string, client *vim25.Client, cheksum string) (err error) {
+func (templateDeployment *TemplateDeployment) ImportOVA(filePath string, client *vim25.Client, cheksum string) (importObject *types.ManagedObjectReference, err error) {
 	ovaArchive := Archive{
 		TapeArchive: importx.TapeArchive{
 			Path: filePath,
@@ -98,7 +100,7 @@ func (templateDeployment *TemplateDeployment) ImportOVA(filePath string, client 
 		}
 	}
 
-	return
+	return &info.Entity, lease.Complete(ctx)
 }
 
 func (archive *Archive) Upload(ctx context.Context, lease *nfc.Lease, item nfc.FileItem) error {
@@ -109,9 +111,11 @@ func (archive *Archive) Upload(ctx context.Context, lease *nfc.Lease, item nfc.F
 		return err
 	}
 	defer f.Close()
+	logger := NewProgressLogger(fmt.Sprintf("Uploading %s... ", path.Base(file)))
 
 	opts := soap.Upload{
 		ContentLength: size,
+		Progress:      logger,
 	}
 
 	return lease.Upload(ctx, item, f, opts)

@@ -97,7 +97,7 @@ func (templateDeployment *TemplateDeployment) handleTemplateBasedOnType(packageD
 	}
 	switch virtualMachine.Type {
 	case "OVA":
-		err = templateDeployment.ImportOVA(path.Join(packagePath, virtualMachine.FilePath), templateDeployment.Client.Client.Client, cheksum)
+		_, err = templateDeployment.ImportOVA(path.Join(packagePath, virtualMachine.FilePath), templateDeployment.Client.Client.Client, cheksum)
 	}
 	return
 }
