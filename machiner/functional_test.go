@@ -155,11 +155,11 @@ func TestVerifyNodeCpuAndMemory(t *testing.T) {
 	t.Parallel()
 	configuration := startServer(3 * time.Second)
 	ctx := context.Background()
-	govomiClient, govomiClientError := testConfiguration.CreateClient(ctx)
-	if govomiClientError != nil {
-		t.Fatalf("Failed to send request: %v", govomiClientError)
+	govmomiClient, govmomiClientError := testConfiguration.CreateClient(ctx)
+	if govmomiClientError != nil {
+		t.Fatalf("Failed to send request: %v", govmomiClientError)
 	}
-	vmwareClient := library.NewVMWareClient(govomiClient, testConfiguration.TemplateFolderPath)
+	vmwareClient := library.NewVMWareClient(govmomiClient, testConfiguration.TemplateFolderPath)
 	gRPCClient := creategRPCClient(t, configuration.ServerAddress)
 	exerciseName, _ := createExercise(t, &vmwareClient)
 	createVmNode(t, gRPCClient, exerciseName)
@@ -179,11 +179,11 @@ func TestNodeDeletion(t *testing.T) {
 	t.Parallel()
 	configuration := startServer(3 * time.Second)
 	ctx := context.Background()
-	govomiClient, govomiClientError := testConfiguration.CreateClient(ctx)
-	if govomiClientError != nil {
-		t.Fatalf("Failed to send request: %v", govomiClientError)
+	govmomiClient, govmomiClientError := testConfiguration.CreateClient(ctx)
+	if govmomiClientError != nil {
+		t.Fatalf("Failed to send request: %v", govmomiClientError)
 	}
-	vmwareClient := library.NewVMWareClient(govomiClient, testConfiguration.TemplateFolderPath)
+	vmwareClient := library.NewVMWareClient(govmomiClient, testConfiguration.TemplateFolderPath)
 	gRPCClient := creategRPCClient(t, configuration.ServerAddress)
 	exerciseName, _ := createExercise(t, &vmwareClient)
 	virtualMachineIdentifier := createVmNode(t, gRPCClient, exerciseName)
@@ -199,11 +199,11 @@ func TestNodeCreation(t *testing.T) {
 	configuration := startServer(3 * time.Second)
 
 	ctx := context.Background()
-	govomiClient, govomiClientError := testConfiguration.CreateClient(ctx)
-	if govomiClientError != nil {
-		t.Fatalf("Failed to send request: %v", govomiClientError)
+	govmomiClient, govmomiClientError := testConfiguration.CreateClient(ctx)
+	if govmomiClientError != nil {
+		t.Fatalf("Failed to send request: %v", govmomiClientError)
 	}
-	vmwareClient := library.NewVMWareClient(govomiClient, testConfiguration.TemplateFolderPath)
+	vmwareClient := library.NewVMWareClient(govmomiClient, testConfiguration.TemplateFolderPath)
 	gRPCClient := creategRPCClient(t, configuration.ServerAddress)
 	exerciseName, _ := createExercise(t, &vmwareClient)
 
