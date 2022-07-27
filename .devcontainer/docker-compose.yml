@@ -7,7 +7,6 @@ services:
     volumes:
       - ..:/workspace:cached
       - ./deputy-cli-configuration.toml:/home/vscode/.deputy/configuration.toml
-      - /home/kaarel/deputy-packages/small-ova-package:/small-ova-package
     user: vscode
     ports:
       - 8080:8080
