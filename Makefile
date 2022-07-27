@@ -6,6 +6,9 @@ clean:
 	rm -f bin/ranger-vmware-*
 	rm -f ../*.deb
 
+clean-test-cache:
+	go clean -testcache
+
 install:
 	mkdir -p ${DESTDIR}/var/opt/ranger/bin
 	mkdir -p ${DESTDIR}/etc/opt/ranger/ranger-vmware-machiner
