@@ -88,7 +88,7 @@ func (configuration *Configuration) Validate(validator *Validator) error {
 		return status.Error(codes.InvalidArgument, "Vsphere exercise root path not provided")
 	}
 	if validator.requireDatastorePath && configuration.DatastorePath == "" {
-		return status.Error(codes.InvalidArgument, "Vsphere exercise root path not provided")
+		return status.Error(codes.InvalidArgument, "Vsphere datastore path not provided")
 	}
 	return nil
 }
