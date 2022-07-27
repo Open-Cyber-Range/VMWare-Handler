@@ -1,8 +1,9 @@
 stages:
+  - test
   - build
   - deploy
 
-image: $DOCKER_REGISTRY_PULL/go-builder
+image: $DOCKER_REGISTRY_PULL/vmware-handler-builder
 
 variables:
   REPO_NAME: code.ex.c-lab.ee/open-cyber-range/public/vmware-node-deployer
@@ -13,10 +14,9 @@ before_script:
   - ln -svf "$CI_PROJECT_DIR" "$GOPATH/src/$REPO_NAME"
   - cd "$GOPATH/src/$REPO_NAME"
 
-build-and-test:
-  stage: build
+test:
+  stage: test
   script:
-    - make build
     - TEST_VMWARE_USER=$OCR_TEST_VMWARE_USER 
       TEST_VMWARE_PASSWORD=$OCR_TEST_VMWARE_PASSWORD 
       TEST_VMWARE_HOSTNAME=$OCR_TEST_VMWARE_HOSTNAME 
@@ -28,7 +28,6 @@ build-and-test:
       TEST_NSXT_TRANSPORT_ZONE_NAME=$OCR_TEST_NSXT_TRANSPORT_ZONE_NAME
       TEST_VMWARE_DATASTORE_PATH=$OCR_TEST_VMWARE_DATASTORE_PATH
       make test
-
   only:
     - develop
     - master
@@ -36,7 +35,7 @@ build-and-test:
 
 build-and-upload-x86-64bit-linux-release-for-ranger-vmware-handlers:
   stage: build
-  needs: ["build-and-test"]
+  needs: ["test"]
   script:
     - make build-deb
     - DEB_FILE=$(find ../ -maxdepth 1 -type f -name "*.deb")
@@ -45,9 +44,9 @@ build-and-upload-x86-64bit-linux-release-for-ranger-vmware-handlers:
     - master
 
 staging:
+  stage: deploy
   variables:
     RANGER_VMWARE_HANLDER: "1"
-  stage: deploy
   trigger:
     open-cyber-range/internal/support-docker-images
   only:
