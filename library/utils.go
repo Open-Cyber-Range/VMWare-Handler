@@ -21,8 +21,8 @@ func CreateRandomString(length int) string {
 	return string(result)
 }
 
-func ScaleBytesByUnit(bytes_size uint64) int32 {
-	return int32(bytes_size >> 20)
+func ScaleBytesByUnit(byteSize uint64) int32 {
+	return int32(byteSize >> 20)
 }
 
 func IOReadDir(root string) ([]string, error) {
