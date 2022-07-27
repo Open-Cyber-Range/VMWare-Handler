@@ -14,3 +14,6 @@ debian/ranger-vmware-handlers.substvars
 
 #IDEs
 /.vscode
+
+# test deputy packages
+extra/test-deputy-packages/**/target
