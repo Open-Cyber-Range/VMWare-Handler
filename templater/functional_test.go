@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"os/exec"
+	"path"
 	"testing"
 	"time"
 
@@ -56,7 +58,23 @@ func creategRPCClient(t *testing.T, serverPath string) template.TemplateServiceC
 	return template.NewTemplateServiceClient(connection)
 }
 
+func uploadTestDeputyPackage() (err error) {
+	uploadCommand := exec.Command("deputy", "publish")
+	workingDirectory, err := os.Getwd()
+	if err != nil {
+		return
+	}
+	uploadCommand.Dir = path.Join(workingDirectory, "extra", "test-deputy-packages", "small-ova-package")
+	uploadCommand.Run()
+
+	return
+}
+
 func createTemplate(t *testing.T, client template.TemplateServiceClient) string {
+	uploadError := uploadTestDeputyPackage()
+	if uploadError != nil {
+		t.Fatalf("Failed to upload deputy package: %v", uploadError)
+	}
 	templateSource := &common.Source{
 		Name:    "dsl-image",
 		Version: "0.1.0",
