@@ -20,7 +20,7 @@ type Archive struct {
 	importx.TapeArchive
 }
 
-func (templateDeployment *TemplateDeployment) readOvf(ovaArchive *Archive, filePath string, client *vim25.Client) (ovfBytes []byte, err error) {
+func (templateDeployment *TemplateDeployment) readOvf(ovaArchive *Archive) (ovfBytes []byte, err error) {
 	reader, _, err := ovaArchive.Open("*.ovf")
 	if err != nil {
 		return
@@ -45,7 +45,7 @@ func (templateDeployment *TemplateDeployment) ImportOVA(filePath string, client 
 			},
 		},
 	}
-	ovfBytes, err := templateDeployment.readOvf(&ovaArchive, filePath, client)
+	ovfBytes, err := templateDeployment.readOvf(&ovaArchive)
 	if err != nil {
 		return
 	}
