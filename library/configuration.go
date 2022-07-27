@@ -65,7 +65,7 @@ type Configuration struct {
 	ServerAddress      string `yaml:"server_address,omitempty"`
 	ResourcePoolPath   string `yaml:"resource_pool_path,omitempty"`
 	ExerciseRootPath   string `yaml:"exercise_root_path,omitempty"`
-	DatastorePath      string `yaml:"exercise_root_path,omitempty"`
+	DatastorePath      string `yaml:"datastore_path,omitempty"`
 }
 
 func (configuration *Configuration) Validate(validator *Validator) error {
