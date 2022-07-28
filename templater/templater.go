@@ -19,6 +19,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 type templaterServer struct {
@@ -164,6 +165,30 @@ func (server *templaterServer) Create(ctx context.Context, source *common.Source
 	return &common.Identifier{
 		Value: deployedTemplate.UUID(ctx),
 	}, nil
+}
+
+func (server *templaterServer) Delete(ctx context.Context, identifier *common.Identifier) (*emptypb.Empty, error) {
+	vmwareClient := library.NewVMWareClient(server.Client, server.Configuration.TemplateFolderPath)
+	uuid := identifier.GetValue()
+
+	virtualMachine, _ := vmwareClient.GetVirtualMachineByUUID(ctx, uuid)
+	templateName, templateNameError := virtualMachine.ObjectName(ctx)
+	if templateNameError != nil {
+		status.New(codes.Internal, fmt.Sprintf("Delete: node name retrieval error (%v)", templateNameError))
+		return nil, templateNameError
+	}
+
+	log.Printf("Received node for deleting: %v with UUID: %v\n", templateName, uuid)
+
+	deploymentError := vmwareClient.DeleteVirtualMachineByUUID(uuid)
+	if deploymentError != nil {
+		log.Printf("failed to delete node: %v\n", deploymentError)
+		status.New(codes.Internal, fmt.Sprintf("Delete: Error during deletion (%v)", deploymentError))
+		return nil, deploymentError
+	}
+	log.Printf("deleted: %v\n", templateName)
+	status.New(codes.OK, fmt.Sprintf("Node %v deleted", templateName))
+	return new(emptypb.Empty), nil
 }
 
 func RealMain(configuration library.Configuration) {
