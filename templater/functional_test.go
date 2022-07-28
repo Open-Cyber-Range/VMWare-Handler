@@ -64,7 +64,7 @@ func uploadTestDeputyPackage() (err error) {
 	if err != nil {
 		return
 	}
-	uploadCommand.Dir = path.Join(workingDirectory, "extra", "test-deputy-packages", "small-ova-package")
+	uploadCommand.Dir = path.Join(workingDirectory, "..", "extra", "test-deputy-packages", "small-ova-package")
 	uploadCommand.Run()
 
 	return
