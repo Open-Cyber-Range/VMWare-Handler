@@ -71,6 +71,7 @@ func uploadTestDeputyPackage() (err error) {
 }
 
 func createTemplate(t *testing.T, client template.TemplateServiceClient) string {
+
 	uploadError := uploadTestDeputyPackage()
 	if uploadError != nil {
 		t.Fatalf("Failed to upload deputy package: %v", uploadError)
@@ -93,10 +94,22 @@ func createTemplate(t *testing.T, client template.TemplateServiceClient) string 
 
 func TestTemplateCreation(t *testing.T) {
 	t.Parallel()
+	ctx := context.Background()
+	govmomiClient, govmomiClientError := testConfiguration.CreateClient(ctx)
+	if govmomiClientError != nil {
+		t.Fatalf("Failed to create govmomi client: %v", govmomiClientError)
+	}
+	vmwareClient := library.NewVMWareClient(govmomiClient, testConfiguration.TemplateFolderPath)
 	serverConfiguration, err := startServer(time.Second * 3)
 	gRPCClient := creategRPCClient(t, serverConfiguration.ServerAddress)
-	createTemplate(t, gRPCClient)
+	uuid := createTemplate(t, gRPCClient)
 	if err != nil {
 		t.Fatalf("Failed to create test server: %v", err)
 	}
+	t.Cleanup(func() {
+		cleanupError := vmwareClient.DeleteVirtualMachineByUUID(uuid)
+		if cleanupError != nil {
+			t.Fatalf("Failed to cleanup: %v", cleanupError)
+		}
+	})
 }

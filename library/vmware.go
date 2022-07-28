@@ -8,6 +8,7 @@ import (
 	"github.com/vmware/govmomi"
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
+	"github.com/vmware/govmomi/vim25/types"
 )
 
 type VMWareClient struct {
@@ -116,5 +117,61 @@ func (client *VMWareClient) GetDatastore(datastorePath string) (datastore *objec
 		return
 	}
 	datastore, err = finder.Datastore(ctx, datastorePath)
+	return
+}
+
+func (client *VMWareClient) GetVirtualMachineByUUID(ctx context.Context, uuid string) (virtualMachine *object.VirtualMachine, virtualMachineRefError error) {
+	_, datacenter, datacenterError := client.CreateFinderAndDatacenter()
+	if datacenterError != nil {
+		return nil, datacenterError
+	}
+	searchIndex := object.NewSearchIndex(client.Client.Client)
+	virtualMachineRef, virtualMachineRefError := searchIndex.FindByUuid(ctx, datacenter, uuid, true, nil)
+	if virtualMachineRefError != nil {
+		return
+	}
+	virtualMachine = object.NewVirtualMachine(client.Client.Client, virtualMachineRef.Reference())
+	return
+}
+
+func waitForTaskSuccess(task *object.Task) error {
+	ctx := context.Background()
+	info, err := task.WaitForResult(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	if info.State == types.TaskInfoStateSuccess {
+		return nil
+	}
+
+	return fmt.Errorf("failed to perform task: %v", task.Name())
+}
+
+func (client *VMWareClient) DeleteVirtualMachineByUUID(uuid string) (err error) {
+	ctx := context.Background()
+	virtualMachine, _ := client.GetVirtualMachineByUUID(ctx, uuid)
+	powerState, err := virtualMachine.PowerState(ctx)
+	if err != nil {
+		return
+	}
+
+	if powerState != types.VirtualMachinePowerStatePoweredOff {
+		var powerOffTask *object.Task
+		powerOffTask, err = virtualMachine.PowerOff(ctx)
+		if err != nil {
+			return
+		}
+		err = waitForTaskSuccess(powerOffTask)
+		if err != nil {
+			return
+		}
+	}
+
+	destroyTask, err := virtualMachine.Destroy(ctx)
+	if err != nil {
+		return
+	}
+	err = waitForTaskSuccess(destroyTask)
 	return
 }

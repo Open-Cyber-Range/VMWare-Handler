@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io/ioutil"
@@ -31,11 +30,6 @@ func (templateDeployment *TemplateDeployment) readOvf(ovaArchive *Archive) (ovfB
 	return
 }
 
-func (templateDeployment *TemplateDeployment) readEnvelope(ovfBytes []byte) (envelope *ovf.Envelope, err error) {
-	envelope, err = ovf.Unmarshal(bytes.NewReader(ovfBytes))
-	return
-}
-
 func (templateDeployment *TemplateDeployment) ImportOVA(filePath string, client *vim25.Client) (importObject *types.ManagedObjectReference, err error) {
 	ovaArchive := Archive{
 		TapeArchive: importx.TapeArchive{
@@ -49,11 +43,6 @@ func (templateDeployment *TemplateDeployment) ImportOVA(filePath string, client 
 	if err != nil {
 		return
 	}
-	envelope, err := templateDeployment.readEnvelope(ovfBytes)
-	if err != nil {
-		return
-	}
-	log.Printf("Envelope %+v", envelope)
 
 	cisp := types.OvfCreateImportSpecParams{
 		EntityName: templateDeployment.templateName,

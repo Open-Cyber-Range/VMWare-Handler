@@ -181,7 +181,7 @@ func TestNodeDeletion(t *testing.T) {
 	ctx := context.Background()
 	govmomiClient, govmomiClientError := testConfiguration.CreateClient(ctx)
 	if govmomiClientError != nil {
-		t.Fatalf("Failed to send request: %v", govmomiClientError)
+		t.Fatalf("Failed to create govmomi client: %v", govmomiClientError)
 	}
 	vmwareClient := library.NewVMWareClient(govmomiClient, testConfiguration.TemplateFolderPath)
 	gRPCClient := creategRPCClient(t, configuration.ServerAddress)

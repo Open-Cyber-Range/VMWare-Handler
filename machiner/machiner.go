@@ -102,54 +102,6 @@ func (deployment *Deployment) create() (err error) {
 	return fmt.Errorf("failed to clone template")
 }
 
-func waitForTaskSuccess(task *object.Task) error {
-	ctx := context.Background()
-	info, err := task.WaitForResult(ctx, nil)
-	if err != nil {
-		return err
-	}
-
-	if info.State == types.TaskInfoStateSuccess {
-		return nil
-	}
-
-	return fmt.Errorf("failed to perform task: %v", task.Name())
-}
-
-func (deployment *Deployment) getVirtualMachineByUUID(ctx context.Context, uuid string) (virtualMachine *object.VirtualMachine, virtualMachineRefError error) {
-	_, datacenter, datacenterError := deployment.Client.CreateFinderAndDatacenter()
-	if datacenterError != nil {
-		return nil, datacenterError
-	}
-	searchIndex := object.NewSearchIndex(deployment.Client.Client.Client)
-	virtualMachineRef, virtualMachineRefError := searchIndex.FindByUuid(ctx, datacenter, uuid, true, nil)
-	if virtualMachineRefError != nil {
-		return
-	}
-	virtualMachine = object.NewVirtualMachine(deployment.Client.Client.Client, virtualMachineRef.Reference())
-	return
-}
-
-func (deployment *Deployment) delete(uuid string) (err error) {
-	ctx := context.Background()
-	virtualMachine, _ := deployment.getVirtualMachineByUUID(ctx, uuid)
-
-	powerOffTask, err := virtualMachine.PowerOff(ctx)
-	if err != nil {
-		return
-	}
-	err = waitForTaskSuccess(powerOffTask)
-	if err != nil {
-		return
-	}
-	destroyTask, err := virtualMachine.Destroy(ctx)
-	if err != nil {
-		return
-	}
-	err = waitForTaskSuccess(destroyTask)
-	return
-}
-
 type nodeServer struct {
 	node.UnimplementedNodeServiceServer
 	Client        *govmomi.Client
@@ -201,7 +153,7 @@ func (server *nodeServer) Delete(ctx context.Context, nodeIdentifier *node.NodeI
 		Configuration: server.Configuration,
 	}
 
-	virtualMachine, _ := deployment.getVirtualMachineByUUID(ctx, uuid)
+	virtualMachine, _ := deployment.Client.GetVirtualMachineByUUID(ctx, uuid)
 	nodeName, nodeNameError := virtualMachine.ObjectName(ctx)
 	if nodeNameError != nil {
 		status.New(codes.Internal, fmt.Sprintf("Delete: node name retrieval error (%v)", nodeNameError))
@@ -214,7 +166,7 @@ func (server *nodeServer) Delete(ctx context.Context, nodeIdentifier *node.NodeI
 
 	log.Printf("Received node for deleting: %v with UUID: %v\n", parameters.Name, uuid)
 
-	deploymentError := deployment.delete(uuid)
+	deploymentError := deployment.Client.DeleteVirtualMachineByUUID(uuid)
 	if deploymentError != nil {
 		log.Printf("failed to delete node: %v\n", deploymentError)
 		status.New(codes.Internal, fmt.Sprintf("Delete: Error during deletion (%v)", deploymentError))
