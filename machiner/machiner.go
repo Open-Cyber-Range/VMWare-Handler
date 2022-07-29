@@ -3,72 +3,34 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
-	"net"
-	"path"
-
 	"github.com/open-cyber-range/vmware-handler/grpc/capability"
 	common "github.com/open-cyber-range/vmware-handler/grpc/common"
 	node "github.com/open-cyber-range/vmware-handler/grpc/node"
+	"github.com/open-cyber-range/vmware-handler/library"
 	"github.com/vmware/govmomi"
-	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/vim25/types"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"log"
+	"net"
+	"path"
 )
 
 type Deployment struct {
-	Client        *govmomi.Client
+	Client        *library.VMWareClient
 	Node          *node.Node
-	Configuration *Configuration
+	Configuration *library.Configuration
 	Parameters    *node.DeploymentParameters
 }
 
-func createFinderAndDatacenter(client *govmomi.Client) (*find.Finder, *object.Datacenter, error) {
-	finder := find.NewFinder(client.Client, true)
-	ctx := context.Background()
-	datacenter, datacenterError := finder.DefaultDatacenter(ctx)
-	if datacenterError != nil {
-		return nil, nil, datacenterError
-	}
-	finder.SetDatacenter(datacenter)
-	return finder, datacenter, nil
-}
-
-func findTemplates(client *govmomi.Client, templatePath string) ([]*object.VirtualMachine, error) {
-	finder, _, datacenterError := createFinderAndDatacenter(client)
-	if datacenterError != nil {
-		return nil, datacenterError
-	}
-	ctx := context.Background()
-	return finder.VirtualMachineList(ctx, templatePath)
-}
-
-func (deployment *Deployment) getTemplate() (*object.VirtualMachine, error) {
-	templates, templatesError := findTemplates(deployment.Client, deployment.Configuration.TemplateFolderPath)
-	if templatesError != nil {
-		return nil, templatesError
-	}
-
-	var template *object.VirtualMachine
-	for _, templateCandidate := range templates {
-		if templateCandidate.Name() == deployment.Parameters.TemplateName {
-			template = templateCandidate
-		}
-	}
-
-	if template == nil {
-		return nil, fmt.Errorf("template not found")
-	}
-
-	return template, nil
-}
-
 func (deployment *Deployment) createOrFindExerciseFolder(call_count int) (_ *object.Folder, err error) {
-	finder := find.NewFinder(deployment.Client.Client, true)
+	finder, _, err := deployment.Client.CreateFinderAndDatacenter()
+	if err != nil {
+		return
+	}
 	ctx := context.Background()
 	folderPath := path.Join(deployment.Configuration.ExerciseRootPath, deployment.Parameters.ExerciseName)
 
@@ -93,22 +55,8 @@ func (deployment *Deployment) createOrFindExerciseFolder(call_count int) (_ *obj
 	return exerciseFolder, nil
 }
 
-func (deployment *Deployment) getResoucePool() (*object.ResourcePool, error) {
-	ctx := context.Background()
-	finder, _, datacenterError := createFinderAndDatacenter(deployment.Client)
-	if datacenterError != nil {
-		return nil, datacenterError
-	}
-	resourcePool, poolError := finder.ResourcePool(ctx, deployment.Configuration.ResourcePoolPath)
-	if poolError != nil {
-		return nil, poolError
-	}
-
-	return resourcePool, nil
-}
-
 func (deployment *Deployment) create() (err error) {
-	template, err := deployment.getTemplate()
+	template, err := deployment.Client.GetTemplate(deployment.Parameters.TemplateName)
 	if err != nil {
 		return
 	}
@@ -116,7 +64,7 @@ func (deployment *Deployment) create() (err error) {
 	if err != nil {
 		return
 	}
-	resourcePool, err := deployment.getResoucePool()
+	resourcePool, err := deployment.Client.GetResourcePool(deployment.Configuration.ResourcePoolPath)
 	if err != nil {
 		return
 	}
@@ -153,68 +101,16 @@ func (deployment *Deployment) create() (err error) {
 	return fmt.Errorf("failed to clone template")
 }
 
-func waitForTaskSuccess(task *object.Task) error {
-	ctx := context.Background()
-	info, err := task.WaitForResult(ctx, nil)
-	if err != nil {
-		return err
-	}
-
-	if info.State == types.TaskInfoStateSuccess {
-		return nil
-	}
-
-	return fmt.Errorf("failed to perform task: %v", task.Name())
-}
-
-func (deployment *Deployment) getVirtualMachineByUUID(ctx context.Context, uuid string) (virtualMachine *object.VirtualMachine, virtualMachineRefError error) {
-	_, datacenter, datacenterError := createFinderAndDatacenter(deployment.Client)
-	if datacenterError != nil {
-		return nil, datacenterError
-	}
-	searchIndex := object.NewSearchIndex(deployment.Client.Client)
-	virtualMachineRef, virtualMachineRefError := searchIndex.FindByUuid(ctx, datacenter, uuid, true, nil)
-	if virtualMachineRefError != nil {
-		return
-	}
-	virtualMachine = object.NewVirtualMachine(deployment.Client.Client, virtualMachineRef.Reference())
-	return
-}
-
-func (deployment *Deployment) delete(uuid string) (err error) {
-	ctx := context.Background()
-	virtualMachine, _ := deployment.getVirtualMachineByUUID(ctx, uuid)
-
-	powerOffTask, err := virtualMachine.PowerOff(ctx)
-	if err != nil {
-		return
-	}
-	err = waitForTaskSuccess(powerOffTask)
-	if err != nil {
-		return
-	}
-	destroyTask, err := virtualMachine.Destroy(ctx)
-	if err != nil {
-		return
-	}
-	err = waitForTaskSuccess(destroyTask)
-	return
-}
-
 type nodeServer struct {
 	node.UnimplementedNodeServiceServer
 	Client        *govmomi.Client
-	Configuration *Configuration
-}
-
-type capabilityServer struct {
-	capability.UnimplementedCapabilityServer
+	Configuration *library.Configuration
 }
 
 func (server *nodeServer) Create(ctx context.Context, nodeDeployment *node.NodeDeployment) (*node.NodeIdentifier, error) {
-
+	vmwareClient := library.NewVMWareClient(server.Client, server.Configuration.TemplateFolderPath)
 	deployment := Deployment{
-		Client:        server.Client,
+		Client:        &vmwareClient,
 		Configuration: server.Configuration,
 		Node:          nodeDeployment.Node,
 		Parameters:    nodeDeployment.Parameters,
@@ -225,7 +121,7 @@ func (server *nodeServer) Create(ctx context.Context, nodeDeployment *node.NodeD
 		status.New(codes.Internal, fmt.Sprintf("Create: deployment error (%v)", deploymentError))
 		return nil, deploymentError
 	}
-	finder, _, datacenterError := createFinderAndDatacenter(deployment.Client)
+	finder, _, datacenterError := vmwareClient.CreateFinderAndDatacenter()
 	if datacenterError != nil {
 		status.New(codes.Internal, fmt.Sprintf("Create: datacenter error (%v)", datacenterError))
 		return nil, datacenterError
@@ -249,14 +145,14 @@ func (server *nodeServer) Create(ctx context.Context, nodeDeployment *node.NodeD
 }
 
 func (server *nodeServer) Delete(ctx context.Context, nodeIdentifier *node.NodeIdentifier) (*emptypb.Empty, error) {
-
+	vmwareClient := library.NewVMWareClient(server.Client, server.Configuration.TemplateFolderPath)
 	uuid := nodeIdentifier.Identifier.GetValue()
 	deployment := Deployment{
-		Client:        server.Client,
+		Client:        &vmwareClient,
 		Configuration: server.Configuration,
 	}
 
-	virtualMachine, _ := deployment.getVirtualMachineByUUID(ctx, uuid)
+	virtualMachine, _ := deployment.Client.GetVirtualMachineByUUID(ctx, uuid)
 	nodeName, nodeNameError := virtualMachine.ObjectName(ctx)
 	if nodeNameError != nil {
 		status.New(codes.Internal, fmt.Sprintf("Delete: node name retrieval error (%v)", nodeNameError))
@@ -269,7 +165,7 @@ func (server *nodeServer) Delete(ctx context.Context, nodeIdentifier *node.NodeI
 
 	log.Printf("Received node for deleting: %v with UUID: %v\n", parameters.Name, uuid)
 
-	deploymentError := deployment.delete(uuid)
+	deploymentError := deployment.Client.DeleteVirtualMachineByUUID(uuid)
 	if deploymentError != nil {
 		log.Printf("failed to delete node: %v\n", deploymentError)
 		status.New(codes.Internal, fmt.Sprintf("Delete: Error during deletion (%v)", deploymentError))
@@ -280,18 +176,9 @@ func (server *nodeServer) Delete(ctx context.Context, nodeIdentifier *node.NodeI
 	return new(emptypb.Empty), nil
 }
 
-func (server *capabilityServer) GetCapabilities(context.Context, *emptypb.Empty) (*capability.Capabilities, error) {
-	status.New(codes.OK, "Machiner reporting for duty")
-	return &capability.Capabilities{
-		Values: []capability.Capabilities_DeployerTypes{
-			*capability.Capabilities_VirtualMachine.Enum(),
-		},
-	}, nil
-}
-
-func RealMain(configuration *Configuration) {
+func RealMain(configuration *library.Configuration) {
 	ctx := context.Background()
-	client, clientError := configuration.createClient(ctx)
+	client, clientError := configuration.CreateClient(ctx)
 	if clientError != nil {
 		log.Fatal(clientError)
 	}
@@ -307,7 +194,11 @@ func RealMain(configuration *Configuration) {
 		Configuration: configuration,
 	})
 
-	capability.RegisterCapabilityServer(server, &capabilityServer{})
+	capabilityServer := library.NewCapabilityServer([]capability.Capabilities_DeployerTypes{
+		*capability.Capabilities_VirtualMachine.Enum(),
+	})
+
+	capability.RegisterCapabilityServer(server, &capabilityServer)
 
 	log.Printf("server listening at %v", listeningAddress.Addr())
 	if bindError := server.Serve(listeningAddress); bindError != nil {
@@ -318,11 +209,10 @@ func RealMain(configuration *Configuration) {
 func main() {
 	log.SetPrefix("machiner: ")
 	log.SetFlags(0)
-
-	configuration, configurationError := GetConfiguration()
+	configuration, configurationError := library.NewValidator().SetRequireExerciseRootPath(true).GetConfiguration()
 	if configurationError != nil {
 		log.Fatal(configurationError)
 	}
 
-	RealMain(configuration)
+	RealMain(&configuration)
 }

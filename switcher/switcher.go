@@ -15,6 +15,7 @@ import (
 	"github.com/open-cyber-range/vmware-handler/grpc/capability"
 	common "github.com/open-cyber-range/vmware-handler/grpc/common"
 	node "github.com/open-cyber-range/vmware-handler/grpc/node"
+	"github.com/open-cyber-range/vmware-handler/library"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -49,10 +50,6 @@ type nsxtNodeServer struct {
 	node.UnimplementedNodeServiceServer
 	Client        *nsxt.APIClient
 	Configuration Configuration
-}
-
-type capabilityServer struct {
-	capability.UnimplementedCapabilityServer
 }
 
 func (server *nsxtNodeServer) Create(ctx context.Context, nodeDeployment *node.NodeDeployment) (identifier *node.NodeIdentifier, err error) {
@@ -138,15 +135,6 @@ func (server *nsxtNodeServer) Delete(ctx context.Context, nodeIdentifier *node.N
 	return nil, status.Error(codes.InvalidArgument, "DeleteVirtualSwitch: Node is not a virtual switch")
 }
 
-func (server *capabilityServer) GetCapabilities(context.Context, *emptypb.Empty) (*capability.Capabilities, error) {
-	status.New(codes.OK, "Switcher reporting for duty")
-	return &capability.Capabilities{
-		Values: []capability.Capabilities_DeployerTypes{
-			*capability.Capabilities_Switch.Enum(),
-		},
-	}, nil
-}
-
 func RealMain(serverConfiguration *Configuration) {
 	nsxtClient, err := createNsxtClient(serverConfiguration)
 	if err != nil {
@@ -165,7 +153,11 @@ func RealMain(serverConfiguration *Configuration) {
 		Configuration: *serverConfiguration,
 	})
 
-	capability.RegisterCapabilityServer(server, &capabilityServer{})
+	capabilityServer := library.NewCapabilityServer([]capability.Capabilities_DeployerTypes{
+		*capability.Capabilities_Switch.Enum(),
+	})
+
+	capability.RegisterCapabilityServer(server, &capabilityServer)
 
 	log.Printf("server listening at %v", listeningAddress.Addr())
 	if bindError := server.Serve(listeningAddress); bindError != nil {

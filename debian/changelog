@@ -2,11 +2,11 @@ ranger-vmware-handlers (2.0.1) stretch; urgency=medium
 
   * Split switcher and machiner logic for handling networks and VMs respecitvly
 
- -- Kaarel Allemann <kaarel.allemann@cr14.ee>  Fri, 3 Jun 2022 14:42:34 +0300
+ -- Kaarel Allemann <developers@cr14.ee>  Fri, 3 Jun 2022 14:42:34 +0300
 
 
 ranger-vmware-handlers (2.0.0) stretch; urgency=medium
 
   * Split switcher and machiner logic for handling networks and VMs respecitvly
 
- -- Kaarel Allemann <kaarel.allemann@cr14.ee>  Thu, 2 Jun 2022 16:47:15 +0300
+ -- Kaarel Allemann <developers@cr14.ee>  Thu, 2 Jun 2022 16:47:15 +0300
