@@ -10,16 +10,21 @@ install:
 	mkdir -p ${DESTDIR}/var/opt/ranger/bin
 	mkdir -p ${DESTDIR}/etc/opt/ranger/ranger-vmware-machiner
 	mkdir -p ${DESTDIR}/etc/opt/ranger/ranger-vmware-switcher
+	mkdir -p ${DESTDIR}/etc/opt/ranger/ranger-vmware-templater
 	mkdir -p ${DESTDIR}/lib/systemd/system/
 	mkdir -p ${DESTDIR}/etc/systemd/system/
 	cp bin/ranger-vmware-machiner $(DESTDIR)/var/opt/ranger/bin/
 	cp bin/ranger-vmware-switcher $(DESTDIR)/var/opt/ranger/bin/
+	cp bin/ranger-vmware-templater $(DESTDIR)/var/opt/ranger/bin/
 	cp extra/machiner-example-config.yml $(DESTDIR)/etc/opt/ranger/ranger-vmware-machiner/config.yml
 	cp extra/switcher-example-config.yml $(DESTDIR)/etc/opt/ranger/ranger-vmware-switcher/config.yml
+	cp extra/templater-example-config.yml $(DESTDIR)/etc/opt/ranger/ranger-vmware-switcher/config.yml
 	cp extra/ranger-vmware-machiner.service $(DESTDIR)/lib/systemd/system/
 	cp extra/ranger-vmware-switcher.service $(DESTDIR)/lib/systemd/system/
+	cp extra/ranger-vmware-templater.service $(DESTDIR)/lib/systemd/system/
 	ln -sf $(DESTDIR)/lib/systemd/system/ranger-vmware-machiner.service $(DESTDIR)/etc/systemd/system/ranger-vmware-machiner.service
 	ln -sf $(DESTDIR)/lib/systemd/system/ranger-vmware-switcher.service $(DESTDIR)/etc/systemd/system/ranger-vmware-switcher.service
+	ln -sf $(DESTDIR)/lib/systemd/system/ranger-vmware-templater.service $(DESTDIR)/etc/systemd/system/ranger-vmware-templater.service
 
 compile-protobuf:
 	protoc --go_out=grpc --go-grpc_out=grpc \
