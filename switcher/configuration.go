@@ -56,7 +56,7 @@ func GetConfiguration() (_ *Configuration, err error) {
 func CreateNsxtConfiguration(serverConfiguration *Configuration) (nsxtConfiguration *nsxt.Configuration) {
 	nsxtConfiguration = nsxt.NewConfiguration()
 	nsxtConfiguration.Host = serverConfiguration.NsxtApi
-	nsxtConfiguration.DefaultHeader["Authorization"] = serverConfiguration.NsxtAuth
+	nsxtConfiguration.DefaultHeader["Authorization"] = fmt.Sprintf("Basic %v", serverConfiguration.NsxtAuth)
 	nsxtConfiguration.Insecure = serverConfiguration.Insecure
 	return
 }

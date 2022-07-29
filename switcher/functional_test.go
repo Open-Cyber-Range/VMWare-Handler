@@ -18,7 +18,7 @@ import (
 
 var testConfiguration = Configuration{
 	NsxtApi:           os.Getenv("TEST_NSXT_API"),
-	NsxtAuth:          fmt.Sprintf("Basic %v", os.Getenv("TEST_NSXT_AUTH")),
+	NsxtAuth:          os.Getenv("TEST_NSXT_AUTH"),
 	TransportZoneName: os.Getenv("TEST_NSXT_TRANSPORT_ZONE_NAME"),
 	ServerAddress:     "127.0.0.1",
 	Insecure:          true,

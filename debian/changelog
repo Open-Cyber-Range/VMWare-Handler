@@ -1,3 +1,9 @@
+ranger-vmware-handlers (2.2.0) stretch; urgency=medium
+
+  * Add templater functionality
+
+ -- Rait Rotšan <developers@cr14.ee>  Fri, 29 Jul 2022 14:14:44 +0300
+
 ranger-vmware-handlers (2.1.0) stretch; urgency=medium
 
   * Add support for Capabilities service
@@ -8,11 +14,11 @@ ranger-vmware-handlers (2.0.1) stretch; urgency=medium
 
   * Handle when vm folders are created concurrently
 
- -- Kaarel Allemann <kaarel.allemann@cr14.ee>  Fri, 3 Jun 2022 14:42:34 +0300
+ -- Kaarel Allemann <developers@cr14.ee>  Fri, 3 Jun 2022 14:42:34 +0300
 
 
 ranger-vmware-handlers (2.0.0) stretch; urgency=medium
 
   * Split switcher and machiner logic for handling networks and VMs respecitvly
 
- -- Kaarel Allemann <kaarel.allemann@cr14.ee>  Thu, 2 Jun 2022 16:47:15 +0300
+ -- Kaarel Allemann <developers@cr14.ee>  Thu, 2 Jun 2022 16:47:15 +0300

@@ -11,3 +11,9 @@ debian/ranger-vmware-handlers
 debian/files
 debian/ranger-vmware-handlers.substvars
 *.deb
+
+#IDEs
+/.vscode
+
+# test deputy packages
+extra/test-deputy-packages/**/target

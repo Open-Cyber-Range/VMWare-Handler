@@ -1,7 +1,7 @@
 Source: ranger-vmware-handlers
 Section: devel
 Priority: optional
-Maintainer: Kaarel Allemann <kaarel.allemann@cr14.ee>
+Maintainer: Kaarel Allemann <developers@cr14.ee>
 Build-Depends: build-essential, debhelper (>= 11)
 
 Package: ranger-vmware-handlers

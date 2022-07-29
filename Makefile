@@ -6,34 +6,44 @@ clean:
 	rm -f bin/ranger-vmware-*
 	rm -f ../*.deb
 
+clean-test-cache:
+	go clean -testcache
+
 install:
 	mkdir -p ${DESTDIR}/var/opt/ranger/bin
 	mkdir -p ${DESTDIR}/etc/opt/ranger/ranger-vmware-machiner
 	mkdir -p ${DESTDIR}/etc/opt/ranger/ranger-vmware-switcher
+	mkdir -p ${DESTDIR}/etc/opt/ranger/ranger-vmware-templater
 	mkdir -p ${DESTDIR}/lib/systemd/system/
 	mkdir -p ${DESTDIR}/etc/systemd/system/
 	cp bin/ranger-vmware-machiner $(DESTDIR)/var/opt/ranger/bin/
 	cp bin/ranger-vmware-switcher $(DESTDIR)/var/opt/ranger/bin/
+	cp bin/ranger-vmware-templater $(DESTDIR)/var/opt/ranger/bin/
 	cp extra/machiner-example-config.yml $(DESTDIR)/etc/opt/ranger/ranger-vmware-machiner/config.yml
 	cp extra/switcher-example-config.yml $(DESTDIR)/etc/opt/ranger/ranger-vmware-switcher/config.yml
+	cp extra/templater-example-config.yml $(DESTDIR)/etc/opt/ranger/ranger-vmware-switcher/config.yml
 	cp extra/ranger-vmware-machiner.service $(DESTDIR)/lib/systemd/system/
 	cp extra/ranger-vmware-switcher.service $(DESTDIR)/lib/systemd/system/
+	cp extra/ranger-vmware-templater.service $(DESTDIR)/lib/systemd/system/
 	ln -sf $(DESTDIR)/lib/systemd/system/ranger-vmware-machiner.service $(DESTDIR)/etc/systemd/system/ranger-vmware-machiner.service
 	ln -sf $(DESTDIR)/lib/systemd/system/ranger-vmware-switcher.service $(DESTDIR)/etc/systemd/system/ranger-vmware-switcher.service
+	ln -sf $(DESTDIR)/lib/systemd/system/ranger-vmware-templater.service $(DESTDIR)/etc/systemd/system/ranger-vmware-templater.service
 
 compile-protobuf:
 	protoc --go_out=grpc --go-grpc_out=grpc \
 	--go_opt=Msrc/common.proto=github.com/open-cyber-range/vmware-handler/grpc/common \
+	--go_opt=Msrc/template.proto=github.com/open-cyber-range/vmware-handler/grpc/template \
 	--go_opt=Msrc/node.proto=github.com/open-cyber-range/vmware-handler/grpc/node \
 	--go_opt=Msrc/capability.proto=github.com/open-cyber-range/vmware-handler/grpc/capability \
 	--go-grpc_opt=Msrc/common.proto=github.com/open-cyber-range/vmware-handler/grpc/common \
+	--go-grpc_opt=Msrc/template.proto=github.com/open-cyber-range/vmware-handler/grpc/template \
 	--go-grpc_opt=Msrc/node.proto=github.com/open-cyber-range/vmware-handler/grpc/node  \
 	--go-grpc_opt=Msrc/capability.proto=github.com/open-cyber-range/vmware-handler/grpc/capability  \
 	--go_opt=module=github.com/open-cyber-range/vmware-handler/grpc \
 	--go-grpc_opt=module=github.com/open-cyber-range/vmware-handler/grpc \
-	--proto_path=grpc/proto src/node.proto src/common.proto src/capability.proto
+	--proto_path=grpc/proto src/node.proto src/common.proto src/capability.proto src/template.proto
 
-build: compile-protobuf build-machiner build-switcher
+build: compile-protobuf build-machiner build-switcher build-templater
 
 build-machiner: compile-protobuf
 	go build -o bin/ranger-vmware-machiner ./machiner
@@ -41,19 +51,32 @@ build-machiner: compile-protobuf
 build-switcher: compile-protobuf
 	go build -o bin/ranger-vmware-switcher ./switcher
 
-test: build test-machiner test-switcher
+build-templater: compile-protobuf
+	go build -o bin/ranger-vmware-templater ./templater
 
-test-machiner: build-machiner
+
+test: build test-machiner test-switcher test-templater
+
+test-machiner:
 	go test -v ./machiner
 
 test-switcher: build-switcher
 	go test -v ./switcher
 
-run-machiner: build
+test-templater: build-templater
+	go test -v ./templater
+
+test-library:
+	go test -v ./library
+
+run-machiner: build-machiner
 	bin/ranger-vmware-machiner machiner-config.yml
 
-run-switcher: build
+run-switcher: build-switcher
 	bin/ranger-vmware-switcher switcher-config.yml
+
+run-templater: build-templater
+	bin/ranger-vmware-templater
 
 test-and-build: test build
 

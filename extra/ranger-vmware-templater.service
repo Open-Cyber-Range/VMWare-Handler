@@ -1,0 +1,16 @@
+[Unit]
+Description=ranger-vmware-templater
+After=network.target
+
+[Service]
+ExecStart=/var/opt/ranger/bin/ranger-vmware-templater /etc/opt/ranger/ranger-vmware-templater/config.yml
+Type=simple
+User=root
+Group=root
+Restart=on-failure
+RestartSec=10
+StartLimitInterval=10m
+StartLimitBurst=5
+
+[Install]
+WantedBy=multi-user.target
