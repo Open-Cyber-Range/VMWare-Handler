@@ -1,3 +1,9 @@
+ranger-vmware-handlers (2.1.0) stretch; urgency=medium
+
+  * Add templater functionality
+
+ -- Rait Rotšan <developers@cr14.ee>  Fri, 29 Jul 2022 14:14:44 +0300
+
 ranger-vmware-handlers (2.0.1) stretch; urgency=medium
 
   * Split switcher and machiner logic for handling networks and VMs respecitvly
