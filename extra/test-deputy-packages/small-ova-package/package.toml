@@ -1,0 +1,14 @@
+[package]
+name = "dsl-image"
+description = "This is an image for Damn Small Linux VM"
+version = "0.1.0"
+authors = ["Kaarel Allemann kaarel.allemann@cr14.ee"]
+
+[content]
+type = "vm"
+
+[virtual-machine]
+operating_system = "Debian"
+architecture = "amd64"
+type = "OVA"
+file_path = "src/dsl-test.ova"
