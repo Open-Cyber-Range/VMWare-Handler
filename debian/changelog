@@ -1,3 +1,9 @@
+ranger-vmware-handlers (2.2.2) stretch; urgency=medium
+
+  * Fixes tests
+
+ -- Kaarel Allemann <developers@cr14.ee>  Mon, 01 Aug 2022 11:18:37 +0300
+
 ranger-vmware-handlers (2.2.1) stretch; urgency=medium
 
   * Use template UUID for deployment instead of template name
