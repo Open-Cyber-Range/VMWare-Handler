@@ -114,11 +114,17 @@ func createExercise(t *testing.T, client *library.VMWareClient) (exerciseName st
 	return
 }
 
-func createVmNode(t *testing.T, client node.NodeServiceClient, exerciseName string) *node.NodeIdentifier {
+func createVmNode(t *testing.T, client node.NodeServiceClient, exerciseName string, vmwareClient *library.VMWareClient) *node.NodeIdentifier {
+	templateVirtualMachine, err := vmwareClient.GetTemplateByName("debian10")
+	if err != nil {
+		t.Fatalf("Failed to find template by name: %v", err)
+	}
+
+	ctx := context.Background()
 	nodeDeployment := &node.NodeDeployment{
 		Parameters: &node.DeploymentParameters{
 			Name:         "test-node",
-			TemplateName: "debian10",
+			TemplateName: templateVirtualMachine.UUID(ctx),
 			ExerciseName: exerciseName,
 		},
 		Node: &node.Node{
@@ -138,6 +144,7 @@ func createVmNode(t *testing.T, client node.NodeServiceClient, exerciseName stri
 	}
 	return resultNode
 }
+
 func getVmConfigurations(client *library.VMWareClient, exerciseName string, nodeName string) (managedVirtualMachine mo.VirtualMachine, err error) {
 	finder, _, _ := client.CreateFinderAndDatacenter()
 
@@ -162,7 +169,7 @@ func TestVerifyNodeCpuAndMemory(t *testing.T) {
 	vmwareClient := library.NewVMWareClient(govmomiClient, testConfiguration.TemplateFolderPath)
 	gRPCClient := creategRPCClient(t, configuration.ServerAddress)
 	exerciseName, _ := createExercise(t, &vmwareClient)
-	createVmNode(t, gRPCClient, exerciseName)
+	createVmNode(t, gRPCClient, exerciseName, &vmwareClient)
 	managedVirtualMachine, err := getVmConfigurations(&vmwareClient, exerciseName, "test-node")
 	if err != nil {
 		t.Fatalf("Failed to retrieve VM configuration: %v", err)
@@ -186,7 +193,7 @@ func TestNodeDeletion(t *testing.T) {
 	vmwareClient := library.NewVMWareClient(govmomiClient, testConfiguration.TemplateFolderPath)
 	gRPCClient := creategRPCClient(t, configuration.ServerAddress)
 	exerciseName, _ := createExercise(t, &vmwareClient)
-	virtualMachineIdentifier := createVmNode(t, gRPCClient, exerciseName)
+	virtualMachineIdentifier := createVmNode(t, gRPCClient, exerciseName, &vmwareClient)
 
 	gRPCClient.Delete(context.Background(), virtualMachineIdentifier)
 	if vmNodeExists(&vmwareClient, exerciseName, "test-node") {
@@ -207,7 +214,7 @@ func TestNodeCreation(t *testing.T) {
 	gRPCClient := creategRPCClient(t, configuration.ServerAddress)
 	exerciseName, _ := createExercise(t, &vmwareClient)
 
-	nodeIdentifier := createVmNode(t, gRPCClient, exerciseName)
+	nodeIdentifier := createVmNode(t, gRPCClient, exerciseName, &vmwareClient)
 	nodeExists := vmNodeExists(&vmwareClient, exerciseName, "test-node")
 
 	if nodeIdentifier.GetIdentifier().GetValue() == "" && nodeExists {
