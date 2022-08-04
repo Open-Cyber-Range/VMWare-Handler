@@ -206,6 +206,7 @@ func (server *templaterServer) Create(ctx context.Context, source *common.Source
 	} else if server.currentDeploymentList.DeploymentExists(templateName) {
 		log.Printf("Template is being deployed: %v, version: %v\n", source.Name, source.Version)
 	} else {
+		server.currentDeploymentList.Append(templateName)
 		templateDeployment := TemplateDeployment{
 			Client:        &vmwareClient,
 			source:        source,
@@ -218,7 +219,6 @@ func (server *templaterServer) Create(ctx context.Context, source *common.Source
 			return nil, downloadError
 		}
 		log.Printf("Downloaded package to: %v\n", packagePath)
-		server.currentDeploymentList.Append(templateName)
 		deployError := templateDeployment.createTemplate(packagePath)
 		server.currentDeploymentList.Remove(templateName)
 		if deployError != nil {
