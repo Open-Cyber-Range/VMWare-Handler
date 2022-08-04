@@ -124,7 +124,7 @@ func createVmNode(t *testing.T, client node.NodeServiceClient, exerciseName stri
 	nodeDeployment := &node.NodeDeployment{
 		Parameters: &node.DeploymentParameters{
 			Name:         "test-node",
-			TemplateName: templateVirtualMachine.UUID(ctx),
+			TemplateId: templateVirtualMachine.UUID(ctx),
 			ExerciseName: exerciseName,
 		},
 		Node: &node.Node{

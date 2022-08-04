@@ -58,9 +58,9 @@ func (deployment *Deployment) createOrFindExerciseFolder(call_count int) (_ *obj
 
 func (deployment *Deployment) create() (err error) {
 	ctx := context.Background()
-	template, err := deployment.Client.GetVirtualMachineByUUID(ctx, deployment.Parameters.TemplateName)
+	template, err := deployment.Client.GetVirtualMachineByUUID(ctx, deployment.Parameters.TemplateId)
 	if template == nil {
-		return fmt.Errorf("template not found, uuid: %v", deployment.Parameters.TemplateName)
+		return fmt.Errorf("template not found, uuid: %v", deployment.Parameters.TemplateId)
 	}
 	if err != nil {
 		return
