@@ -1,3 +1,10 @@
+ranger-vmware-handlers (2.2.3) stretch; urgency=medium
+
+  * Fixes concurrent template deployment
+  * Normalizes package versions for template deployments
+
+ -- Kaarel Allemann <developers@cr14.ee>  Thu, 04 Aug 2022 15:01:24 +0000
+
 ranger-vmware-handlers (2.2.2) stretch; urgency=medium
 
   * Fixes tests
