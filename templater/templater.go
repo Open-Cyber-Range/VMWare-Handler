@@ -94,9 +94,17 @@ func (templateDeployment *TemplateDeployment) downloadPackage() (packagePath str
 
 	downloadCommand := exec.Command("deputy", "fetch", templateDeployment.source.Name, "-v", templateDeployment.source.Version, "-s", packagePath)
 	downloadCommand.Dir = packageBasePath
-	downloadCommand.Run()
+	_, err = downloadCommand.Output()
+	if err != nil {
+		return
+	}
 	directories, err := library.IOReadDir(packageBasePath)
 	if err != nil {
+		return
+	}
+
+	if len(directories) != 1 {
+		err = fmt.Errorf("expected one directory in package base path, got %v", len(directories))
 		return
 	}
 
