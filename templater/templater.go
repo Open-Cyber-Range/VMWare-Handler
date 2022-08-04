@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path"
 	"strings"
+	"sync"
 
 	"github.com/open-cyber-range/vmware-handler/grpc/capability"
 	"github.com/open-cyber-range/vmware-handler/grpc/common"
@@ -22,10 +23,55 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
+type DeploymentList struct {
+	sync.RWMutex
+	items []string
+}
+
+func (deploymentList *DeploymentList) Append(item string) {
+	deploymentList.Lock()
+	defer deploymentList.Unlock()
+
+	deploymentList.items = append(deploymentList.items, item)
+}
+
+func (deploymentList *DeploymentList) DeploymentExists(searchItem string) bool {
+	deploymentList.Lock()
+	defer deploymentList.Unlock()
+
+	for _, value := range deploymentList.items {
+		if value == searchItem {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (deploymentList *DeploymentList) Remove(deleteItem string) error {
+	deploymentList.Lock()
+	defer deploymentList.Unlock()
+
+	searchIndex := -1
+	for index, value := range deploymentList.items {
+		if value == deleteItem {
+			searchIndex = index
+		}
+	}
+
+	if searchIndex == -1 {
+		return fmt.Errorf("deployment %v not found", deleteItem)
+	}
+
+	deploymentList.items = append(deploymentList.items[:searchIndex], deploymentList.items[searchIndex+1:]...)
+	return nil
+}
+
 type templaterServer struct {
 	template.UnimplementedTemplateServiceServer
-	Client        *govmomi.Client
-	Configuration library.Configuration
+	Client                *govmomi.Client
+	Configuration         library.Configuration
+	currentDeploymentList DeploymentList
 }
 
 type TemplateDeployment struct {
@@ -67,9 +113,19 @@ func getPackageChecksum(name string, version string) (checksum string, err error
 	return
 }
 
+func normalizePackageVersion(packageName string, versionRequirement string) (normalizedVersion string, err error) {
+	versionCommand := exec.Command("deputy", "normalize-version", packageName, "-v", versionRequirement)
+	output, err := versionCommand.Output()
+	if err != nil {
+		return
+	}
+	normalizedVersion = strings.TrimSpace(string(output))
+	return
+}
+
 func (templateDeployment *TemplateDeployment) getPackageData(packagePath string) (packageData map[string]interface{}, err error) {
 	packageTomlPath := path.Join(packagePath, "package.toml")
-	checksumCommand := exec.Command("deputy", "info", packageTomlPath)
+	checksumCommand := exec.Command("deputy", "parse-toml", packageTomlPath)
 	output, err := checksumCommand.Output()
 	if err != nil {
 		return
@@ -124,8 +180,13 @@ func (server *templaterServer) Create(ctx context.Context, source *common.Source
 		status.New(codes.Internal, fmt.Sprintf("Create: failed to get package checksum (%v)", checksumError))
 		return nil, checksumError
 	}
+	normalizedVersion, normalizedVersionError := normalizePackageVersion(source.Name, source.Version)
+	if normalizedVersionError != nil {
+		status.New(codes.Internal, fmt.Sprintf("Create: failed to normalize package version (%v)", normalizedVersionError))
+		return nil, normalizedVersionError
+	}
 
-	templateName := fmt.Sprintf("%v-%v-%v", source.Name, source.Version, checksum)
+	templateName := fmt.Sprintf("%v-%v-%v", source.Name, normalizedVersion, checksum)
 	templateExists, templateExistsError := vmwareClient.DoesTemplateExist(templateName)
 	if templateExistsError != nil {
 		status.New(codes.Internal, fmt.Sprintf("Create: failed to get information about template from VSphere(%v)", templateExistsError))
@@ -134,6 +195,8 @@ func (server *templaterServer) Create(ctx context.Context, source *common.Source
 
 	if templateExists {
 		log.Printf("Template already deployed: %v, version: %v\n", source.Name, source.Version)
+	} else if server.currentDeploymentList.DeploymentExists(templateName) {
+		log.Printf("Template is being deployed: %v, version: %v\n", source.Name, source.Version)
 	} else {
 		templateDeployment := TemplateDeployment{
 			Client:        &vmwareClient,
@@ -147,8 +210,9 @@ func (server *templaterServer) Create(ctx context.Context, source *common.Source
 			return nil, downloadError
 		}
 		log.Printf("Downloaded package to: %v\n", packagePath)
-
+		server.currentDeploymentList.Append(templateName)
 		deployError := templateDeployment.createTemplate(packagePath)
+		server.currentDeploymentList.Remove(templateName)
 		if deployError != nil {
 			status.New(codes.Internal, fmt.Sprintf("Create: failed to deploy template (%v)", deployError))
 			return nil, deployError
