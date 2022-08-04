@@ -1,3 +1,9 @@
+ranger-vmware-handlers (2.2.5) stretch; urgency=medium
+
+  * Improve deployment detection
+
+ -- Kaarel Allemann <developers@cr14.ee>  Thu, 04 Aug 2022 15:51:31 +0000
+
 ranger-vmware-handlers (2.2.4) stretch; urgency=medium
 
   * Improve errors for downloading templates
