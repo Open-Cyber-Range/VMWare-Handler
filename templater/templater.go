@@ -11,6 +11,7 @@ import (
 	"path"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/open-cyber-range/vmware-handler/grpc/capability"
 	"github.com/open-cyber-range/vmware-handler/grpc/common"
@@ -46,6 +47,20 @@ func (deploymentList *DeploymentList) DeploymentExists(searchItem string) bool {
 	}
 
 	return false
+}
+
+func (deploymentList *DeploymentList) WaitForDeployment(deploymentName string) {
+	waitChannel := make(chan bool)
+	defer close(waitChannel)
+
+	go func() {
+		for deploymentList.DeploymentExists(deploymentName) {
+			time.Sleep(time.Second)
+		}
+
+		waitChannel <- true
+	}()
+	<-waitChannel
 }
 
 func (deploymentList *DeploymentList) Remove(deleteItem string) error {
@@ -205,6 +220,7 @@ func (server *templaterServer) Create(ctx context.Context, source *common.Source
 		log.Printf("Template already deployed: %v, version: %v\n", source.Name, source.Version)
 	} else if server.currentDeploymentList.DeploymentExists(templateName) {
 		log.Printf("Template is being deployed: %v, version: %v\n", source.Name, source.Version)
+		server.currentDeploymentList.WaitForDeployment(templateName)
 	} else {
 		server.currentDeploymentList.Append(templateName)
 		templateDeployment := TemplateDeployment{
