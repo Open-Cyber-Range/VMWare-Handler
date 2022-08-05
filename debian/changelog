@@ -1,3 +1,9 @@
+ranger-vmware-handlers (2.2.7) stretch; urgency=medium
+
+  * Improve logging for templater errors
+
+ -- Kaarel Allemann <developers@cr14.ee>  Fri, 05 Aug 2022 08:05:58 +0000
+
 ranger-vmware-handlers (2.2.6) stretch; urgency=medium
 
   * Fixes issue when deployer does not correctly wait for deployments to finish
