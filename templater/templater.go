@@ -200,11 +200,13 @@ func (server *templaterServer) Create(ctx context.Context, source *common.Source
 	vmwareClient := library.NewVMWareClient(server.Client, server.Configuration.TemplateFolderPath)
 	checksum, checksumError := getPackageChecksum(source.Name, source.Version)
 	if checksumError != nil {
+		log.Printf("Error getting package checksum: %v\n", checksumError)
 		status.New(codes.Internal, fmt.Sprintf("Create: failed to get package checksum (%v)", checksumError))
 		return nil, checksumError
 	}
 	normalizedVersion, normalizedVersionError := normalizePackageVersion(source.Name, source.Version)
 	if normalizedVersionError != nil {
+		log.Printf("Create: failed to normalize package version (%v)\n", normalizedVersionError)
 		status.New(codes.Internal, fmt.Sprintf("Create: failed to normalize package version (%v)", normalizedVersionError))
 		return nil, normalizedVersionError
 	}
@@ -212,6 +214,7 @@ func (server *templaterServer) Create(ctx context.Context, source *common.Source
 	templateName := fmt.Sprintf("%v-%v-%v", source.Name, normalizedVersion, checksum)
 	templateExists, templateExistsError := vmwareClient.DoesTemplateExist(templateName)
 	if templateExistsError != nil {
+		log.Printf("Create: failed to check if template exists (%v)\n", templateExistsError)
 		status.New(codes.Internal, fmt.Sprintf("Create: failed to get information about template from VSphere(%v)", templateExistsError))
 		return nil, templateExistsError
 	}
