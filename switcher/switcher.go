@@ -43,6 +43,21 @@ type Segment struct {
 	TransportZonePath string `json:"transport_zone_path,omitempty"`
 }
 
+func segmentExists(serverConfiguration *Configuration, virtualSwitchUuid string) (bool, error) {
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	client := &http.Client{Transport: tr}
+	req, _ := http.NewRequest(http.MethodGet, "https://"+serverConfiguration.NsxtApi+"/policy/api/v1/infra/segments/"+virtualSwitchUuid, nil)
+	req.Header.Set("Authorization", fmt.Sprintf("Basic %v", serverConfiguration.NsxtAuth))
+	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	httpResponse, err := client.Do(req)
+	if err != nil && httpResponse.StatusCode != http.StatusNotFound {
+		return false, err
+	}
+	return httpResponse.StatusCode == http.StatusOK, nil
+}
+
 func createNetworkSegment(nodeDeployment *node.NodeDeployment, serverConfiguration *Configuration) (*Segment, error) {
 	var segment = Segment{
 		DisplayName: nodeDeployment.GetParameters().GetName(),
@@ -57,11 +72,7 @@ func createNetworkSegment(nodeDeployment *node.NodeDeployment, serverConfigurati
 		err = status.Error(codes.Internal, fmt.Sprintf("CreateNetworkSegment: JSON Marshal (%v)", err))
 		return nil, err
 	}
-	req, err := http.NewRequest(http.MethodPut, "https://"+serverConfiguration.NsxtApi+"/policy/api/v1/infra/segments/"+segment.DisplayName, bytes.NewBuffer(jsonData))
-	if err != nil {
-		err = status.Error(codes.Internal, fmt.Sprintf("CreateNetworkSegment: Request creation (%v)", err))
-		return nil, err
-	}
+	req, _ := http.NewRequest(http.MethodPut, "https://"+serverConfiguration.NsxtApi+"/policy/api/v1/infra/segments/"+segment.DisplayName, bytes.NewBuffer(jsonData))
 	req.Header.Set("Authorization", fmt.Sprintf("Basic %v", serverConfiguration.NsxtAuth))
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
 	response, err := client.Do(req)
@@ -78,6 +89,21 @@ func createNetworkSegment(nodeDeployment *node.NodeDeployment, serverConfigurati
 	bytearray, _ := io.ReadAll(response.Body)
 	_ = json.Unmarshal(bytearray, &segmentResponse)
 	return &segmentResponse, nil
+}
+
+func deleteInfraSegment(serverConfiguration *Configuration, virtualSwitchUuid string) (bool, error) {
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	client := &http.Client{Transport: tr}
+	req, _ := http.NewRequest(http.MethodDelete, "https://"+serverConfiguration.NsxtApi+"/policy/api/v1/infra/segments/"+virtualSwitchUuid, nil)
+	req.Header.Set("Authorization", fmt.Sprintf("Basic %v", serverConfiguration.NsxtAuth))
+	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	httpResponse, err := client.Do(req)
+	if err != nil && httpResponse.StatusCode != http.StatusNotFound {
+		return false, err
+	}
+	return httpResponse.StatusCode == http.StatusOK, nil
 }
 
 func (server *nsxtNodeServer) Create(ctx context.Context, nodeDeployment *node.NodeDeployment) (identifier *node.NodeIdentifier, err error) {
@@ -98,20 +124,20 @@ func (server *nsxtNodeServer) Create(ctx context.Context, nodeDeployment *node.N
 	}, nil
 }
 
-func delete(ctx context.Context, nsxtClient *nsxt.APIClient, virtualSwitchUuid string) error {
-	switchExists, err := virtualSwitchExists(ctx, nsxtClient, virtualSwitchUuid)
+func (server *nsxtNodeServer) delete(virtualSwitchUuid string) error {
+	switchExists, err := segmentExists(&server.Configuration, virtualSwitchUuid)
 	if err != nil {
 		return err
 	}
 	if !switchExists {
 		return status.Error(codes.InvalidArgument, fmt.Sprintf("DeleteVirtualSwitch: Switch UUID \" %v \" not found", virtualSwitchUuid))
 	} else {
-		_, err := nsxtClient.LogicalSwitchingApi.DeleteLogicalSwitch(ctx, virtualSwitchUuid, nil)
+		_, err = deleteInfraSegment(&server.Configuration, virtualSwitchUuid)
 		if err != nil {
 			status.New(codes.Internal, fmt.Sprintf("DeleteVirtualSwitch: API request error (%v)", err))
 			return err
 		}
-		switchExists, err = virtualSwitchExists(ctx, nsxtClient, virtualSwitchUuid)
+		switchExists, err = segmentExists(&server.Configuration, virtualSwitchUuid)
 		if err != nil {
 			return err
 		}
@@ -122,19 +148,11 @@ func delete(ctx context.Context, nsxtClient *nsxt.APIClient, virtualSwitchUuid s
 	return nil
 }
 
-func virtualSwitchExists(ctx context.Context, nsxtClient *nsxt.APIClient, virtualSwitchUuid string) (bool, error) {
-	_, httpResponse, err := nsxtClient.LogicalSwitchingApi.GetLogicalSwitch(ctx, virtualSwitchUuid)
-	if err != nil && httpResponse.StatusCode != http.StatusNotFound {
-		return false, err
-	}
-	return httpResponse.StatusCode == http.StatusOK, nil
-}
-
 func (server *nsxtNodeServer) Delete(ctx context.Context, nodeIdentifier *node.NodeIdentifier) (*emptypb.Empty, error) {
 	if *nodeIdentifier.GetNodeType().Enum() == *node.NodeType_switch.Enum() {
 		log.Printf("Received switch for deleting: UUID: %v\n", nodeIdentifier.GetIdentifier().GetValue())
 
-		err := delete(ctx, server.Client, nodeIdentifier.GetIdentifier().GetValue())
+		err := server.delete(nodeIdentifier.GetIdentifier().GetValue())
 		if err != nil {
 			return nil, err
 		}
