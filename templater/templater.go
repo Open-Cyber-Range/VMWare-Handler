@@ -18,6 +18,8 @@ import (
 	"github.com/open-cyber-range/vmware-handler/grpc/template"
 	"github.com/open-cyber-range/vmware-handler/library"
 	"github.com/vmware/govmomi"
+	"github.com/vmware/govmomi/object"
+	"github.com/vmware/govmomi/vim25/types"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -158,10 +160,11 @@ func (templateDeployment *TemplateDeployment) getPackageData(packagePath string)
 }
 
 type VirtualMachine struct {
-	OperatingSystem string `json:"operating_system,omitempty"`
-	Architecture    string `json:"architecture,omitempty"`
-	Type            string `json:"type,omitempty"`
-	FilePath        string `json:"file_path,omitempty"`
+	OperatingSystem string   `json:"operating_system,omitempty"`
+	Architecture    string   `json:"architecture,omitempty"`
+	Type            string   `json:"type,omitempty"`
+	FilePath        string   `json:"file_path,omitempty"`
+	Links           []string `json:"links,omitempty"`
 }
 
 func getVirtualMachineInfo(packegeDataMap *map[string]interface{}) (virtualMachine VirtualMachine, err error) {
@@ -191,6 +194,23 @@ func (templateDeployment *TemplateDeployment) createTemplate(packagePath string)
 	}
 	err = templateDeployment.handleTemplateBasedOnType(packageData, packagePath)
 
+	return
+}
+
+func removeNetworks(ctx context.Context, deployedTemplate *object.VirtualMachine) (err error) {
+	devices, devicesError := deployedTemplate.Device(ctx)
+	if devicesError != nil {
+		return
+	}
+
+	networkDevices := devices.SelectByType(&types.VirtualEthernetCard{})
+
+	for _, networkDevice := range networkDevices {
+		networkRemovalError := deployedTemplate.RemoveDevice(ctx, false, networkDevice)
+		if networkRemovalError != nil {
+			return
+		}
+	}
 	return
 }
 
@@ -251,6 +271,29 @@ func (server *templaterServer) Create(ctx context.Context, source *common.Source
 		status.New(codes.Internal, fmt.Sprintf("Create: failed to get deployed template (%v)", deloyedTemplateError))
 		return nil, deloyedTemplateError
 	}
+
+	networkRemovalError := removeNetworks(ctx, deployedTemplate)
+
+	if networkRemovalError != nil {
+		status.New(codes.Internal, fmt.Sprintf("Create: removing ethernet device from vm error (%v)", networkRemovalError))
+		return nil, networkRemovalError
+	}
+
+	// devices, devicesError := deployedTemplate.Device(ctx)
+	// if devicesError != nil {
+	// 	status.New(codes.Internal, fmt.Sprintf("Create: getting template VM device list error (%v)", devicesError))
+	// 	return nil, devicesError
+	// }
+
+	// networkDevices := devices.SelectByType(&types.VirtualEthernetCard{})
+
+	// for _, networkDevice := range networkDevices {
+	// 	networkRemovalError := deployedTemplate.RemoveDevice(ctx, false, networkDevice)
+	// 	if networkRemovalError != nil {
+	// 		status.New(codes.Internal, fmt.Sprintf("Create: removing ethernet device from vm error (%v)", networkRemovalError))
+	// 		return nil, networkRemovalError
+	// 	}
+	// }
 
 	status.New(codes.OK, "Node creation successful")
 	return &common.Identifier{
