@@ -44,6 +44,7 @@ type Segment struct {
 }
 
 func segmentExists(serverConfiguration *Configuration, virtualSwitchUuid string) (bool, error) {
+	// TODO use OpenAPI for the next 3 following requests
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}
@@ -81,7 +82,7 @@ func createNetworkSegment(nodeDeployment *node.NodeDeployment, serverConfigurati
 		return nil, err
 	}
 	if response.StatusCode != http.StatusOK {
-		err = status.Error(codes.Internal, fmt.Sprintf("CreateNetworkSegment: Virtual Switch not created (%v)", response.Status))
+		err = status.Error(codes.Internal, fmt.Sprintf("CreateSegment: Segment not created (%v)", response.Status))
 		return nil, err
 	}
 
@@ -115,7 +116,7 @@ func (server *nsxtNodeServer) Create(ctx context.Context, nodeDeployment *node.N
 		return
 	}
 	log.Printf("virtual segment created: %v in transport zone: %v\n", segment.Id, segment.TransportZonePath)
-	status.New(codes.OK, "Virtual Switch creation successful")
+	status.New(codes.OK, "Virtual Segment creation successful")
 	return &node.NodeIdentifier{
 		Identifier: &common.Identifier{
 			Value: segment.Id,
@@ -124,17 +125,17 @@ func (server *nsxtNodeServer) Create(ctx context.Context, nodeDeployment *node.N
 	}, nil
 }
 
-func (server *nsxtNodeServer) delete(virtualSwitchUuid string) error {
+func delete(virtualSwitchUuid string, server *nsxtNodeServer) error {
 	switchExists, err := segmentExists(&server.Configuration, virtualSwitchUuid)
 	if err != nil {
 		return err
 	}
 	if !switchExists {
-		return status.Error(codes.InvalidArgument, fmt.Sprintf("DeleteVirtualSwitch: Switch UUID \" %v \" not found", virtualSwitchUuid))
+		return status.Error(codes.InvalidArgument, fmt.Sprintf("DeleteSegment: Switch UUID \" %v \" not found", virtualSwitchUuid))
 	} else {
 		_, err = deleteInfraSegment(&server.Configuration, virtualSwitchUuid)
 		if err != nil {
-			status.New(codes.Internal, fmt.Sprintf("DeleteVirtualSwitch: API request error (%v)", err))
+			status.New(codes.Internal, fmt.Sprintf("DeleteSegment: API request error (%v)", err))
 			return err
 		}
 		switchExists, err = segmentExists(&server.Configuration, virtualSwitchUuid)
@@ -142,7 +143,7 @@ func (server *nsxtNodeServer) delete(virtualSwitchUuid string) error {
 			return err
 		}
 		if switchExists {
-			return status.Error(codes.Internal, fmt.Sprintf("DeleteVirtualSwitch: Switch UUID \" %v \" was not deleted", virtualSwitchUuid))
+			return status.Error(codes.Internal, fmt.Sprintf("DeleteSegment: Switch UUID \" %v \" was not deleted", virtualSwitchUuid))
 		}
 	}
 	return nil
@@ -150,23 +151,23 @@ func (server *nsxtNodeServer) delete(virtualSwitchUuid string) error {
 
 func (server *nsxtNodeServer) Delete(ctx context.Context, nodeIdentifier *node.NodeIdentifier) (*emptypb.Empty, error) {
 	if *nodeIdentifier.GetNodeType().Enum() == *node.NodeType_switch.Enum() {
-		log.Printf("Received switch for deleting: UUID: %v\n", nodeIdentifier.GetIdentifier().GetValue())
+		log.Printf("Received segment for deleting: UUID: %v\n", nodeIdentifier.GetIdentifier().GetValue())
 
-		err := server.delete(nodeIdentifier.GetIdentifier().GetValue())
+		err := delete(nodeIdentifier.GetIdentifier().GetValue(), server)
 		if err != nil {
 			return nil, err
 		}
-		log.Printf("virtual switch deleted: %v\n", nodeIdentifier.GetIdentifier().GetValue())
-		status.New(codes.OK, "Virtual Switch deletion successful")
+		log.Printf("segment deleted: %v\n", nodeIdentifier.GetIdentifier().GetValue())
+		status.New(codes.OK, "Segment deletion successful")
 		return new(emptypb.Empty), nil
 	}
-	return nil, status.Error(codes.InvalidArgument, "DeleteVirtualSwitch: Node is not a virtual switch")
+	return nil, status.Error(codes.InvalidArgument, "DeleteSegment: Node is not a virtual switch")
 }
 
 func RealMain(serverConfiguration *Configuration) {
 	nsxtClient, err := createNsxtClient(serverConfiguration)
 	if err != nil {
-		status.New(codes.Internal, fmt.Sprintf("CreateVirtualSwitch: client error (%v)", err))
+		status.New(codes.Internal, fmt.Sprintf("CreateSegment: client error (%v)", err))
 		return
 	}
 
