@@ -135,7 +135,7 @@ func delete(virtualSwitchUuid string, server *nsxtNodeServer) error {
 	} else {
 		_, err = deleteInfraSegment(&server.Configuration, virtualSwitchUuid)
 		if err != nil {
-			status.New(codes.Internal, fmt.Sprintf("DeleteSegment: API request error (%v)", err))
+			err = status.Error(codes.Internal, fmt.Sprintf("DeleteSegment: API request error (%v)", err))
 			return err
 		}
 		switchExists, err = segmentExists(&server.Configuration, virtualSwitchUuid)
