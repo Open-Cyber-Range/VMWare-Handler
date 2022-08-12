@@ -1,17 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"crypto/tls"
+	"encoding/json"
 	"fmt"
-	"log"
-	"net"
-	"net/http"
-	"path"
-	"strings"
-
 	nsxt "github.com/ScottHolden/go-vmware-nsxt"
-	nsxtCommon "github.com/ScottHolden/go-vmware-nsxt/common"
-	"github.com/ScottHolden/go-vmware-nsxt/manager"
 	"github.com/open-cyber-range/vmware-handler/grpc/capability"
 	common "github.com/open-cyber-range/vmware-handler/grpc/common"
 	node "github.com/open-cyber-range/vmware-handler/grpc/node"
@@ -20,6 +15,10 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"io"
+	"log"
+	"net"
+	"net/http"
 )
 
 func createNsxtClient(serverConfiguration *Configuration) (nsxtClient *nsxt.APIClient, err error) {
@@ -32,113 +31,143 @@ func createNsxtClient(serverConfiguration *Configuration) (nsxtClient *nsxt.APIC
 	return
 }
 
-func findTransportZoneIdByName(ctx context.Context, nsxtClient *nsxt.APIClient, serverConfiguration Configuration) (string, error) {
-	transportZones, _, err := nsxtClient.NetworkTransportApi.ListTransportZones(ctx, nil)
-	if err != nil {
-		status.New(codes.Internal, fmt.Sprintf("CreateVirtualSwitch: ListTransportZones error (%v)", err))
-		return "", err
-	}
-	for _, transportNode := range transportZones.Results {
-		if strings.EqualFold(transportNode.DisplayName, serverConfiguration.TransportZoneName) {
-			return transportNode.Id, nil
-		}
-	}
-	return "", status.Error(codes.InvalidArgument, "Transport zone not found")
-}
-
 type nsxtNodeServer struct {
 	node.UnimplementedNodeServiceServer
 	Client        *nsxt.APIClient
 	Configuration Configuration
 }
 
-func (server *nsxtNodeServer) Create(ctx context.Context, nodeDeployment *node.NodeDeployment) (identifier *node.NodeIdentifier, err error) {
-	virtualSwitchDisplayName := nodeDeployment.GetParameters().GetName()
-	log.Printf("received request for switch creation: %v\n", virtualSwitchDisplayName)
-	transportZoneId, err := findTransportZoneIdByName(ctx, server.Client, server.Configuration)
-	if err != nil {
-		return
-	}
-	newVirtualSwitch := manager.LogicalSwitch{
-		TransportZoneId: transportZoneId,
-		DisplayName:     virtualSwitchDisplayName,
-		AdminState:      "UP",
-		ReplicationMode: "MTEP",
-		Description:     fmt.Sprintf("Created for exercise: %v", nodeDeployment.GetParameters().GetExerciseName()),
-		Tags:            []nsxtCommon.Tag{{Scope: "policyPath", Tag: path.Join("/infra/segments", virtualSwitchDisplayName)}},
-	}
-
-	virtualSwitch, httpResponse, err := server.Client.LogicalSwitchingApi.CreateLogicalSwitch(ctx, newVirtualSwitch)
-	if err != nil {
-		status.New(codes.Internal, fmt.Sprintf("CreateVirtualSwitch: API request error (%v)", err))
-		return
-	}
-	if httpResponse.StatusCode != http.StatusCreated {
-		status.New(codes.Internal, fmt.Sprintf("CreateVirtualSwitch: Virtual Switch not created (%v)", httpResponse.Status))
-		return
-	}
-
-	log.Printf("virtual switch created: %v in transport zone: %v\n", virtualSwitch.Id, virtualSwitch.TransportZoneId)
-	status.New(codes.OK, "Virtual Switch creation successful")
-	return &node.NodeIdentifier{
-		Identifier: &common.Identifier{
-			Value: virtualSwitch.Id,
-		},
-		NodeType: node.NodeType_switch,
-	}, nil
+type Segment struct {
+	DisplayName       string `json:"display_name"`
+	Id                string `json:"id,omitempty"`
+	TransportZonePath string `json:"transport_zone_path,omitempty"`
 }
 
-func delete(ctx context.Context, nsxtClient *nsxt.APIClient, virtualSwitchUuid string) error {
-	switchExists, err := virtualSwitchExists(ctx, nsxtClient, virtualSwitchUuid)
-	if err != nil {
-		return err
+func segmentExists(serverConfiguration *Configuration, virtualSwitchUuid string) (bool, error) {
+	// TODO use OpenAPI for the next 3 following requests
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}
-	if !switchExists {
-		return status.Error(codes.InvalidArgument, fmt.Sprintf("DeleteVirtualSwitch: Switch UUID \" %v \" not found", virtualSwitchUuid))
-	} else {
-		_, err := nsxtClient.LogicalSwitchingApi.DeleteLogicalSwitch(ctx, virtualSwitchUuid, nil)
-		if err != nil {
-			status.New(codes.Internal, fmt.Sprintf("DeleteVirtualSwitch: API request error (%v)", err))
-			return err
-		}
-		switchExists, err = virtualSwitchExists(ctx, nsxtClient, virtualSwitchUuid)
-		if err != nil {
-			return err
-		}
-		if switchExists {
-			return status.Error(codes.Internal, fmt.Sprintf("DeleteVirtualSwitch: Switch UUID \" %v \" was not deleted", virtualSwitchUuid))
-		}
-	}
-	return nil
-}
-
-func virtualSwitchExists(ctx context.Context, nsxtClient *nsxt.APIClient, virtualSwitchUuid string) (bool, error) {
-	_, httpResponse, err := nsxtClient.LogicalSwitchingApi.GetLogicalSwitch(ctx, virtualSwitchUuid)
+	client := &http.Client{Transport: tr}
+	req, _ := http.NewRequest(http.MethodGet, "https://"+serverConfiguration.NsxtApi+"/policy/api/v1/infra/segments/"+virtualSwitchUuid, nil)
+	req.Header.Set("Authorization", fmt.Sprintf("Basic %v", serverConfiguration.NsxtAuth))
+	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	httpResponse, err := client.Do(req)
 	if err != nil && httpResponse.StatusCode != http.StatusNotFound {
 		return false, err
 	}
 	return httpResponse.StatusCode == http.StatusOK, nil
 }
 
+func createNetworkSegment(nodeDeployment *node.NodeDeployment, serverConfiguration *Configuration) (*Segment, error) {
+	var segment = Segment{
+		DisplayName: nodeDeployment.GetParameters().GetName(),
+	}
+	tr := &http.Transport{
+		// TODO Insecure https connection here
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	client := &http.Client{Transport: tr}
+	jsonData, err := json.Marshal(segment)
+	if err != nil {
+		err = status.Error(codes.Internal, fmt.Sprintf("CreateNetworkSegment: JSON Marshal (%v)", err))
+		return nil, err
+	}
+	req, _ := http.NewRequest(http.MethodPut, "https://"+serverConfiguration.NsxtApi+"/policy/api/v1/infra/segments/"+segment.DisplayName, bytes.NewBuffer(jsonData))
+	req.Header.Set("Authorization", fmt.Sprintf("Basic %v", serverConfiguration.NsxtAuth))
+	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	response, err := client.Do(req)
+	if err != nil {
+		err = status.Error(codes.Internal, fmt.Sprintf("CreateNetworkSegment: API request (%v)", err))
+		return nil, err
+	}
+	if response.StatusCode != http.StatusOK {
+		err = status.Error(codes.Internal, fmt.Sprintf("CreateSegment: Segment not created (%v)", response.Status))
+		return nil, err
+	}
+
+	var segmentResponse Segment
+	bytearray, _ := io.ReadAll(response.Body)
+	_ = json.Unmarshal(bytearray, &segmentResponse)
+	return &segmentResponse, nil
+}
+
+func deleteInfraSegment(serverConfiguration *Configuration, virtualSwitchUuid string) (bool, error) {
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	client := &http.Client{Transport: tr}
+	req, _ := http.NewRequest(http.MethodDelete, "https://"+serverConfiguration.NsxtApi+"/policy/api/v1/infra/segments/"+virtualSwitchUuid, nil)
+	req.Header.Set("Authorization", fmt.Sprintf("Basic %v", serverConfiguration.NsxtAuth))
+	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	httpResponse, err := client.Do(req)
+	if err != nil && httpResponse.StatusCode != http.StatusNotFound {
+		return false, err
+	}
+	return httpResponse.StatusCode == http.StatusOK, nil
+}
+
+func (server *nsxtNodeServer) Create(ctx context.Context, nodeDeployment *node.NodeDeployment) (identifier *node.NodeIdentifier, err error) {
+	virtualSwitchDisplayName := nodeDeployment.GetParameters().GetName()
+	log.Printf("received request for switch creation: %v\n", virtualSwitchDisplayName)
+	segment, err := createNetworkSegment(nodeDeployment, &server.Configuration)
+	if err != nil {
+		log.Printf("virtual segment creation failed: %v", err)
+		return
+	}
+	log.Printf("virtual segment created: %v in transport zone: %v\n", segment.Id, segment.TransportZonePath)
+	status.New(codes.OK, "Virtual Segment creation successful")
+	return &node.NodeIdentifier{
+		Identifier: &common.Identifier{
+			Value: segment.Id,
+		},
+		NodeType: node.NodeType_switch,
+	}, nil
+}
+
+func delete(virtualSwitchUuid string, server *nsxtNodeServer) error {
+	switchExists, err := segmentExists(&server.Configuration, virtualSwitchUuid)
+	if err != nil {
+		return err
+	}
+	if !switchExists {
+		return status.Error(codes.InvalidArgument, fmt.Sprintf("DeleteSegment: Switch UUID \" %v \" not found", virtualSwitchUuid))
+	} else {
+		_, err = deleteInfraSegment(&server.Configuration, virtualSwitchUuid)
+		if err != nil {
+			err = status.Error(codes.Internal, fmt.Sprintf("DeleteSegment: API request error (%v)", err))
+			return err
+		}
+		switchExists, err = segmentExists(&server.Configuration, virtualSwitchUuid)
+		if err != nil {
+			return err
+		}
+		if switchExists {
+			return status.Error(codes.Internal, fmt.Sprintf("DeleteSegment: Switch UUID \" %v \" was not deleted", virtualSwitchUuid))
+		}
+	}
+	return nil
+}
+
 func (server *nsxtNodeServer) Delete(ctx context.Context, nodeIdentifier *node.NodeIdentifier) (*emptypb.Empty, error) {
 	if *nodeIdentifier.GetNodeType().Enum() == *node.NodeType_switch.Enum() {
-		log.Printf("Received switch for deleting: UUID: %v\n", nodeIdentifier.GetIdentifier().GetValue())
+		log.Printf("Received segment for deleting: UUID: %v\n", nodeIdentifier.GetIdentifier().GetValue())
 
-		err := delete(ctx, server.Client, nodeIdentifier.GetIdentifier().GetValue())
+		err := delete(nodeIdentifier.GetIdentifier().GetValue(), server)
 		if err != nil {
 			return nil, err
 		}
-		log.Printf("virtual switch deleted: %v\n", nodeIdentifier.GetIdentifier().GetValue())
-		status.New(codes.OK, "Virtual Switch deletion successful")
+		log.Printf("segment deleted: %v\n", nodeIdentifier.GetIdentifier().GetValue())
+		status.New(codes.OK, "Segment deletion successful")
 		return new(emptypb.Empty), nil
 	}
-	return nil, status.Error(codes.InvalidArgument, "DeleteVirtualSwitch: Node is not a virtual switch")
+	return nil, status.Error(codes.InvalidArgument, "DeleteSegment: Node is not a virtual switch")
 }
 
 func RealMain(serverConfiguration *Configuration) {
 	nsxtClient, err := createNsxtClient(serverConfiguration)
 	if err != nil {
-		status.New(codes.Internal, fmt.Sprintf("CreateVirtualSwitch: client error (%v)", err))
+		status.New(codes.Internal, fmt.Sprintf("CreateSegment: client error (%v)", err))
 		return
 	}
 
