@@ -130,6 +130,9 @@ func (client *VMWareClient) GetVirtualMachineByUUID(ctx context.Context, uuid st
 	if virtualMachineRefError != nil {
 		return
 	}
+	if virtualMachineRef == nil {
+		return nil, fmt.Errorf("virtual machine not found")
+	}
 	virtualMachine = object.NewVirtualMachine(client.Client.Client, virtualMachineRef.Reference())
 	return
 }
@@ -150,7 +153,10 @@ func waitForTaskSuccess(task *object.Task) error {
 
 func (client *VMWareClient) DeleteVirtualMachineByUUID(uuid string) (err error) {
 	ctx := context.Background()
-	virtualMachine, _ := client.GetVirtualMachineByUUID(ctx, uuid)
+	virtualMachine, err := client.GetVirtualMachineByUUID(ctx, uuid)
+	if err != nil {
+		return
+	}
 	powerState, err := virtualMachine.PowerState(ctx)
 	if err != nil {
 		return
