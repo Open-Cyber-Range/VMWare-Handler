@@ -180,14 +180,14 @@ func (server *nodeServer) Create(ctx context.Context, nodeDeployment *node.NodeD
 
 	links, linkCreationError := createLinks(ctx, nodeDeployment, finder)
 	if linkCreationError != nil {
-		status.New(codes.Internal, fmt.Sprintf("Create: link creation error (%v)", linkCreationError))
-		return nil, linkCreationError
+		err := status.Error(codes.Internal, fmt.Sprintf("Create: link creation error (%v)", linkCreationError))
+		return nil, err
 	}
 
 	linkAddingError := addLinks(ctx, links, *virtualMachine)
 	if linkAddingError != nil {
-		status.New(codes.Internal, fmt.Sprintf("Create: adding links to VM error (%v)", linkAddingError))
-		return nil, linkAddingError
+		err := status.Error(codes.Internal, fmt.Sprintf("Create: adding links to VM error (%v)", linkAddingError))
+		return nil, err
 	}
 
 	status.New(codes.OK, "Node creation successful")
