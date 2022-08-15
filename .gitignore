@@ -1,6 +1,7 @@
 # config
 machiner-config.yml
 swithcer-config.yml
+templater-config.yml
 
 # gRPC generating files
 grpc/
