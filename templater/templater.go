@@ -200,7 +200,7 @@ func (templateDeployment *TemplateDeployment) createTemplate(packagePath string)
 func removeNetworks(ctx context.Context, deployedTemplate *object.VirtualMachine) (err error) {
 	devices, devicesError := deployedTemplate.Device(ctx)
 	if devicesError != nil {
-		return status.Error(codes.Internal, fmt.Sprintf("Remove networks: VM device list retrieval error (%v)", devicesError))
+		return fmt.Errorf("VM device list retrieval error (%v)", devicesError)
 	}
 
 	networkDevices := devices.SelectByType(&types.VirtualEthernetCard{})
@@ -208,7 +208,7 @@ func removeNetworks(ctx context.Context, deployedTemplate *object.VirtualMachine
 	for _, networkDevice := range networkDevices {
 		networkRemovalError := deployedTemplate.RemoveDevice(ctx, false, networkDevice)
 		if networkRemovalError != nil {
-			return status.Error(codes.Internal, fmt.Sprintf("Remove networks: removing VM network device error (%v)", networkRemovalError))
+			return fmt.Errorf("Remove networks: removing VM network device error (%v)", networkRemovalError)
 		}
 	}
 	return
