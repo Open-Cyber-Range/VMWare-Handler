@@ -1,6 +1,6 @@
 # config
 machiner-config.yml
-swithcer-config.yml
+switcher-config.yml
 templater-config.yml
 
 # gRPC generating files
