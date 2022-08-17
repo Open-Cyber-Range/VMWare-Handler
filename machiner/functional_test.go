@@ -240,3 +240,28 @@ func TestSwitcherCapability(t *testing.T) {
 		t.Fatalf("Capability service returned incorrect value: expected: %v, got: %v", capability.Capabilities_VirtualMachine.Enum(), handlerCapability)
 	}
 }
+
+func TestLinkAddition(t *testing.T) {
+	t.Parallel()
+	configuration := startServer(3 * time.Second)
+
+	ctx := context.Background()
+	govmomiClient, govmomiClientError := testConfiguration.CreateClient(ctx)
+	if govmomiClientError != nil {
+		t.Fatalf("Failed to send request: %v", govmomiClientError)
+	}
+	vmwareClient := library.NewVMWareClient(govmomiClient, testConfiguration.TemplateFolderPath)
+	gRPCClient := creategRPCClient(t, configuration.ServerAddress)
+	exerciseName, _ := createExercise(t, &vmwareClient)
+
+	createVmNode(t, gRPCClient, exerciseName, &vmwareClient)
+	managedVirtualMachine, _ := getVmConfigurations(&vmwareClient, exerciseName, "test-node")
+
+	if !vmNodeExists(&vmwareClient, exerciseName, "test-node") {
+		t.Fatalf("Node does not exist")
+	}
+
+	if managedVirtualMachine.Network == nil || len(managedVirtualMachine.Network) < 2 {
+		t.Fatalf("Links are not added to VM")
+	}
+}
