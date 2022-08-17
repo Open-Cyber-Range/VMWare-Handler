@@ -32,7 +32,7 @@ var testConfiguration = library.Configuration{
 
 var virtualMachineHardwareConfiguration = &node.Configuration{
 	Cpu: 2,
-	Ram: 2147483648, // 2048mb
+	Ram: 1073741824, // 1024mb
 }
 
 func startServer(timeout time.Duration) (configuration library.Configuration) {
