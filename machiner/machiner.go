@@ -161,19 +161,19 @@ func (server *nodeServer) Create(ctx context.Context, nodeDeployment *node.NodeD
 	log.Printf("received node for deployement: %v in exercise: %v\n", nodeDeployment.Parameters.Name, nodeDeployment.Parameters.ExerciseName)
 	deploymentError := deployment.create()
 	if deploymentError != nil {
-		status.New(codes.Internal, fmt.Sprintf("Create: deployment error (%v)", deploymentError))
-		return nil, deploymentError
+		err := status.Error(codes.Internal, fmt.Sprintf("Create: deployment error (%v)", deploymentError))
+		return nil, err
 	}
 	finder, _, datacenterError := vmwareClient.CreateFinderAndDatacenter()
 	if datacenterError != nil {
-		status.New(codes.Internal, fmt.Sprintf("Create: datacenter error (%v)", datacenterError))
-		return nil, datacenterError
+		err := status.Error(codes.Internal, fmt.Sprintf("Create: datacenter error (%v)", datacenterError))
+		return nil, err
 	}
 	nodePath := path.Join(deployment.Configuration.ExerciseRootPath, deployment.Parameters.ExerciseName, deployment.Parameters.Name)
 	virtualMachine, virtualMachineErr := finder.VirtualMachine(context.Background(), nodePath)
 	if virtualMachineErr != nil {
-		status.New(codes.Internal, fmt.Sprintf("Create: VM creation error (%v)", virtualMachineErr))
-		return nil, virtualMachineErr
+		err := status.Error(codes.Internal, fmt.Sprintf("Create: VM creation error (%v)", virtualMachineErr))
+		return nil, err
 	}
 
 	log.Printf("deployed: %v", nodeDeployment.Parameters.GetName())
@@ -210,8 +210,8 @@ func (server *nodeServer) Delete(ctx context.Context, nodeIdentifier *node.NodeI
 	virtualMachine, _ := deployment.Client.GetVirtualMachineByUUID(ctx, uuid)
 	nodeName, nodeNameError := virtualMachine.ObjectName(ctx)
 	if nodeNameError != nil {
-		status.New(codes.Internal, fmt.Sprintf("Delete: node name retrieval error (%v)", nodeNameError))
-		return nil, nodeNameError
+		err := status.Error(codes.Internal, fmt.Sprintf("Delete: node name retrieval error (%v)", nodeNameError))
+		return nil, err
 	}
 	parameters := node.DeploymentParameters{
 		Name: nodeName,
@@ -223,8 +223,8 @@ func (server *nodeServer) Delete(ctx context.Context, nodeIdentifier *node.NodeI
 	deploymentError := deployment.Client.DeleteVirtualMachineByUUID(uuid)
 	if deploymentError != nil {
 		log.Printf("failed to delete node: %v\n", deploymentError)
-		status.New(codes.Internal, fmt.Sprintf("Delete: Error during deletion (%v)", deploymentError))
-		return nil, deploymentError
+		err := status.Error(codes.Internal, fmt.Sprintf("Delete: Error during deletion (%v)", deploymentError))
+		return nil, err
 	}
 	log.Printf("deleted: %v\n", parameters.GetName())
 	status.New(codes.OK, fmt.Sprintf("Node %v deleted", parameters.GetName()))

@@ -6,6 +6,11 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log"
+	"net"
+	"net/http"
+
 	nsxt "github.com/ScottHolden/go-vmware-nsxt"
 	"github.com/open-cyber-range/vmware-handler/grpc/capability"
 	common "github.com/open-cyber-range/vmware-handler/grpc/common"
@@ -15,10 +20,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
-	"io"
-	"log"
-	"net"
-	"net/http"
 )
 
 func createNsxtClient(serverConfiguration *Configuration) (nsxtClient *nsxt.APIClient, err error) {
@@ -110,10 +111,11 @@ func deleteInfraSegment(serverConfiguration *Configuration, virtualSwitchUuid st
 func (server *nsxtNodeServer) Create(ctx context.Context, nodeDeployment *node.NodeDeployment) (identifier *node.NodeIdentifier, err error) {
 	virtualSwitchDisplayName := nodeDeployment.GetParameters().GetName()
 	log.Printf("received request for switch creation: %v\n", virtualSwitchDisplayName)
-	segment, err := createNetworkSegment(nodeDeployment, &server.Configuration)
-	if err != nil {
+	segment, segmentError := createNetworkSegment(nodeDeployment, &server.Configuration)
+	if segmentError != nil {
 		log.Printf("virtual segment creation failed: %v", err)
-		return
+		err := status.Error(codes.Internal, fmt.Sprintf("Delete: node name retrieval error (%v)", segmentError))
+		return nil, err
 	}
 	log.Printf("virtual segment created: %v in transport zone: %v\n", segment.Id, segment.TransportZonePath)
 	status.New(codes.OK, "Virtual Segment creation successful")
@@ -165,10 +167,9 @@ func (server *nsxtNodeServer) Delete(ctx context.Context, nodeIdentifier *node.N
 }
 
 func RealMain(serverConfiguration *Configuration) {
-	nsxtClient, err := createNsxtClient(serverConfiguration)
-	if err != nil {
-		status.New(codes.Internal, fmt.Sprintf("CreateSegment: client error (%v)", err))
-		return
+	nsxtClient, nsxtClientError := createNsxtClient(serverConfiguration)
+	if nsxtClientError != nil {
+		log.Fatalf("CreateSegment: client error (%v)", nsxtClientError)
 	}
 
 	listeningAddress, addressError := net.Listen("tcp", serverConfiguration.ServerAddress)

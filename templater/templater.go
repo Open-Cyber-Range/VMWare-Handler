@@ -221,22 +221,22 @@ func (server *templaterServer) Create(ctx context.Context, source *common.Source
 	checksum, checksumError := getPackageChecksum(source.Name, source.Version)
 	if checksumError != nil {
 		log.Printf("Error getting package checksum: %v\n", checksumError)
-		status.New(codes.Internal, fmt.Sprintf("Create: failed to get package checksum (%v)", checksumError))
-		return nil, checksumError
+		err := status.Error(codes.Internal, fmt.Sprintf("Create: failed to get package checksum (%v)", checksumError))
+		return nil, err
 	}
 	normalizedVersion, normalizedVersionError := normalizePackageVersion(source.Name, source.Version)
 	if normalizedVersionError != nil {
 		log.Printf("Create: failed to normalize package version (%v)\n", normalizedVersionError)
-		status.New(codes.Internal, fmt.Sprintf("Create: failed to normalize package version (%v)", normalizedVersionError))
-		return nil, normalizedVersionError
+		err := status.Error(codes.Internal, fmt.Sprintf("Create: failed to normalize package version (%v)", normalizedVersionError))
+		return nil, err
 	}
 
 	templateName := fmt.Sprintf("%v-%v-%v", source.Name, normalizedVersion, checksum)
 	templateExists, templateExistsError := vmwareClient.DoesTemplateExist(templateName)
 	if templateExistsError != nil {
 		log.Printf("Create: failed to check if template exists (%v)\n", templateExistsError)
-		status.New(codes.Internal, fmt.Sprintf("Create: failed to get information about template from VSphere(%v)", templateExistsError))
-		return nil, templateExistsError
+		err := status.Error(codes.Internal, fmt.Sprintf("Create: failed to get information about template from VSphere(%v)", templateExistsError))
+		return nil, err
 	}
 
 	if templateExists {
@@ -254,22 +254,22 @@ func (server *templaterServer) Create(ctx context.Context, source *common.Source
 		}
 		packagePath, downloadError := templateDeployment.downloadPackage()
 		if downloadError != nil {
-			status.New(codes.NotFound, fmt.Sprintf("Create: failed to download package (%v)", downloadError))
-			return nil, downloadError
+			err := status.Error(codes.NotFound, fmt.Sprintf("Create: failed to download package (%v)", downloadError))
+			return nil, err
 		}
 		log.Printf("Downloaded package to: %v\n", packagePath)
 		deployError := templateDeployment.createTemplate(packagePath)
 		server.currentDeploymentList.Remove(templateName)
 		if deployError != nil {
-			status.New(codes.Internal, fmt.Sprintf("Create: failed to deploy template (%v)", deployError))
-			return nil, deployError
+			err := status.Error(codes.Internal, fmt.Sprintf("Create: failed to deploy template (%v)", deployError))
+			return nil, err
 		}
 		log.Printf("Deployed template: %v, version: %v\n", source.Name, source.Version)
 	}
 	deployedTemplate, deloyedTemplateError := vmwareClient.GetTemplateByName(templateName)
 	if deloyedTemplateError != nil {
-		status.New(codes.Internal, fmt.Sprintf("Create: failed to get deployed template (%v)", deloyedTemplateError))
-		return nil, deloyedTemplateError
+		err := status.Error(codes.Internal, fmt.Sprintf("Create: failed to get deployed template (%v)", deloyedTemplateError))
+		return nil, err
 	}
 
 	networkRemovalError := removeNetworks(ctx, deployedTemplate)
@@ -303,8 +303,9 @@ func (server *templaterServer) Delete(ctx context.Context, identifier *common.Id
 	deploymentError := vmwareClient.DeleteVirtualMachineByUUID(uuid)
 	if deploymentError != nil {
 		log.Printf("failed to delete node: %v\n", deploymentError)
-		status.New(codes.Internal, fmt.Sprintf("Delete: Error during deletion (%v)", deploymentError))
-		return nil, deploymentError
+		err := status.Error(codes.Internal, fmt.Sprintf("Delete: Error during deletion (%v)", deploymentError))
+		return nil, err
+
 	}
 	log.Printf("deleted: %v\n", templateName)
 	status.New(codes.OK, fmt.Sprintf("Node %v deleted", templateName))
