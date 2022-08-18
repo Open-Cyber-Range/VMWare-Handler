@@ -32,7 +32,7 @@ var testConfiguration = library.Configuration{
 
 var virtualMachineHardwareConfiguration = &node.Configuration{
 	Cpu: 2,
-	Ram: 2147483648, // 2048mb
+	Ram: 1073741824, // 1024mb
 }
 
 func startServer(timeout time.Duration) (configuration library.Configuration) {
@@ -124,8 +124,9 @@ func createVmNode(t *testing.T, client node.NodeServiceClient, exerciseName stri
 	nodeDeployment := &node.NodeDeployment{
 		Parameters: &node.DeploymentParameters{
 			Name:         "test-node",
-			TemplateId: templateVirtualMachine.UUID(ctx),
+			TemplateId:   templateVirtualMachine.UUID(ctx),
 			ExerciseName: exerciseName,
+			Links:        []string{"TEST1", "TEST2"},
 		},
 		Node: &node.Node{
 			Identifier: &node.NodeIdentifier{
@@ -237,5 +238,30 @@ func TestSwitcherCapability(t *testing.T) {
 	handlerCapability := handlerCapabilities.GetValues()[0]
 	if handlerCapability.Number() != capability.Capabilities_VirtualMachine.Number() {
 		t.Fatalf("Capability service returned incorrect value: expected: %v, got: %v", capability.Capabilities_VirtualMachine.Enum(), handlerCapability)
+	}
+}
+
+func TestLinkAddition(t *testing.T) {
+	t.Parallel()
+	configuration := startServer(3 * time.Second)
+
+	ctx := context.Background()
+	govmomiClient, govmomiClientError := testConfiguration.CreateClient(ctx)
+	if govmomiClientError != nil {
+		t.Fatalf("Failed to send request: %v", govmomiClientError)
+	}
+	vmwareClient := library.NewVMWareClient(govmomiClient, testConfiguration.TemplateFolderPath)
+	gRPCClient := creategRPCClient(t, configuration.ServerAddress)
+	exerciseName, _ := createExercise(t, &vmwareClient)
+
+	createVmNode(t, gRPCClient, exerciseName, &vmwareClient)
+	managedVirtualMachine, _ := getVmConfigurations(&vmwareClient, exerciseName, "test-node")
+
+	if !vmNodeExists(&vmwareClient, exerciseName, "test-node") {
+		t.Fatalf("Node does not exist")
+	}
+
+	if managedVirtualMachine.Network == nil || len(managedVirtualMachine.Network) < 2 {
+		t.Fatalf("Links are not added to VM")
 	}
 }

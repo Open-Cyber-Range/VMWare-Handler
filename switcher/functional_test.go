@@ -100,7 +100,6 @@ func TestVirtualSwitchCreationAndDeletion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to delete test virtual switch: %v", err)
 	}
-
 }
 
 func TestSwitcherCapability(t *testing.T) {
@@ -115,5 +114,23 @@ func TestSwitcherCapability(t *testing.T) {
 	handlerCapability := handlerCapabilities.GetValues()[0]
 	if handlerCapability.Number() != capability.Capabilities_Switch.Number() {
 		t.Fatalf("Capability service returned incorrect value: expected: %v, got: %v", capability.Capabilities_Switch.Enum(), handlerCapability.Enum())
+	}
+}
+
+func TestSegmentCreationAndDeletion(t *testing.T) {
+	serverConfiguration := startServer(time.Second * 3)
+	var nsxtNodeServer = nsxtNodeServer{
+		UnimplementedNodeServiceServer: node.UnimplementedNodeServiceServer{},
+		Client:                         nil,
+		Configuration:                  serverConfiguration,
+	}
+	nodeDeployment := createNodeDeploymentOfTypeSwitch()
+	segment, err := createNetworkSegment(nodeDeployment, &serverConfiguration)
+	if err != nil {
+		t.Fatalf("Failed to create network segment: %v", err)
+	}
+	err = delete(segment.Id, &nsxtNodeServer)
+	if err != nil {
+		t.Fatalf("Failed to delete network segment: %v", err)
 	}
 }

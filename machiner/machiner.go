@@ -12,6 +12,7 @@ import (
 	node "github.com/open-cyber-range/vmware-handler/grpc/node"
 	"github.com/open-cyber-range/vmware-handler/library"
 	"github.com/vmware/govmomi"
+	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/vim25/types"
 	"google.golang.org/grpc"
@@ -106,6 +107,43 @@ func (deployment *Deployment) create() (err error) {
 	return fmt.Errorf("failed to clone template")
 }
 
+func createLinks(ctx context.Context, nodeDeployment *node.NodeDeployment, finder *find.Finder) (object.VirtualDeviceList, error) {
+	linkNames := nodeDeployment.Parameters.Links
+	var links object.VirtualDeviceList
+
+	for _, linkName := range linkNames {
+		network, networkFetchError := finder.Network(context.Background(), linkName)
+		if networkFetchError != nil {
+			return nil, networkFetchError
+		}
+
+		ethernetBacking, ethernetBackingError := network.EthernetCardBackingInfo(ctx)
+		if ethernetBackingError != nil {
+			return nil, ethernetBackingError
+		}
+
+		ethernetCard, ethernetCardError := object.EthernetCardTypes().CreateEthernetCard("vmxnet3", ethernetBacking)
+		if ethernetCardError != nil {
+			return nil, ethernetCardError
+		}
+
+		links = append(links, ethernetCard)
+	}
+
+	return links, nil
+}
+
+func addLinks(ctx context.Context, links object.VirtualDeviceList, virtualMachine object.VirtualMachine) error {
+	for _, link := range links {
+		linkAddingError := virtualMachine.AddDevice(ctx, link)
+		if linkAddingError != nil {
+			return linkAddingError
+		}
+	}
+
+	return nil
+}
+
 type nodeServer struct {
 	node.UnimplementedNodeServiceServer
 	Client        *govmomi.Client
@@ -139,6 +177,18 @@ func (server *nodeServer) Create(ctx context.Context, nodeDeployment *node.NodeD
 	}
 
 	log.Printf("deployed: %v", nodeDeployment.Parameters.GetName())
+
+	links, linkCreationError := createLinks(ctx, nodeDeployment, finder)
+	if linkCreationError != nil {
+		err := status.Error(codes.Internal, fmt.Sprintf("Create: link creation error (%v)", linkCreationError))
+		return nil, err
+	}
+
+	linkAddingError := addLinks(ctx, links, *virtualMachine)
+	if linkAddingError != nil {
+		err := status.Error(codes.Internal, fmt.Sprintf("Create: adding links to VM error (%v)", linkAddingError))
+		return nil, err
+	}
 
 	status.New(codes.OK, "Node creation successful")
 	return &node.NodeIdentifier{

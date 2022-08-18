@@ -18,6 +18,8 @@ import (
 	"github.com/open-cyber-range/vmware-handler/grpc/template"
 	"github.com/open-cyber-range/vmware-handler/library"
 	"github.com/vmware/govmomi"
+	"github.com/vmware/govmomi/object"
+	"github.com/vmware/govmomi/vim25/types"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -158,10 +160,11 @@ func (templateDeployment *TemplateDeployment) getPackageData(packagePath string)
 }
 
 type VirtualMachine struct {
-	OperatingSystem string `json:"operating_system,omitempty"`
-	Architecture    string `json:"architecture,omitempty"`
-	Type            string `json:"type,omitempty"`
-	FilePath        string `json:"file_path,omitempty"`
+	OperatingSystem string   `json:"operating_system,omitempty"`
+	Architecture    string   `json:"architecture,omitempty"`
+	Type            string   `json:"type,omitempty"`
+	FilePath        string   `json:"file_path,omitempty"`
+	Links           []string `json:"links,omitempty"`
 }
 
 func getVirtualMachineInfo(packegeDataMap *map[string]interface{}) (virtualMachine VirtualMachine, err error) {
@@ -191,6 +194,23 @@ func (templateDeployment *TemplateDeployment) createTemplate(packagePath string)
 	}
 	err = templateDeployment.handleTemplateBasedOnType(packageData, packagePath)
 
+	return
+}
+
+func removeNetworks(ctx context.Context, deployedTemplate *object.VirtualMachine) (err error) {
+	devices, devicesError := deployedTemplate.Device(ctx)
+	if devicesError != nil {
+		return fmt.Errorf("VM device list retrieval error (%v)", devicesError)
+	}
+
+	networkDevices := devices.SelectByType(&types.VirtualEthernetCard{})
+
+	for _, networkDevice := range networkDevices {
+		networkRemovalError := deployedTemplate.RemoveDevice(ctx, false, networkDevice)
+		if networkRemovalError != nil {
+			return fmt.Errorf("Remove networks: removing VM network device error (%v)", networkRemovalError)
+		}
+	}
 	return
 }
 
@@ -252,6 +272,13 @@ func (server *templaterServer) Create(ctx context.Context, source *common.Source
 		return nil, deloyedTemplateError
 	}
 
+	networkRemovalError := removeNetworks(ctx, deployedTemplate)
+
+	if networkRemovalError != nil {
+		err := status.Error(codes.Internal, fmt.Sprintf("Create: removing ethernet device from vm error (%v)", networkRemovalError))
+		return nil, err
+	}
+
 	status.New(codes.OK, "Node creation successful")
 	return &common.Identifier{
 		Value: deployedTemplate.UUID(ctx),
@@ -262,11 +289,13 @@ func (server *templaterServer) Delete(ctx context.Context, identifier *common.Id
 	vmwareClient := library.NewVMWareClient(server.Client, server.Configuration.TemplateFolderPath)
 	uuid := identifier.GetValue()
 
-	virtualMachine, _ := vmwareClient.GetVirtualMachineByUUID(ctx, uuid)
+	virtualMachine, virtualMachineError := vmwareClient.GetVirtualMachineByUUID(ctx, uuid)
+	if virtualMachineError != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Delete: template not found error (%v)", virtualMachineError))
+	}
 	templateName, templateNameError := virtualMachine.ObjectName(ctx)
 	if templateNameError != nil {
-		status.New(codes.Internal, fmt.Sprintf("Delete: node name retrieval error (%v)", templateNameError))
-		return nil, templateNameError
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Delete: template name retrieval error (%v)", templateNameError))
 	}
 
 	log.Printf("Received node for deleting: %v with UUID: %v\n", templateName, uuid)
