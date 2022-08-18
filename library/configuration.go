@@ -3,6 +3,11 @@ package library
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
+	"net/url"
+	"os"
+	"time"
+
 	"github.com/vmware/govmomi"
 	"github.com/vmware/govmomi/session"
 	"github.com/vmware/govmomi/session/keepalive"
@@ -11,10 +16,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"gopkg.in/yaml.v2"
-	"io/ioutil"
-	"net/url"
-	"os"
-	"time"
 )
 
 type Validator struct {
