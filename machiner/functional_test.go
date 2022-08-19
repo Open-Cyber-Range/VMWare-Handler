@@ -159,6 +159,32 @@ func getVmConfigurations(client *library.VMWareClient, exerciseName string, node
 	return managedVirtualMachine, nil
 }
 
+func checkLinks(t *testing.T, client *library.VMWareClient, ctx context.Context, managedVirtualMachine mo.VirtualMachine) {
+	finder, _, _ := client.CreateFinderAndDatacenter()
+
+	// If test vm links are changed under createVmNode function, then these network names need to be changed as well
+	networkTest1, _ := finder.Network(ctx, "TEST1")
+	networkTest2, _ := finder.Network(ctx, "TEST2")
+	testNetworkNames := [2]string{networkTest1.Reference().Value, networkTest2.Reference().Value}
+
+	vmNetworks := managedVirtualMachine.Network
+
+	if vmNetworks == nil {
+		t.Fatalf("Failed to retrieve VM network list")
+	}
+
+	var vmNetworkNames string
+	for _, network := range vmNetworks {
+		vmNetworkNames = vmNetworkNames + " " + network.Value
+	}
+
+	for _, networkName := range testNetworkNames {
+		if !strings.Contains(vmNetworkNames, networkName) {
+			t.Fatalf("Link %v is not added to VM", networkName)
+		}
+	}
+}
+
 func TestVerifyNodeCpuAndMemory(t *testing.T) {
 	t.Parallel()
 	configuration := startServer(3 * time.Second)
@@ -261,7 +287,5 @@ func TestLinkAddition(t *testing.T) {
 		t.Fatalf("Node does not exist")
 	}
 
-	if managedVirtualMachine.Network == nil || len(managedVirtualMachine.Network) < 2 {
-		t.Fatalf("Links are not added to VM")
-	}
+	checkLinks(t, &vmwareClient, ctx, managedVirtualMachine)
 }
