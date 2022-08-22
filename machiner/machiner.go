@@ -114,17 +114,17 @@ func createLinks(ctx context.Context, nodeDeployment *node.NodeDeployment, finde
 	for _, linkName := range linkNames {
 		network, networkFetchError := finder.Network(context.Background(), linkName)
 		if networkFetchError != nil {
-			return nil, networkFetchError
+			return nil, fmt.Errorf("failed to fetch network (%v)", networkFetchError)
 		}
 
 		ethernetBacking, ethernetBackingError := network.EthernetCardBackingInfo(ctx)
 		if ethernetBackingError != nil {
-			return nil, ethernetBackingError
+			return nil, fmt.Errorf("failed to create Ethernet card backing info (%v)", ethernetBackingError)
 		}
 
 		ethernetCard, ethernetCardError := object.EthernetCardTypes().CreateEthernetCard("vmxnet3", ethernetBacking)
 		if ethernetCardError != nil {
-			return nil, ethernetCardError
+			return nil, fmt.Errorf("failed to create Ethernet card (%v)", ethernetCardError)
 		}
 
 		links = append(links, ethernetCard)
@@ -135,9 +135,9 @@ func createLinks(ctx context.Context, nodeDeployment *node.NodeDeployment, finde
 
 func addLinks(ctx context.Context, links object.VirtualDeviceList, virtualMachine object.VirtualMachine) error {
 	for _, link := range links {
-		linkAddingError := virtualMachine.AddDevice(ctx, link)
-		if linkAddingError != nil {
-			return linkAddingError
+		err := virtualMachine.AddDevice(ctx, link)
+		if err != nil {
+			return err
 		}
 	}
 
@@ -158,39 +158,39 @@ func (server *nodeServer) Create(ctx context.Context, nodeDeployment *node.NodeD
 		Node:          nodeDeployment.Node,
 		Parameters:    nodeDeployment.Parameters,
 	}
-	log.Printf("received node for deployement: %v in exercise: %v\n", nodeDeployment.Parameters.Name, nodeDeployment.Parameters.ExerciseName)
+	log.Printf("Received node: %v for deployment in exercise: %v\n", nodeDeployment.Parameters.Name, nodeDeployment.Parameters.ExerciseName)
 	deploymentError := deployment.create()
 	if deploymentError != nil {
-		err := status.Error(codes.Internal, fmt.Sprintf("Create: deployment error (%v)", deploymentError))
-		return nil, err
+		log.Printf("Deployment creation error (%v)\n", deploymentError)
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Deployment creation error (%v)", deploymentError))
 	}
 	finder, _, datacenterError := vmwareClient.CreateFinderAndDatacenter()
 	if datacenterError != nil {
-		err := status.Error(codes.Internal, fmt.Sprintf("Create: datacenter error (%v)", datacenterError))
-		return nil, err
+		log.Printf("Datacenter creation error (%v)\n", datacenterError)
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Datacenter creation error (%v)", datacenterError))
 	}
 	nodePath := path.Join(deployment.Configuration.ExerciseRootPath, deployment.Parameters.ExerciseName, deployment.Parameters.Name)
-	virtualMachine, virtualMachineErr := finder.VirtualMachine(context.Background(), nodePath)
-	if virtualMachineErr != nil {
-		err := status.Error(codes.Internal, fmt.Sprintf("Create: VM creation error (%v)", virtualMachineErr))
-		return nil, err
+	virtualMachine, virtualMachineError := finder.VirtualMachine(context.Background(), nodePath)
+	if virtualMachineError != nil {
+		log.Printf("Node creation error (%v)\n", virtualMachineError)
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Node creation error (%v)", virtualMachineError))
 	}
 
-	log.Printf("deployed: %v", nodeDeployment.Parameters.GetName())
+	log.Printf("Deployed: %v\n", nodeDeployment.Parameters.GetName())
 
 	links, linkCreationError := createLinks(ctx, nodeDeployment, finder)
 	if linkCreationError != nil {
-		err := status.Error(codes.Internal, fmt.Sprintf("Create: link creation error (%v)", linkCreationError))
-		return nil, err
+		log.Printf("Link creation error (%v)\n", linkCreationError)
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Link creation error (%v)", linkCreationError))
 	}
 
 	linkAddingError := addLinks(ctx, links, *virtualMachine)
 	if linkAddingError != nil {
-		err := status.Error(codes.Internal, fmt.Sprintf("Create: adding links to VM error (%v)", linkAddingError))
-		return nil, err
+		log.Printf("Adding links to node error (%v)\n", linkAddingError)
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Adding links to node error (%v)", linkAddingError))
 	}
 
-	status.New(codes.OK, "Node creation successful")
+	log.Printf("Node: %v deployed in exercise: %v\n", nodeDeployment.Parameters.Name, nodeDeployment.Parameters.ExerciseName)
 	return &node.NodeIdentifier{
 		Identifier: &common.Identifier{
 			Value: virtualMachine.UUID(ctx),
@@ -210,24 +210,22 @@ func (server *nodeServer) Delete(ctx context.Context, nodeIdentifier *node.NodeI
 	virtualMachine, _ := deployment.Client.GetVirtualMachineByUUID(ctx, uuid)
 	nodeName, nodeNameError := virtualMachine.ObjectName(ctx)
 	if nodeNameError != nil {
-		err := status.Error(codes.Internal, fmt.Sprintf("Delete: node name retrieval error (%v)", nodeNameError))
-		return nil, err
+		log.Printf("Node name retrieval error (%v)\n", nodeNameError)
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Node name retrieval error (%v)", nodeNameError))
 	}
 	parameters := node.DeploymentParameters{
 		Name: nodeName,
 	}
 	deployment.Parameters = &parameters
 
-	log.Printf("Received node for deleting: %v with UUID: %v\n", parameters.Name, uuid)
+	log.Printf("Received node: %v for deleting with UUID: %v\n", parameters.Name, uuid)
 
 	deploymentError := deployment.Client.DeleteVirtualMachineByUUID(uuid)
 	if deploymentError != nil {
-		log.Printf("failed to delete node: %v\n", deploymentError)
-		err := status.Error(codes.Internal, fmt.Sprintf("Delete: Error during deletion (%v)", deploymentError))
-		return nil, err
+		log.Printf("Error during node deletion (%v)\n", deploymentError)
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Error during node deletion (%v)", deploymentError))
 	}
-	log.Printf("deleted: %v\n", parameters.GetName())
-	status.New(codes.OK, fmt.Sprintf("Node %v deleted", parameters.GetName()))
+	log.Printf("Deleted node: %v\n", parameters.GetName())
 	return new(emptypb.Empty), nil
 }
 
@@ -240,7 +238,7 @@ func RealMain(configuration *library.Configuration) {
 
 	listeningAddress, addressError := net.Listen("tcp", configuration.ServerAddress)
 	if addressError != nil {
-		log.Fatalf("failed to listen: %v", addressError)
+		log.Fatalf("Failed to listen: %v", addressError)
 	}
 
 	server := grpc.NewServer()
@@ -255,9 +253,9 @@ func RealMain(configuration *library.Configuration) {
 
 	capability.RegisterCapabilityServer(server, &capabilityServer)
 
-	log.Printf("server listening at %v", listeningAddress.Addr())
+	log.Printf("Server listening at %v\n", listeningAddress.Addr())
 	if bindError := server.Serve(listeningAddress); bindError != nil {
-		log.Fatalf("failed to serve: %v", bindError)
+		log.Fatalf("Failed to serve: %v", bindError)
 	}
 }
 
@@ -268,6 +266,6 @@ func main() {
 	if configurationError != nil {
 		log.Fatal(configurationError)
 	}
-
+	log.Println("Machiner has started")
 	RealMain(&configuration)
 }

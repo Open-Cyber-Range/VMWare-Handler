@@ -225,14 +225,14 @@ func (server *templaterServer) Create(ctx context.Context, source *common.Source
 	normalizedVersion, normalizedVersionError := normalizePackageVersion(source.Name, source.Version)
 	if normalizedVersionError != nil {
 		log.Printf("Failed to normalize package version (%v)\n", normalizedVersionError)
-		return nil, status.Error(codes.Internal, fmt.Sprintf("failed to normalize package version (%v)", normalizedVersionError))
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to normalize package version (%v)", normalizedVersionError))
 	}
 
 	templateName := fmt.Sprintf("%v-%v-%v", source.Name, normalizedVersion, checksum)
 	templateExists, templateExistsError := vmwareClient.DoesTemplateExist(templateName)
 	if templateExistsError != nil {
 		log.Printf("Failed to check if template exists (%v)\n", templateExistsError)
-		return nil, status.Error(codes.Internal, fmt.Sprintf("failed to get information about template from VSphere(%v)", templateExistsError))
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to get information about template from VSphere(%v)", templateExistsError))
 	}
 
 	if templateExists {
@@ -250,12 +250,14 @@ func (server *templaterServer) Create(ctx context.Context, source *common.Source
 		}
 		packagePath, downloadError := templateDeployment.downloadPackage()
 		if downloadError != nil {
+			log.Printf("Failed to download package (%v)\n", downloadError)
 			return nil, status.Error(codes.NotFound, fmt.Sprintf("Failed to download package (%v)", downloadError))
 		}
 		log.Printf("Downloaded package to: %v\n", packagePath)
 		deployError := templateDeployment.createTemplate(packagePath)
 		server.currentDeploymentList.Remove(templateName)
 		if deployError != nil {
+			log.Printf("Failed to deploy template (%v)\n", deployError)
 			return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to deploy template (%v)", deployError))
 		}
 		log.Printf("Deployed template: %v, version: %v\n", source.Name, source.Version)
@@ -278,11 +280,13 @@ func (server *templaterServer) Delete(ctx context.Context, identifier *common.Id
 
 	virtualMachine, virtualMachineError := vmwareClient.GetVirtualMachineByUUID(ctx, uuid)
 	if virtualMachineError != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Delete: template not found error (%v)", virtualMachineError))
+		log.Printf("Template not found error (%v)\n", virtualMachineError)
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Template not found error (%v)", virtualMachineError))
 	}
 	templateName, templateNameError := virtualMachine.ObjectName(ctx)
 	if templateNameError != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Delete: template name retrieval error (%v)", templateNameError))
+		log.Printf("Template name retrieval error (%v)\n", templateNameError)
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Template name retrieval error (%v)", templateNameError))
 	}
 
 	log.Printf("Received node for deleting: %v with UUID: %v\n", templateName, uuid)
@@ -293,7 +297,7 @@ func (server *templaterServer) Delete(ctx context.Context, identifier *common.Id
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Error during deletion (%v)", deploymentError))
 	}
 
-	log.Printf("Deleted: %v\n", templateName)
+	log.Printf("Deleted template: %v\n", templateName)
 	return new(emptypb.Empty), nil
 }
 
@@ -320,7 +324,7 @@ func RealMain(configuration library.Configuration) {
 
 	capability.RegisterCapabilityServer(server, &capabilityServer)
 
-	log.Printf("Server listening at %v", listeningAddress.Addr())
+	log.Printf("Server listening at %v\n", listeningAddress.Addr())
 	if bindError := server.Serve(listeningAddress); bindError != nil {
 		log.Fatalf("Failed to serve: %v", bindError)
 	}
@@ -335,6 +339,6 @@ func main() {
 	if configurationError != nil {
 		log.Fatal(configurationError)
 	}
-	log.Println("Hello, templater!")
+	log.Println("Templater has started")
 	RealMain(configuration)
 }
