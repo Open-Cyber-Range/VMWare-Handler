@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"net/http"
 
@@ -16,6 +15,7 @@ import (
 	common "github.com/open-cyber-range/vmware-handler/grpc/common"
 	node "github.com/open-cyber-range/vmware-handler/grpc/node"
 	"github.com/open-cyber-range/vmware-handler/library"
+	log "github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -107,13 +107,13 @@ func deleteInfraSegment(serverConfiguration *Configuration, virtualSwitchUuid st
 
 func (server *nsxtNodeServer) Create(ctx context.Context, nodeDeployment *node.NodeDeployment) (identifier *node.NodeIdentifier, err error) {
 	virtualSwitchDisplayName := nodeDeployment.GetParameters().GetName()
-	log.Printf("Received request for switch: %v creation\n", virtualSwitchDisplayName)
+	log.Printf("Received request for switch: %v creation", virtualSwitchDisplayName)
 	segment, segmentError := createNetworkSegment(nodeDeployment, &server.Configuration)
 	if segmentError != nil {
-		log.Printf("Virtual segment creation failed (%v)\n", segmentError)
+		log.Printf("Virtual segment creation failed (%v)", segmentError)
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Virtual segment creation failed (%v)", segmentError))
 	}
-	log.Printf("Virtual segment: %v created in transport zone: %v\n", segment.Id, segment.TransportZonePath)
+	log.Printf("Virtual segment: %v created in transport zone: %v", segment.Id, segment.TransportZonePath)
 	return &node.NodeIdentifier{
 		Identifier: &common.Identifier{
 			Value: segment.Id,
@@ -147,14 +147,14 @@ func delete(virtualSwitchUuid string, server *nsxtNodeServer) error {
 
 func (server *nsxtNodeServer) Delete(ctx context.Context, nodeIdentifier *node.NodeIdentifier) (*emptypb.Empty, error) {
 	if *nodeIdentifier.GetNodeType().Enum() == *node.NodeType_switch.Enum() {
-		log.Printf("Received segment for deleting: UUID: %v\n", nodeIdentifier.GetIdentifier().GetValue())
+		log.Printf("Received segment for deleting: UUID: %v", nodeIdentifier.GetIdentifier().GetValue())
 
 		err := delete(nodeIdentifier.GetIdentifier().GetValue(), server)
 		if err != nil {
-			log.Printf("Failed to delete segment (%v)\n", err)
-			return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to delete segment (%v)\n", err))
+			log.Printf("Failed to delete segment (%v)", err)
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to delete segment (%v)", err))
 		}
-		log.Printf("Deleted segment: %v\n", nodeIdentifier.GetIdentifier().GetValue())
+		log.Printf("Deleted segment: %v", nodeIdentifier.GetIdentifier().GetValue())
 		return new(emptypb.Empty), nil
 	}
 	return nil, status.Error(codes.InvalidArgument, "Node is not a virtual switch")
@@ -183,16 +183,13 @@ func RealMain(serverConfiguration *Configuration) {
 
 	capability.RegisterCapabilityServer(server, &capabilityServer)
 
-	log.Printf("Server listening at %v\n", listeningAddress.Addr())
+	log.Printf("Server listening at %v", listeningAddress.Addr())
 	if bindError := server.Serve(listeningAddress); bindError != nil {
 		log.Fatalf("Failed to serve: %v", bindError)
 	}
 }
 
 func main() {
-	log.SetPrefix("switcher: ")
-	log.SetFlags(0)
-
 	configuration, configurationError := GetConfiguration()
 	if configurationError != nil {
 		log.Fatal(configurationError)
