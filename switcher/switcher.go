@@ -6,19 +6,20 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net"
+	"net/http"
+
 	nsxt "github.com/ScottHolden/go-vmware-nsxt"
 	"github.com/open-cyber-range/vmware-handler/grpc/capability"
 	common "github.com/open-cyber-range/vmware-handler/grpc/common"
 	node "github.com/open-cyber-range/vmware-handler/grpc/node"
 	"github.com/open-cyber-range/vmware-handler/library"
+	log "github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
-	"io"
-	"log"
-	"net"
-	"net/http"
 )
 
 func createNsxtClient(serverConfiguration *Configuration) (nsxtClient *nsxt.APIClient, err error) {
@@ -70,20 +71,17 @@ func createNetworkSegment(nodeDeployment *node.NodeDeployment, serverConfigurati
 	client := &http.Client{Transport: tr}
 	jsonData, err := json.Marshal(segment)
 	if err != nil {
-		err = status.Error(codes.Internal, fmt.Sprintf("CreateNetworkSegment: JSON Marshal (%v)", err))
-		return nil, err
+		return nil, fmt.Errorf("JSON Marshal error (%v)", err)
 	}
 	req, _ := http.NewRequest(http.MethodPut, "https://"+serverConfiguration.NsxtApi+"/policy/api/v1/infra/segments/"+segment.DisplayName, bytes.NewBuffer(jsonData))
 	req.Header.Set("Authorization", fmt.Sprintf("Basic %v", serverConfiguration.NsxtAuth))
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
 	response, err := client.Do(req)
 	if err != nil {
-		err = status.Error(codes.Internal, fmt.Sprintf("CreateNetworkSegment: API request (%v)", err))
-		return nil, err
+		return nil, fmt.Errorf("API request error (%v)", err)
 	}
 	if response.StatusCode != http.StatusOK {
-		err = status.Error(codes.Internal, fmt.Sprintf("CreateSegment: Segment not created (%v)", response.Status))
-		return nil, err
+		return nil, fmt.Errorf("segment not created (%v)", response.Status)
 	}
 
 	var segmentResponse Segment
@@ -109,14 +107,13 @@ func deleteInfraSegment(serverConfiguration *Configuration, virtualSwitchUuid st
 
 func (server *nsxtNodeServer) Create(ctx context.Context, nodeDeployment *node.NodeDeployment) (identifier *node.NodeIdentifier, err error) {
 	virtualSwitchDisplayName := nodeDeployment.GetParameters().GetName()
-	log.Printf("received request for switch creation: %v\n", virtualSwitchDisplayName)
-	segment, err := createNetworkSegment(nodeDeployment, &server.Configuration)
-	if err != nil {
-		log.Printf("virtual segment creation failed: %v", err)
-		return
+	log.Infof("Received request for switch: %v creation", virtualSwitchDisplayName)
+	segment, segmentError := createNetworkSegment(nodeDeployment, &server.Configuration)
+	if segmentError != nil {
+		log.Errorf("Virtual segment creation failed (%v)", segmentError)
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Virtual segment creation failed (%v)", segmentError))
 	}
-	log.Printf("virtual segment created: %v in transport zone: %v\n", segment.Id, segment.TransportZonePath)
-	status.New(codes.OK, "Virtual Segment creation successful")
+	log.Infof("Virtual segment: %v created in transport zone: %v", segment.Id, segment.TransportZonePath)
 	return &node.NodeIdentifier{
 		Identifier: &common.Identifier{
 			Value: segment.Id,
@@ -128,22 +125,21 @@ func (server *nsxtNodeServer) Create(ctx context.Context, nodeDeployment *node.N
 func delete(virtualSwitchUuid string, server *nsxtNodeServer) error {
 	switchExists, err := segmentExists(&server.Configuration, virtualSwitchUuid)
 	if err != nil {
-		return err
+		return fmt.Errorf("segment check error (%v)", err)
 	}
 	if !switchExists {
-		return status.Error(codes.InvalidArgument, fmt.Sprintf("DeleteSegment: Switch UUID \" %v \" not found", virtualSwitchUuid))
+		return fmt.Errorf("switch (UUID \" %v \") not found", virtualSwitchUuid)
 	} else {
 		_, err = deleteInfraSegment(&server.Configuration, virtualSwitchUuid)
 		if err != nil {
-			err = status.Error(codes.Internal, fmt.Sprintf("DeleteSegment: API request error (%v)", err))
-			return err
+			return fmt.Errorf("API request error (%v)", err)
 		}
 		switchExists, err = segmentExists(&server.Configuration, virtualSwitchUuid)
 		if err != nil {
-			return err
+			return fmt.Errorf("segment check error (%v)", err)
 		}
 		if switchExists {
-			return status.Error(codes.Internal, fmt.Sprintf("DeleteSegment: Switch UUID \" %v \" was not deleted", virtualSwitchUuid))
+			return fmt.Errorf("switch (UUID \" %v \") was not deleted", virtualSwitchUuid)
 		}
 	}
 	return nil
@@ -151,29 +147,28 @@ func delete(virtualSwitchUuid string, server *nsxtNodeServer) error {
 
 func (server *nsxtNodeServer) Delete(ctx context.Context, nodeIdentifier *node.NodeIdentifier) (*emptypb.Empty, error) {
 	if *nodeIdentifier.GetNodeType().Enum() == *node.NodeType_switch.Enum() {
-		log.Printf("Received segment for deleting: UUID: %v\n", nodeIdentifier.GetIdentifier().GetValue())
+		log.Infof("Received segment for deleting: UUID: %v", nodeIdentifier.GetIdentifier().GetValue())
 
 		err := delete(nodeIdentifier.GetIdentifier().GetValue(), server)
 		if err != nil {
-			return nil, err
+			log.Errorf("Failed to delete segment (%v)", err)
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to delete segment (%v)", err))
 		}
-		log.Printf("segment deleted: %v\n", nodeIdentifier.GetIdentifier().GetValue())
-		status.New(codes.OK, "Segment deletion successful")
+		log.Infof("Deleted segment: %v", nodeIdentifier.GetIdentifier().GetValue())
 		return new(emptypb.Empty), nil
 	}
-	return nil, status.Error(codes.InvalidArgument, "DeleteSegment: Node is not a virtual switch")
+	return nil, status.Error(codes.InvalidArgument, "Node is not a virtual switch")
 }
 
 func RealMain(serverConfiguration *Configuration) {
-	nsxtClient, err := createNsxtClient(serverConfiguration)
-	if err != nil {
-		status.New(codes.Internal, fmt.Sprintf("CreateSegment: client error (%v)", err))
-		return
+	nsxtClient, nsxtClientError := createNsxtClient(serverConfiguration)
+	if nsxtClientError != nil {
+		log.Fatalf("Client error (%v)", nsxtClientError)
 	}
 
 	listeningAddress, addressError := net.Listen("tcp", serverConfiguration.ServerAddress)
 	if addressError != nil {
-		log.Fatalf("failed to listen: %v", addressError)
+		log.Fatalf("Failed to listen: %v", addressError)
 	}
 
 	server := grpc.NewServer()
@@ -188,20 +183,16 @@ func RealMain(serverConfiguration *Configuration) {
 
 	capability.RegisterCapabilityServer(server, &capabilityServer)
 
-	log.Printf("server listening at %v", listeningAddress.Addr())
+	log.Infof("Switcher listening at %v", listeningAddress.Addr())
 	if bindError := server.Serve(listeningAddress); bindError != nil {
-		log.Fatalf("failed to serve: %v", bindError)
+		log.Fatalf("Failed to serve: %v", bindError)
 	}
 }
 
 func main() {
-	log.SetPrefix("switcher: ")
-	log.SetFlags(0)
-
 	configuration, configurationError := GetConfiguration()
 	if configurationError != nil {
 		log.Fatal(configurationError)
 	}
-
 	RealMain(configuration)
 }
