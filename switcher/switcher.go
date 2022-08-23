@@ -107,13 +107,13 @@ func deleteInfraSegment(serverConfiguration *Configuration, virtualSwitchUuid st
 
 func (server *nsxtNodeServer) Create(ctx context.Context, nodeDeployment *node.NodeDeployment) (identifier *node.NodeIdentifier, err error) {
 	virtualSwitchDisplayName := nodeDeployment.GetParameters().GetName()
-	log.Printf("Received request for switch: %v creation", virtualSwitchDisplayName)
+	log.Infof("Received request for switch: %v creation", virtualSwitchDisplayName)
 	segment, segmentError := createNetworkSegment(nodeDeployment, &server.Configuration)
 	if segmentError != nil {
-		log.Printf("Virtual segment creation failed (%v)", segmentError)
+		log.Errorf("Virtual segment creation failed (%v)", segmentError)
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Virtual segment creation failed (%v)", segmentError))
 	}
-	log.Printf("Virtual segment: %v created in transport zone: %v", segment.Id, segment.TransportZonePath)
+	log.Infof("Virtual segment: %v created in transport zone: %v", segment.Id, segment.TransportZonePath)
 	return &node.NodeIdentifier{
 		Identifier: &common.Identifier{
 			Value: segment.Id,
@@ -147,14 +147,14 @@ func delete(virtualSwitchUuid string, server *nsxtNodeServer) error {
 
 func (server *nsxtNodeServer) Delete(ctx context.Context, nodeIdentifier *node.NodeIdentifier) (*emptypb.Empty, error) {
 	if *nodeIdentifier.GetNodeType().Enum() == *node.NodeType_switch.Enum() {
-		log.Printf("Received segment for deleting: UUID: %v", nodeIdentifier.GetIdentifier().GetValue())
+		log.Infof("Received segment for deleting: UUID: %v", nodeIdentifier.GetIdentifier().GetValue())
 
 		err := delete(nodeIdentifier.GetIdentifier().GetValue(), server)
 		if err != nil {
-			log.Printf("Failed to delete segment (%v)", err)
+			log.Errorf("Failed to delete segment (%v)", err)
 			return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to delete segment (%v)", err))
 		}
-		log.Printf("Deleted segment: %v", nodeIdentifier.GetIdentifier().GetValue())
+		log.Infof("Deleted segment: %v", nodeIdentifier.GetIdentifier().GetValue())
 		return new(emptypb.Empty), nil
 	}
 	return nil, status.Error(codes.InvalidArgument, "Node is not a virtual switch")
@@ -183,7 +183,7 @@ func RealMain(serverConfiguration *Configuration) {
 
 	capability.RegisterCapabilityServer(server, &capabilityServer)
 
-	log.Printf("Server listening at %v", listeningAddress.Addr())
+	log.Infof("Switcher listening at %v", listeningAddress.Addr())
 	if bindError := server.Serve(listeningAddress); bindError != nil {
 		log.Fatalf("Failed to serve: %v", bindError)
 	}
@@ -194,6 +194,5 @@ func main() {
 	if configurationError != nil {
 		log.Fatal(configurationError)
 	}
-	log.Println("Switcher has started")
 	RealMain(configuration)
 }

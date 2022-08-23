@@ -158,39 +158,38 @@ func (server *nodeServer) Create(ctx context.Context, nodeDeployment *node.NodeD
 		Node:          nodeDeployment.Node,
 		Parameters:    nodeDeployment.Parameters,
 	}
-	log.Printf("Received node: %v for deployment in exercise: %v", nodeDeployment.Parameters.Name, nodeDeployment.Parameters.ExerciseName)
+	log.Infof("Received node: %v for deployment in exercise: %v", nodeDeployment.Parameters.Name, nodeDeployment.Parameters.ExerciseName)
 	deploymentError := deployment.create()
 	if deploymentError != nil {
-		log.Printf("Deployment creation error (%v)", deploymentError)
+		log.Errorf("Deployment creation error (%v)", deploymentError)
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Deployment creation error (%v)", deploymentError))
 	}
 	finder, _, datacenterError := vmwareClient.CreateFinderAndDatacenter()
 	if datacenterError != nil {
-		log.Printf("Datacenter creation error (%v)", datacenterError)
+		log.Errorf("Datacenter creation error (%v)", datacenterError)
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Datacenter creation error (%v)", datacenterError))
 	}
 	nodePath := path.Join(deployment.Configuration.ExerciseRootPath, deployment.Parameters.ExerciseName, deployment.Parameters.Name)
 	virtualMachine, virtualMachineError := finder.VirtualMachine(context.Background(), nodePath)
 	if virtualMachineError != nil {
-		log.Printf("Node creation error (%v)", virtualMachineError)
+		log.Errorf("Node creation error (%v)", virtualMachineError)
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Node creation error (%v)", virtualMachineError))
 	}
-
-	log.Printf("Deployed: %v", nodeDeployment.Parameters.GetName())
+	log.Infof("Deployed: %v", nodeDeployment.Parameters.GetName())
 
 	links, linkCreationError := createLinks(ctx, nodeDeployment, finder)
 	if linkCreationError != nil {
-		log.Printf("Link creation error (%v)", linkCreationError)
+		log.Errorf("Link creation error (%v)", linkCreationError)
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Link creation error (%v)", linkCreationError))
 	}
 
 	linkAddingError := addLinks(ctx, links, *virtualMachine)
 	if linkAddingError != nil {
-		log.Printf("Adding links to node error (%v)", linkAddingError)
+		log.Errorf("Adding links to node error (%v)", linkAddingError)
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Adding links to node error (%v)", linkAddingError))
 	}
 
-	log.Printf("Node: %v deployed in exercise: %v", nodeDeployment.Parameters.Name, nodeDeployment.Parameters.ExerciseName)
+	log.Infof("Node: %v deployed in exercise: %v", nodeDeployment.Parameters.Name, nodeDeployment.Parameters.ExerciseName)
 	return &node.NodeIdentifier{
 		Identifier: &common.Identifier{
 			Value: virtualMachine.UUID(ctx),
@@ -210,7 +209,7 @@ func (server *nodeServer) Delete(ctx context.Context, nodeIdentifier *node.NodeI
 	virtualMachine, _ := deployment.Client.GetVirtualMachineByUUID(ctx, uuid)
 	nodeName, nodeNameError := virtualMachine.ObjectName(ctx)
 	if nodeNameError != nil {
-		log.Printf("Node name retrieval error (%v)", nodeNameError)
+		log.Errorf("Node name retrieval error (%v)", nodeNameError)
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Node name retrieval error (%v)", nodeNameError))
 	}
 	parameters := node.DeploymentParameters{
@@ -218,14 +217,14 @@ func (server *nodeServer) Delete(ctx context.Context, nodeIdentifier *node.NodeI
 	}
 	deployment.Parameters = &parameters
 
-	log.Printf("Received node: %v for deleting with UUID: %v", parameters.Name, uuid)
+	log.Infof("Received node: %v for deleting with UUID: %v", parameters.Name, uuid)
 
 	deploymentError := deployment.Client.DeleteVirtualMachineByUUID(uuid)
 	if deploymentError != nil {
-		log.Printf("Error during node deletion (%v)", deploymentError)
+		log.Errorf("Error during node deletion (%v)", deploymentError)
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Error during node deletion (%v)", deploymentError))
 	}
-	log.Printf("Deleted node: %v", parameters.GetName())
+	log.Infof("Deleted node: %v", parameters.GetName())
 	return new(emptypb.Empty), nil
 }
 
@@ -253,7 +252,7 @@ func RealMain(configuration *library.Configuration) {
 
 	capability.RegisterCapabilityServer(server, &capabilityServer)
 
-	log.Printf("Server listening at %v", listeningAddress.Addr())
+	log.Printf("Machiner listening at %v", listeningAddress.Addr())
 	if bindError := server.Serve(listeningAddress); bindError != nil {
 		log.Fatalf("Failed to serve: %v", bindError)
 	}
@@ -264,6 +263,5 @@ func main() {
 	if configurationError != nil {
 		log.Fatal(configurationError)
 	}
-	log.Println("Machiner has started")
 	RealMain(&configuration)
 }
