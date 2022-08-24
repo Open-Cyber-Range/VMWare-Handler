@@ -1,21 +1,19 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"crypto/tls"
-	"encoding/json"
 	"fmt"
 	nsxt "github.com/ScottHolden/go-vmware-nsxt"
 	"github.com/open-cyber-range/vmware-handler/grpc/capability"
 	common "github.com/open-cyber-range/vmware-handler/grpc/common"
 	node "github.com/open-cyber-range/vmware-handler/grpc/node"
 	"github.com/open-cyber-range/vmware-handler/library"
+	swagger "github.com/open-cyber-range/vmware-handler/switcher/yolo-go"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
-	"io"
 	"log"
 	"net"
 	"net/http"
@@ -31,76 +29,58 @@ func createNsxtClient(serverConfiguration *Configuration) (nsxtClient *nsxt.APIC
 	return
 }
 
+func getSegmentApiService(ctx context.Context, serverConfiguration *Configuration) (segmentApiService *swagger.SegmentsApiService, ctx2 context.Context) {
+	conf := swagger.NewConfiguration()
+	conf.HTTPClient = &http.Client{
+		// TODO TLS still insecure
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+	}
+	apiKey := swagger.APIKey{
+		Prefix: "Basic",
+		Key:    serverConfiguration.NsxtAuth,
+	}
+	ctx = context.WithValue(ctx, swagger.ContextAPIKey, apiKey)
+	segmentApiService = swagger.NewAPIClient(conf).SegmentsApi
+	return segmentApiService, ctx
+}
+
 type nsxtNodeServer struct {
 	node.UnimplementedNodeServiceServer
 	Client        *nsxt.APIClient
 	Configuration Configuration
 }
 
-type Segment struct {
-	DisplayName       string `json:"display_name"`
-	Id                string `json:"id,omitempty"`
-	TransportZonePath string `json:"transport_zone_path,omitempty"`
-}
-
-func segmentExists(serverConfiguration *Configuration, virtualSwitchUuid string) (bool, error) {
-	// TODO use OpenAPI for the next 3 following requests
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-	client := &http.Client{Transport: tr}
-	req, _ := http.NewRequest(http.MethodGet, "https://"+serverConfiguration.NsxtApi+"/policy/api/v1/infra/segments/"+virtualSwitchUuid, nil)
-	req.Header.Set("Authorization", fmt.Sprintf("Basic %v", serverConfiguration.NsxtAuth))
-	req.Header.Set("Content-Type", "application/json; charset=utf-8")
-	httpResponse, err := client.Do(req)
+func segmentExists(ctx context.Context, serverConfiguration *Configuration, virtualSwitchUuid string) (bool, error) {
+	segmentApiService, ctx := getSegmentApiService(ctx, serverConfiguration)
+	_, httpResponse, err := segmentApiService.ReadInfraSegment(ctx, virtualSwitchUuid)
 	if err != nil && httpResponse.StatusCode != http.StatusNotFound {
 		return false, err
 	}
 	return httpResponse.StatusCode == http.StatusOK, nil
 }
 
-func createNetworkSegment(nodeDeployment *node.NodeDeployment, serverConfiguration *Configuration) (*Segment, error) {
-	var segment = Segment{
-		DisplayName: nodeDeployment.GetParameters().GetName(),
+func createNetworkSegment(ctx context.Context, nodeDeployment *node.NodeDeployment, serverConfiguration *Configuration) (*swagger.Segment, error) {
+	var segment = swagger.Segment{
+		Id: nodeDeployment.GetParameters().GetName(),
 	}
-	tr := &http.Transport{
-		// TODO Insecure https connection here
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-	client := &http.Client{Transport: tr}
-	jsonData, err := json.Marshal(segment)
-	if err != nil {
-		err = status.Error(codes.Internal, fmt.Sprintf("CreateNetworkSegment: JSON Marshal (%v)", err))
-		return nil, err
-	}
-	req, _ := http.NewRequest(http.MethodPut, "https://"+serverConfiguration.NsxtApi+"/policy/api/v1/infra/segments/"+segment.DisplayName, bytes.NewBuffer(jsonData))
-	req.Header.Set("Authorization", fmt.Sprintf("Basic %v", serverConfiguration.NsxtAuth))
-	req.Header.Set("Content-Type", "application/json; charset=utf-8")
-	response, err := client.Do(req)
+	segmentApiService, ctx := getSegmentApiService(ctx, serverConfiguration)
+	segmentResponse, httpResponse, err := segmentApiService.CreateOrReplaceInfraSegment(ctx, segment.Id, segment)
 	if err != nil {
 		err = status.Error(codes.Internal, fmt.Sprintf("CreateNetworkSegment: API request (%v)", err))
 		return nil, err
 	}
-	if response.StatusCode != http.StatusOK {
-		err = status.Error(codes.Internal, fmt.Sprintf("CreateSegment: Segment not created (%v)", response.Status))
+	if httpResponse.StatusCode != http.StatusOK {
+		err = status.Error(codes.Internal, fmt.Sprintf("CreateSegment: Segment not created (%v)", httpResponse.Status))
 		return nil, err
 	}
-
-	var segmentResponse Segment
-	bytearray, _ := io.ReadAll(response.Body)
-	_ = json.Unmarshal(bytearray, &segmentResponse)
 	return &segmentResponse, nil
 }
 
-func deleteInfraSegment(serverConfiguration *Configuration, virtualSwitchUuid string) (bool, error) {
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-	client := &http.Client{Transport: tr}
-	req, _ := http.NewRequest(http.MethodDelete, "https://"+serverConfiguration.NsxtApi+"/policy/api/v1/infra/segments/"+virtualSwitchUuid, nil)
-	req.Header.Set("Authorization", fmt.Sprintf("Basic %v", serverConfiguration.NsxtAuth))
-	req.Header.Set("Content-Type", "application/json; charset=utf-8")
-	httpResponse, err := client.Do(req)
+func deleteInfraSegment(ctx context.Context, serverConfiguration *Configuration, virtualSwitchUuid string) (bool, error) {
+	segmentApiService, ctx := getSegmentApiService(ctx, serverConfiguration)
+	httpResponse, err := segmentApiService.DeleteInfraSegment(ctx, virtualSwitchUuid)
 	if err != nil && httpResponse.StatusCode != http.StatusNotFound {
 		return false, err
 	}
@@ -110,7 +90,7 @@ func deleteInfraSegment(serverConfiguration *Configuration, virtualSwitchUuid st
 func (server *nsxtNodeServer) Create(ctx context.Context, nodeDeployment *node.NodeDeployment) (identifier *node.NodeIdentifier, err error) {
 	virtualSwitchDisplayName := nodeDeployment.GetParameters().GetName()
 	log.Printf("received request for switch creation: %v\n", virtualSwitchDisplayName)
-	segment, err := createNetworkSegment(nodeDeployment, &server.Configuration)
+	segment, err := createNetworkSegment(ctx, nodeDeployment, &server.Configuration)
 	if err != nil {
 		log.Printf("virtual segment creation failed: %v", err)
 		return
@@ -125,20 +105,20 @@ func (server *nsxtNodeServer) Create(ctx context.Context, nodeDeployment *node.N
 	}, nil
 }
 
-func delete(virtualSwitchUuid string, server *nsxtNodeServer) error {
-	switchExists, err := segmentExists(&server.Configuration, virtualSwitchUuid)
+func deleteAndVerifyInfraSegment(ctx context.Context, virtualSwitchUuid string, server *nsxtNodeServer) error {
+	switchExists, err := segmentExists(ctx, &server.Configuration, virtualSwitchUuid)
 	if err != nil {
 		return err
 	}
 	if !switchExists {
 		return status.Error(codes.InvalidArgument, fmt.Sprintf("DeleteSegment: Switch UUID \" %v \" not found", virtualSwitchUuid))
 	} else {
-		_, err = deleteInfraSegment(&server.Configuration, virtualSwitchUuid)
+		_, err = deleteInfraSegment(ctx, &server.Configuration, virtualSwitchUuid)
 		if err != nil {
 			err = status.Error(codes.Internal, fmt.Sprintf("DeleteSegment: API request error (%v)", err))
 			return err
 		}
-		switchExists, err = segmentExists(&server.Configuration, virtualSwitchUuid)
+		switchExists, err = segmentExists(ctx, &server.Configuration, virtualSwitchUuid)
 		if err != nil {
 			return err
 		}
@@ -153,7 +133,7 @@ func (server *nsxtNodeServer) Delete(ctx context.Context, nodeIdentifier *node.N
 	if *nodeIdentifier.GetNodeType().Enum() == *node.NodeType_switch.Enum() {
 		log.Printf("Received segment for deleting: UUID: %v\n", nodeIdentifier.GetIdentifier().GetValue())
 
-		err := delete(nodeIdentifier.GetIdentifier().GetValue(), server)
+		err := deleteAndVerifyInfraSegment(ctx, nodeIdentifier.GetIdentifier().GetValue(), server)
 		if err != nil {
 			return nil, err
 		}
