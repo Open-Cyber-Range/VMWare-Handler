@@ -121,12 +121,13 @@ func TestSegmentCreationAndDeletion(t *testing.T) {
 	ctx := context.Background()
 	nodeDeployment := createNodeDeploymentOfTypeSwitch()
 	serverConfiguration := startServer(time.Second * 3)
+	apiClient := createAPIClient(&serverConfiguration)
 	var nsxtNodeServer = nsxtNodeServer{
 		UnimplementedNodeServiceServer: node.UnimplementedNodeServiceServer{},
-		Client:                         nil,
+		APIClient:                      apiClient,
 		Configuration:                  serverConfiguration,
 	}
-	segment, err := createNetworkSegment(ctx, nodeDeployment, &serverConfiguration)
+	segment, err := createNetworkSegment(ctx, nodeDeployment, &nsxtNodeServer)
 	if err != nil {
 		t.Fatalf("Failed to create network segment: %v", err)
 	}

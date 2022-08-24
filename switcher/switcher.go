@@ -2,9 +2,7 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
-	nsxt "github.com/ScottHolden/go-vmware-nsxt"
 	"github.com/open-cyber-range/vmware-handler/grpc/capability"
 	common "github.com/open-cyber-range/vmware-handler/grpc/common"
 	node "github.com/open-cyber-range/vmware-handler/grpc/node"
@@ -19,41 +17,25 @@ import (
 	"net/http"
 )
 
-func createNsxtClient(serverConfiguration *Configuration) (nsxtClient *nsxt.APIClient, err error) {
-	err = serverConfiguration.Validate()
+func createAPIClient(serverConfiguration *Configuration) (apiClient *swagger.APIClient) {
+	err := serverConfiguration.Validate()
 	if err != nil {
 		return
 	}
-	nsxtConfiguration := CreateNsxtConfiguration(serverConfiguration)
-	nsxtClient, err = nsxt.NewAPIClient(nsxtConfiguration)
+	configuration := CreateAPIConfiguration(serverConfiguration)
+	apiClient = swagger.NewAPIClient(configuration)
 	return
-}
-
-func getSegmentApiService(ctx context.Context, serverConfiguration *Configuration) (segmentApiService *swagger.SegmentsApiService, ctx2 context.Context) {
-	conf := swagger.NewConfiguration()
-	conf.HTTPClient = &http.Client{
-		// TODO TLS still insecure
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		},
-	}
-	apiKey := swagger.APIKey{
-		Prefix: "Basic",
-		Key:    serverConfiguration.NsxtAuth,
-	}
-	ctx = context.WithValue(ctx, swagger.ContextAPIKey, apiKey)
-	segmentApiService = swagger.NewAPIClient(conf).SegmentsApi
-	return segmentApiService, ctx
 }
 
 type nsxtNodeServer struct {
 	node.UnimplementedNodeServiceServer
-	Client        *nsxt.APIClient
 	Configuration Configuration
+	APIClient     *swagger.APIClient
 }
 
-func segmentExists(ctx context.Context, serverConfiguration *Configuration, virtualSwitchUuid string) (bool, error) {
-	segmentApiService, ctx := getSegmentApiService(ctx, serverConfiguration)
+func segmentExists(ctx context.Context, server *nsxtNodeServer, virtualSwitchUuid string) (bool, error) {
+	apiClient := server.APIClient
+	segmentApiService := apiClient.SegmentsApi
 	_, httpResponse, err := segmentApiService.ReadInfraSegment(ctx, virtualSwitchUuid)
 	if err != nil && httpResponse.StatusCode != http.StatusNotFound {
 		return false, err
@@ -61,11 +43,12 @@ func segmentExists(ctx context.Context, serverConfiguration *Configuration, virt
 	return httpResponse.StatusCode == http.StatusOK, nil
 }
 
-func createNetworkSegment(ctx context.Context, nodeDeployment *node.NodeDeployment, serverConfiguration *Configuration) (*swagger.Segment, error) {
+func createNetworkSegment(ctx context.Context, nodeDeployment *node.NodeDeployment, server *nsxtNodeServer) (*swagger.Segment, error) {
 	var segment = swagger.Segment{
 		Id: nodeDeployment.GetParameters().GetName(),
 	}
-	segmentApiService, ctx := getSegmentApiService(ctx, serverConfiguration)
+	apiClient := server.APIClient
+	segmentApiService := apiClient.SegmentsApi
 	segmentResponse, httpResponse, err := segmentApiService.CreateOrReplaceInfraSegment(ctx, segment.Id, segment)
 	if err != nil {
 		err = status.Error(codes.Internal, fmt.Sprintf("CreateNetworkSegment: API request (%v)", err))
@@ -78,8 +61,9 @@ func createNetworkSegment(ctx context.Context, nodeDeployment *node.NodeDeployme
 	return &segmentResponse, nil
 }
 
-func deleteInfraSegment(ctx context.Context, serverConfiguration *Configuration, virtualSwitchUuid string) (bool, error) {
-	segmentApiService, ctx := getSegmentApiService(ctx, serverConfiguration)
+func deleteInfraSegment(ctx context.Context, server *nsxtNodeServer, virtualSwitchUuid string) (bool, error) {
+	apiClient := server.APIClient
+	segmentApiService := apiClient.SegmentsApi
 	httpResponse, err := segmentApiService.DeleteInfraSegment(ctx, virtualSwitchUuid)
 	if err != nil && httpResponse.StatusCode != http.StatusNotFound {
 		return false, err
@@ -90,7 +74,7 @@ func deleteInfraSegment(ctx context.Context, serverConfiguration *Configuration,
 func (server *nsxtNodeServer) Create(ctx context.Context, nodeDeployment *node.NodeDeployment) (identifier *node.NodeIdentifier, err error) {
 	virtualSwitchDisplayName := nodeDeployment.GetParameters().GetName()
 	log.Printf("received request for switch creation: %v\n", virtualSwitchDisplayName)
-	segment, err := createNetworkSegment(ctx, nodeDeployment, &server.Configuration)
+	segment, err := createNetworkSegment(ctx, nodeDeployment, server)
 	if err != nil {
 		log.Printf("virtual segment creation failed: %v", err)
 		return
@@ -106,19 +90,19 @@ func (server *nsxtNodeServer) Create(ctx context.Context, nodeDeployment *node.N
 }
 
 func deleteAndVerifyInfraSegment(ctx context.Context, virtualSwitchUuid string, server *nsxtNodeServer) error {
-	switchExists, err := segmentExists(ctx, &server.Configuration, virtualSwitchUuid)
+	switchExists, err := segmentExists(ctx, server, virtualSwitchUuid)
 	if err != nil {
 		return err
 	}
 	if !switchExists {
 		return status.Error(codes.InvalidArgument, fmt.Sprintf("DeleteSegment: Switch UUID \" %v \" not found", virtualSwitchUuid))
 	} else {
-		_, err = deleteInfraSegment(ctx, &server.Configuration, virtualSwitchUuid)
+		_, err = deleteInfraSegment(ctx, server, virtualSwitchUuid)
 		if err != nil {
 			err = status.Error(codes.Internal, fmt.Sprintf("DeleteSegment: API request error (%v)", err))
 			return err
 		}
-		switchExists, err = segmentExists(ctx, &server.Configuration, virtualSwitchUuid)
+		switchExists, err = segmentExists(ctx, server, virtualSwitchUuid)
 		if err != nil {
 			return err
 		}
@@ -145,20 +129,15 @@ func (server *nsxtNodeServer) Delete(ctx context.Context, nodeIdentifier *node.N
 }
 
 func RealMain(serverConfiguration *Configuration) {
-	nsxtClient, err := createNsxtClient(serverConfiguration)
-	if err != nil {
-		status.New(codes.Internal, fmt.Sprintf("CreateSegment: client error (%v)", err))
-		return
-	}
-
 	listeningAddress, addressError := net.Listen("tcp", serverConfiguration.ServerAddress)
 	if addressError != nil {
 		log.Fatalf("failed to listen: %v", addressError)
 	}
 
 	server := grpc.NewServer()
+	apiClient := createAPIClient(serverConfiguration)
 	node.RegisterNodeServiceServer(server, &nsxtNodeServer{
-		Client:        nsxtClient,
+		APIClient:     apiClient,
 		Configuration: *serverConfiguration,
 	})
 

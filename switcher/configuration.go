@@ -1,11 +1,13 @@
 package main
 
 import (
+	"crypto/tls"
 	"fmt"
+	swagger "github.com/open-cyber-range/vmware-handler/switcher/yolo-go"
 	"io/ioutil"
+	"net/http"
 	"os"
 
-	nsxt "github.com/ScottHolden/go-vmware-nsxt"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"gopkg.in/yaml.v2"
@@ -53,10 +55,15 @@ func GetConfiguration() (_ *Configuration, err error) {
 	return &configuration, nil
 }
 
-func CreateNsxtConfiguration(serverConfiguration *Configuration) (nsxtConfiguration *nsxt.Configuration) {
-	nsxtConfiguration = nsxt.NewConfiguration()
-	nsxtConfiguration.Host = serverConfiguration.NsxtApi
-	nsxtConfiguration.DefaultHeader["Authorization"] = fmt.Sprintf("Basic %v", serverConfiguration.NsxtAuth)
-	nsxtConfiguration.Insecure = serverConfiguration.Insecure
+func CreateAPIConfiguration(serverConfiguration *Configuration) (apiConfiguration *swagger.Configuration) {
+	apiConfiguration = swagger.NewConfiguration()
+	apiConfiguration.BasePath = "https://" + serverConfiguration.NsxtApi + "/policy/api/v1"
+	apiConfiguration.DefaultHeader["Authorization"] = fmt.Sprintf("Basic %v", serverConfiguration.NsxtAuth)
+	apiConfiguration.HTTPClient = &http.Client{
+		// TODO TLS still insecure
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: serverConfiguration.Insecure},
+		},
+	}
 	return
 }
