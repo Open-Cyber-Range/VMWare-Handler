@@ -98,7 +98,7 @@ func TestVirtualSwitchCreationAndDeletion(t *testing.T) {
 	}
 	_, err = gRPCClient.Delete(ctx, nodeIdentifier)
 	if err != nil {
-		t.Fatalf("Failed to deleteAndVerifyInfraSegment test virtual switch: %v", err)
+		t.Fatalf("Failed to delete test virtual switch: %v", err)
 	}
 }
 
@@ -132,6 +132,6 @@ func TestSegmentCreationAndDeletion(t *testing.T) {
 	}
 	err = deleteAndVerifyInfraSegment(ctx, segment.Id, &nsxtNodeServer)
 	if err != nil {
-		t.Fatalf("Failed to deleteAndVerifyInfraSegment network segment: %v", err)
+		t.Fatalf("Failed to delete network segment: %v", err)
 	}
 }
