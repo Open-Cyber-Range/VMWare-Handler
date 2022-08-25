@@ -1,4 +1,4 @@
-.PHONY: all clean install compile-protobuf build build-machiner build-switcher test test-machiner test-switcher run-machiner run-switcher test-and-build build-deb
+.PHONY: all clean install compile-protobuf build build-machiner build-switcher test test-machiner test-switcher run-machiner run-switcher test-and-build build-deb generate-nsx-t-openapi
 
 all: build
 
@@ -42,6 +42,10 @@ compile-protobuf:
 	--go_opt=module=github.com/open-cyber-range/vmware-handler/grpc \
 	--go-grpc_opt=module=github.com/open-cyber-range/vmware-handler/grpc \
 	--proto_path=grpc/proto src/node.proto src/common.proto src/capability.proto src/template.proto
+
+generate-nsx-t-openapi:
+	java -Dapis=Segments -Dmodels -DsupportingFiles -jar /var/opt/swagger/swagger-codegen-cli.jar generate -DpackageName=nsx_t_openapi -DmodelTests=false -DapiTests=false -DapiDocs=false -DmodelDocs=false -D io.swagger.parser.util.RemoteUrl.trustAll=true -i extra/nsx_policy_api.yaml -l go -o nsx_t_openapi &&\
+	find ./nsx-t-openapi -type f ! \( -name '*.go' \) -exec rm -f {} +
 
 build: compile-protobuf build-machiner build-switcher build-templater
 

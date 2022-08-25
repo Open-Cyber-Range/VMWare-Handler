@@ -6,6 +6,10 @@ swithcer-config.yml
 grpc/
 !gprc/proto
 
+# swagger code-gen generated files
+/nsx_t_openapi/**/**
+!nsx_t_openapi/**/*.go
+
 #debian packaging
 debian/ranger-vmware-handlers
 debian/files
