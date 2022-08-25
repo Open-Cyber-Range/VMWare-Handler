@@ -34,8 +34,7 @@ type nsxtNodeServer struct {
 }
 
 func segmentExists(ctx context.Context, server *nsxtNodeServer, virtualSwitchUuid string) (bool, error) {
-	apiClient := server.APIClient
-	segmentApiService := apiClient.SegmentsApi
+	segmentApiService := server.APIClient.SegmentsApi
 	_, httpResponse, err := segmentApiService.ReadInfraSegment(ctx, virtualSwitchUuid)
 	if err != nil && httpResponse.StatusCode != http.StatusNotFound {
 		return false, err
@@ -43,15 +42,36 @@ func segmentExists(ctx context.Context, server *nsxtNodeServer, virtualSwitchUui
 	return httpResponse.StatusCode == http.StatusOK, nil
 }
 
-func createNetworkSegment(ctx context.Context, nodeDeployment *node.NodeDeployment, server *nsxtNodeServer) (*swagger.Segment, error) {
-	var segment = swagger.Segment{
-		Id: nodeDeployment.GetParameters().GetName(),
+func getTransportZone(ctx context.Context, server *nsxtNodeServer) (transportZone *swagger.PolicyTransportZone, err error) {
+	segmentApiService := server.APIClient.ConnectivityApi
+	policyTransportZoneListResult, _, err := segmentApiService.ListTransportZonesForEnforcementPoint(ctx, server.Configuration.SiteId,
+		"default", &swagger.ConnectivityApiListTransportZonesForEnforcementPointOpts{})
+	if err != nil {
+		err = status.Error(codes.Internal, fmt.Sprintf("getTransportZone: %v", err))
+		return nil, err
 	}
-	apiClient := server.APIClient
-	segmentApiService := apiClient.SegmentsApi
+	for _, transportZone := range policyTransportZoneListResult.Results {
+		if server.Configuration.TransportZoneName == transportZone.DisplayName {
+			return &transportZone, nil
+		}
+	}
+	return nil, status.Error(codes.Internal, fmt.Sprintf("getTransportZone: could not find transportzone"))
+}
+
+func createNetworkSegment(ctx context.Context, nodeDeployment *node.NodeDeployment, server *nsxtNodeServer) (*swagger.Segment, error) {
+	transportZone, err := getTransportZone(ctx, server)
+	if err != nil {
+		return nil, err
+	}
+	var segment = swagger.Segment{
+		Id: nodeDeployment.GetParameters().GetName() + "_" +
+			nodeDeployment.GetParameters().GetExerciseName() + "_" + transportZone.Id,
+		TransportZonePath: transportZone.Path,
+	}
+	segmentApiService := server.APIClient.SegmentsApi
 	segmentResponse, httpResponse, err := segmentApiService.CreateOrReplaceInfraSegment(ctx, segment.Id, segment)
 	if err != nil {
-		err = status.Error(codes.Internal, fmt.Sprintf("CreateNetworkSegment: API request (%v)", err))
+		err = status.Error(codes.Internal, fmt.Sprintf("CreateSegment: API request (%v)", err))
 		return nil, err
 	}
 	if httpResponse.StatusCode != http.StatusOK {
@@ -62,8 +82,7 @@ func createNetworkSegment(ctx context.Context, nodeDeployment *node.NodeDeployme
 }
 
 func deleteInfraSegment(ctx context.Context, server *nsxtNodeServer, virtualSwitchUuid string) (bool, error) {
-	apiClient := server.APIClient
-	segmentApiService := apiClient.SegmentsApi
+	segmentApiService := server.APIClient.SegmentsApi
 	httpResponse, err := segmentApiService.DeleteInfraSegment(ctx, virtualSwitchUuid)
 	if err != nil && httpResponse.StatusCode != http.StatusNotFound {
 		return false, err

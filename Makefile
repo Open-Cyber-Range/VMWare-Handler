@@ -44,8 +44,8 @@ compile-protobuf:
 	--proto_path=grpc/proto src/node.proto src/common.proto src/capability.proto src/template.proto
 
 generate-nsx-t-openapi:
-	java -Dapis=Segments -Dmodels -DsupportingFiles -jar /var/opt/swagger/swagger-codegen-cli.jar generate -DpackageName=nsx_t_openapi -DmodelTests=false -DapiTests=false -DapiDocs=false -DmodelDocs=false -D io.swagger.parser.util.RemoteUrl.trustAll=true -i extra/nsx_policy_api.yaml -l go -o nsx_t_openapi &&\
-	find ./nsx-t-openapi -type f ! \( -name '*.go' \) -exec rm -f {} +
+	java -Dapis=Segments,Connectivity -Dmodels -DsupportingFiles -jar /var/opt/swagger/swagger-codegen-cli.jar generate -DpackageName=nsx_t_openapi -DmodelTests=false -DapiTests=false -DapiDocs=false -DmodelDocs=false -D io.swagger.parser.util.RemoteUrl.trustAll=true -i extra/nsx_policy_api.yaml -l go -o nsx_t_openapi &&\
+	find ./nsx_t_openapi -type f ! \( -name '*.go' \) -exec rm -f {} +
 
 build: compile-protobuf build-machiner build-switcher build-templater
 

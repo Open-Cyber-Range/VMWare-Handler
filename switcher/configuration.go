@@ -19,6 +19,7 @@ type Configuration struct {
 	NsxtAuth          string `yaml:"nsxt_auth,omitempty"`
 	TransportZoneName string `yaml:"transport_zone_name,omitempty"`
 	Insecure          bool   `yaml:",omitempty"`
+	SiteId            string `yaml:"site_id,omitempty"`
 }
 
 func (serverConfiguration *Configuration) Validate() error {
@@ -30,6 +31,9 @@ func (serverConfiguration *Configuration) Validate() error {
 	}
 	if serverConfiguration.TransportZoneName == "" {
 		return status.Error(codes.InvalidArgument, "NSX-T  Transport Zone Name not provided")
+	}
+	if serverConfiguration.SiteId == "" {
+		serverConfiguration.SiteId = "default"
 	}
 	return nil
 }

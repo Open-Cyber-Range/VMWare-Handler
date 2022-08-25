@@ -3,3 +3,4 @@ nsxt_auth: nsxt_server_base64_auth
 transport_zone_name: transport-zone-name-for-networks
 insecure: connection-type-either-true-or-false
 server_address: sample-address:sample-port
+site_id: default
