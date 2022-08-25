@@ -7,7 +7,7 @@ import (
 	common "github.com/open-cyber-range/vmware-handler/grpc/common"
 	node "github.com/open-cyber-range/vmware-handler/grpc/node"
 	"github.com/open-cyber-range/vmware-handler/library"
-	swagger "github.com/open-cyber-range/vmware-handler/switcher/yolo-go"
+	swagger "github.com/open-cyber-range/vmware-handler/nsx_t_openapi"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

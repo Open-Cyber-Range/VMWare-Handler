@@ -3,7 +3,7 @@ package main
 import (
 	"crypto/tls"
 	"fmt"
-	swagger "github.com/open-cyber-range/vmware-handler/switcher/yolo-go"
+	swagger "github.com/open-cyber-range/vmware-handler/nsx_t_openapi"
 	"io/ioutil"
 	"net/http"
 	"os"
