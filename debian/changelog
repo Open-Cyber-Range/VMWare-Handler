@@ -1,3 +1,22 @@
+ranger-vmware-handlers (2.4.0) stretch; urgency=medium
+
+  * Improve logging messages
+
+ -- Kaarel Allemann <developers@cr14.ee>  Tue, 23 Aug 2022 10:58:39 +0300
+
+ranger-vmware-handlers (2.3.1) stretch; urgency=medium
+
+  * Make removing networks work on best effort principle
+
+ -- Kaarel Allemann <developers@cr14.ee>  Fri, 19 Aug 2022 09:56:54 +0300
+
+ranger-vmware-handlers (2.3.0) stretch; urgency=medium
+
+  * Add support for deploying links with Virtual Machines
+  * Add support for deploying NSX-T segments as switches
+
+ -- Kaarel Allemann <developers@cr14.ee>  Thu, 18 Aug 2022 12:01:44 +0300
+
 ranger-vmware-handlers (2.2.7) stretch; urgency=medium
 
   * Improve logging for templater errors

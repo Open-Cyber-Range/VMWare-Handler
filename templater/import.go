@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"path"
 
 	"github.com/vmware/govmomi/govc/importx"
@@ -63,7 +62,6 @@ func (templateDeployment *TemplateDeployment) ImportOVA(filePath string, client 
 	if err != nil {
 		return
 	}
-	log.Printf("ImportSpec %+v", importSpec)
 	folder, err := templateDeployment.Client.GetTemplateFolder()
 	if err != nil {
 		return
@@ -72,7 +70,6 @@ func (templateDeployment *TemplateDeployment) ImportOVA(filePath string, client 
 	if err != nil {
 		return
 	}
-	log.Printf("Lease %+v", lease)
 
 	info, err := lease.Wait(ctx, importSpec.FileItem)
 	if err != nil {

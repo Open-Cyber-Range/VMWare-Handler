@@ -98,8 +98,7 @@ func (server *nsxtNodeServer) Create(ctx context.Context, nodeDeployment *node.N
 		log.Printf("virtual segment creation failed: %v", err)
 		return
 	}
-	log.Printf("virtual segment created: %v in transport zone: %v\n", segment.Id, segment.TransportZonePath)
-	status.New(codes.OK, "Virtual Segment creation successful")
+	log.Infof("Virtual segment: %v created in transport zone: %v", segment.Id, segment.TransportZonePath)
 	return &node.NodeIdentifier{
 		Identifier: &common.Identifier{
 			Value: segment.Id,
@@ -111,22 +110,21 @@ func (server *nsxtNodeServer) Create(ctx context.Context, nodeDeployment *node.N
 func deleteAndVerifyInfraSegment(ctx context.Context, virtualSwitchUuid string, server *nsxtNodeServer) error {
 	switchExists, err := segmentExists(ctx, server, virtualSwitchUuid)
 	if err != nil {
-		return err
+		return fmt.Errorf("segment check error (%v)", err)
 	}
 	if !switchExists {
-		return status.Error(codes.InvalidArgument, fmt.Sprintf("DeleteSegment: Switch UUID \" %v \" not found", virtualSwitchUuid))
+		return fmt.Errorf("switch (UUID \" %v \") not found", virtualSwitchUuid)
 	} else {
 		_, err = deleteInfraSegment(ctx, server, virtualSwitchUuid)
 		if err != nil {
-			err = status.Error(codes.Internal, fmt.Sprintf("DeleteSegment: API request error (%v)", err))
-			return err
+			return fmt.Errorf("API request error (%v)", err)
 		}
 		switchExists, err = segmentExists(ctx, server, virtualSwitchUuid)
 		if err != nil {
-			return err
+			return fmt.Errorf("segment check error (%v)", err)
 		}
 		if switchExists {
-			return status.Error(codes.Internal, fmt.Sprintf("DeleteSegment: Switch UUID \" %v \" was not deleted", virtualSwitchUuid))
+			return fmt.Errorf("switch (UUID \" %v \") was not deleted", virtualSwitchUuid)
 		}
 	}
 	return nil
@@ -134,23 +132,23 @@ func deleteAndVerifyInfraSegment(ctx context.Context, virtualSwitchUuid string, 
 
 func (server *nsxtNodeServer) Delete(ctx context.Context, nodeIdentifier *node.NodeIdentifier) (*emptypb.Empty, error) {
 	if *nodeIdentifier.GetNodeType().Enum() == *node.NodeType_switch.Enum() {
-		log.Printf("Received segment for deleting: UUID: %v\n", nodeIdentifier.GetIdentifier().GetValue())
+		log.Infof("Received segment for deleting: UUID: %v", nodeIdentifier.GetIdentifier().GetValue())
 
 		err := deleteAndVerifyInfraSegment(ctx, nodeIdentifier.GetIdentifier().GetValue(), server)
 		if err != nil {
-			return nil, err
+			log.Errorf("Failed to delete segment (%v)", err)
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to delete segment (%v)", err))
 		}
-		log.Printf("segment deleted: %v\n", nodeIdentifier.GetIdentifier().GetValue())
-		status.New(codes.OK, "Segment deletion successful")
+		log.Infof("Deleted segment: %v", nodeIdentifier.GetIdentifier().GetValue())
 		return new(emptypb.Empty), nil
 	}
-	return nil, status.Error(codes.InvalidArgument, "DeleteSegment: Node is not a virtual switch")
+	return nil, status.Error(codes.InvalidArgument, "Node is not a virtual switch")
 }
 
 func RealMain(serverConfiguration *Configuration) {
 	listeningAddress, addressError := net.Listen("tcp", serverConfiguration.ServerAddress)
 	if addressError != nil {
-		log.Fatalf("failed to listen: %v", addressError)
+		log.Fatalf("Failed to listen: %v", addressError)
 	}
 
 	server := grpc.NewServer()
@@ -166,20 +164,16 @@ func RealMain(serverConfiguration *Configuration) {
 
 	capability.RegisterCapabilityServer(server, &capabilityServer)
 
-	log.Printf("server listening at %v", listeningAddress.Addr())
+	log.Infof("Switcher listening at %v", listeningAddress.Addr())
 	if bindError := server.Serve(listeningAddress); bindError != nil {
-		log.Fatalf("failed to serve: %v", bindError)
+		log.Fatalf("Failed to serve: %v", bindError)
 	}
 }
 
 func main() {
-	log.SetPrefix("switcher: ")
-	log.SetFlags(0)
-
 	configuration, configurationError := GetConfiguration()
 	if configurationError != nil {
 		log.Fatal(configurationError)
 	}
-
 	RealMain(configuration)
 }
