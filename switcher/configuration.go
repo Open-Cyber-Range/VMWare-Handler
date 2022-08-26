@@ -1,11 +1,13 @@
 package main
 
 import (
+	"crypto/tls"
 	"fmt"
+	swagger "github.com/open-cyber-range/vmware-handler/nsx_t_openapi"
 	"io/ioutil"
+	"net/http"
 	"os"
 
-	nsxt "github.com/ScottHolden/go-vmware-nsxt"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"gopkg.in/yaml.v2"
@@ -17,6 +19,7 @@ type Configuration struct {
 	NsxtAuth          string `yaml:"nsxt_auth,omitempty"`
 	TransportZoneName string `yaml:"transport_zone_name,omitempty"`
 	Insecure          bool   `yaml:",omitempty"`
+	SiteId            string `yaml:"site_id,omitempty"`
 }
 
 func (serverConfiguration *Configuration) Validate() error {
@@ -28,6 +31,9 @@ func (serverConfiguration *Configuration) Validate() error {
 	}
 	if serverConfiguration.TransportZoneName == "" {
 		return status.Error(codes.InvalidArgument, "NSX-T  Transport Zone Name not provided")
+	}
+	if serverConfiguration.SiteId == "" {
+		serverConfiguration.SiteId = "default"
 	}
 	return nil
 }
@@ -53,10 +59,15 @@ func GetConfiguration() (_ *Configuration, err error) {
 	return &configuration, nil
 }
 
-func CreateNsxtConfiguration(serverConfiguration *Configuration) (nsxtConfiguration *nsxt.Configuration) {
-	nsxtConfiguration = nsxt.NewConfiguration()
-	nsxtConfiguration.Host = serverConfiguration.NsxtApi
-	nsxtConfiguration.DefaultHeader["Authorization"] = fmt.Sprintf("Basic %v", serverConfiguration.NsxtAuth)
-	nsxtConfiguration.Insecure = serverConfiguration.Insecure
+func CreateAPIConfiguration(serverConfiguration *Configuration) (apiConfiguration *swagger.Configuration) {
+	apiConfiguration = swagger.NewConfiguration()
+	apiConfiguration.BasePath = "https://" + serverConfiguration.NsxtApi + "/policy/api/v1"
+	apiConfiguration.DefaultHeader["Authorization"] = fmt.Sprintf("Basic %v", serverConfiguration.NsxtAuth)
+	apiConfiguration.HTTPClient = &http.Client{
+		// TODO TLS still insecure
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: serverConfiguration.Insecure},
+		},
+	}
 	return
 }
