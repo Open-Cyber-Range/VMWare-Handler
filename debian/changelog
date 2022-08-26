@@ -1,3 +1,10 @@
+ranger-vmware-handlers (2.4.1) stretch; urgency=medium
+
+  * Use transport zones when creating switches
+  * Improve name uniqueness for switch
+
+ -- Kaarel Allemann <developers@cr14.ee>  Fri, 26 Aug 2022 13:49:54 +0300
+
 ranger-vmware-handlers (2.4.0) stretch; urgency=medium
 
   * Improve logging messages
