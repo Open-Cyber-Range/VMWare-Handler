@@ -39,20 +39,6 @@ func createNodeDeploymentOfTypeSwitch() *node.NodeDeployment {
 	return nodeDeployment
 }
 
-func creategRPCClient(t *testing.T, serverPath string) node.NodeServiceClient {
-	connection, connectionError := grpc.Dial(serverPath, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if connectionError != nil {
-		t.Fatalf("did not connect: %v", connectionError)
-	}
-	t.Cleanup(func() {
-		connectionError := connection.Close()
-		if connectionError != nil {
-			t.Fatalf("Failed to close connection: %v", connectionError)
-		}
-	})
-	return node.NewNodeServiceClient(connection)
-}
-
 func createCapabilityClient(t *testing.T, serverPath string) capability.CapabilityClient {
 	connection, connectionError := grpc.Dial(serverPath, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if connectionError != nil {
@@ -76,30 +62,6 @@ func startServer(timeout time.Duration) (configuration Configuration) {
 
 	time.Sleep(timeout)
 	return configuration
-}
-
-func createVirtualSwitch(t *testing.T, serverConfiguration Configuration) (*node.NodeIdentifier, error) {
-	gRPCClient := creategRPCClient(t, serverConfiguration.ServerAddress)
-	nodeDeployment := createNodeDeploymentOfTypeSwitch()
-	testVirtualSwitch, err := gRPCClient.Create(context.Background(), nodeDeployment)
-	if err != nil {
-		return nil, err
-	}
-	return testVirtualSwitch, nil
-}
-
-func TestVirtualSwitchCreationAndDeletion(t *testing.T) {
-	serverConfiguration := startServer(time.Second * 3)
-	ctx := context.Background()
-	gRPCClient := creategRPCClient(t, serverConfiguration.ServerAddress)
-	nodeIdentifier, err := createVirtualSwitch(t, serverConfiguration)
-	if err != nil {
-		t.Fatalf("Failed to create new virtual switch: %v", err)
-	}
-	_, err = gRPCClient.Delete(ctx, nodeIdentifier)
-	if err != nil {
-		t.Fatalf("Failed to delete test virtual switch: %v", err)
-	}
 }
 
 func TestSwitcherCapability(t *testing.T) {

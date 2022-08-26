@@ -8,11 +8,11 @@ import (
 	node "github.com/open-cyber-range/vmware-handler/grpc/node"
 	"github.com/open-cyber-range/vmware-handler/library"
 	swagger "github.com/open-cyber-range/vmware-handler/nsx_t_openapi"
+	log "github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
-	"log"
 	"net"
 	"net/http"
 )
