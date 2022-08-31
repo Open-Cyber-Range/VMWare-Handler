@@ -71,6 +71,9 @@ type Configuration struct {
 	ResourcePoolPath   string `yaml:"resource_pool_path,omitempty"`
 	ExerciseRootPath   string `yaml:"exercise_root_path,omitempty"`
 	DatastorePath      string `yaml:"datastore_path,omitempty"`
+	NsxtApi			   string `yaml:"nsxt_api,omitempty"`
+	NsxtAuth           string `yaml:"nsxt_auth,omitempty"`
+	TransportZoneName  string `yaml:"transport_zone_name,omitempty"`
 }
 
 func (configuration *Configuration) Validate(validator *Validator) error {

@@ -13,6 +13,7 @@ import (
 	"github.com/open-cyber-range/vmware-handler/grpc/capability"
 	node "github.com/open-cyber-range/vmware-handler/grpc/node"
 	"github.com/open-cyber-range/vmware-handler/library"
+	swagger "github.com/open-cyber-range/vmware-handler/nsx_t_openapi"
 	"github.com/vmware/govmomi/vim25/mo"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -28,6 +29,9 @@ var testConfiguration = library.Configuration{
 	ServerAddress:      "127.0.0.1",
 	ResourcePoolPath:   os.Getenv("TEST_VMWARE_RESOURCE_POOL_PATH"),
 	ExerciseRootPath:   os.Getenv("TEST_VMWARE_EXERCISE_ROOT_PATH"),
+	NsxtApi:            os.Getenv("TEST_NSXT_API"),
+	NsxtAuth:           os.Getenv("TEST_NSXT_AUTH"),
+	TransportZoneName:  os.Getenv("TEST_NSXT_TRANSPORT_ZONE_NAME"),
 }
 
 var virtualMachineHardwareConfiguration = &node.Configuration{
@@ -182,6 +186,43 @@ func checkLinks(t *testing.T, client *library.VMWareClient, ctx context.Context,
 		if !strings.Contains(vmNetworkNames, networkName) {
 			t.Fatalf("Link %v is not added to VM", networkName)
 		}
+	}
+}
+
+func createAPIConfiguration(serverConfiguration *Configuration) (apiConfiguration *swagger.Configuration) {
+	apiConfiguration = swagger.NewConfiguration()
+	apiConfiguration.BasePath = "https://" + serverConfiguration.NsxtApi + "/policy/api/v1"
+	apiConfiguration.DefaultHeader["Authorization"] = fmt.Sprintf("Basic %v", serverConfiguration.NsxtAuth)
+	apiConfiguration.HTTPClient = &http.Client{
+		// TODO TLS still insecure
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: serverConfiguration.Insecure},
+		},
+	}
+	return
+}
+
+func (server *nodeServer) getTransportZone(ctx context.Context) (transportZone *swagger.PolicyTransportZone, err error) {
+	segmentApiService := server.APIClient.ConnectivityApi
+	policyTransportZoneListResult, _, err := segmentApiService.ListTransportZonesForEnforcementPoint(ctx, server.Configuration.SiteId,
+		"default", &swagger.ConnectivityApiListTransportZonesForEnforcementPointOpts{})
+	if err != nil {
+		err = status.Error(codes.Internal, fmt.Sprintf("getTransportZone: %v", err))
+		return nil, err
+	}
+	for _, transportZone := range policyTransportZoneListResult.Results {
+		if server.Configuration.TransportZoneName == transportZone.DisplayName {
+			return &transportZone, nil
+		}
+	}
+	return nil, status.Error(codes.Internal, fmt.Sprintln("getTransportZone: could not find transportzone"))
+}
+
+func (server *nodeServer) createSegment(ctx context.Context, transportZoneName string) {
+
+	var segment = swagger.Segment{
+		Id: "kristi_test_1",
+		TransportZonePath: transportZone.Path,
 	}
 }
 
