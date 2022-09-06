@@ -258,42 +258,6 @@ func deleteLink(ctx context.Context, apiClient *swagger.APIClient, virtualSwitch
 	return nil
 }
 
-func checkVMLinks(client *library.VMWareClient, ctx context.Context, managedVirtualMachine mo.VirtualMachine, linkNames []string) error {
-	vmNetworks := managedVirtualMachine.Network
-	if vmNetworks == nil {
-		return fmt.Errorf("Failed to retrieve VM network list")
-	}
-
-	var vmNetworkNames string
-	for _, network := range vmNetworks {
-		vmNetworkNames = vmNetworkNames + " " + network.Value
-	}
-
-	networkNames, err := findLinks(client, ctx, linkNames)
-	if err != nil {
-		return err
-	}
-
-	for _, networkName := range networkNames {
-		if !strings.Contains(vmNetworkNames, networkName) {
-			return fmt.Errorf("Link %v is not added to VM", networkName)
-		}
-	}
-	return nil
-}
-
-func findLinks(client *library.VMWareClient, ctx context.Context, linkNames []string) (networkNames []string, err error) {
-	finder, _, _ := client.CreateFinderAndDatacenter()
-	for _, linkName := range linkNames {
-		network, err := finder.Network(ctx, linkName)
-		if err != nil {
-			return nil, fmt.Errorf("Failed to find network %v (%v)", linkName, err)
-		}
-		networkNames = append(networkNames, network.Reference().Value)
-	}
-	return networkNames, nil
-}
-
 func TestVerifyNodeCpuAndMemory(t *testing.T) {
 	t.Parallel()
 	configuration := startServer(3 * time.Second)
@@ -416,7 +380,7 @@ func TestLinkAddition(t *testing.T) {
 		t.Fatalf("Node does not exist")
 	}
 
-	checkError := checkVMLinks(&vmwareClient, ctx, managedVirtualMachine, linkNames)
+	checkError := vmwareClient.CheckVMLinks(ctx, managedVirtualMachine.Network, linkNames)
 	if checkError != nil {
 		t.Fatalf("Failed to check links: %v", checkError)
 	}

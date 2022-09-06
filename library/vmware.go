@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path"
+	"strings"
 
 	"github.com/vmware/govmomi"
 	"github.com/vmware/govmomi/find"
@@ -180,4 +181,39 @@ func (client *VMWareClient) DeleteVirtualMachineByUUID(uuid string) (err error) 
 	}
 	err = waitForTaskSuccess(destroyTask)
 	return
+}
+
+func (client *VMWareClient) findLinks(ctx context.Context, linkNames []string) (networkNames []string, err error) {
+	finder, _, _ := client.CreateFinderAndDatacenter()
+	for _, linkName := range linkNames {
+		network, err := finder.Network(ctx, linkName)
+		if err != nil {
+			return nil, fmt.Errorf("failed to find network %v (%v)", linkName, err)
+		}
+		networkNames = append(networkNames, network.Reference().Value)
+	}
+	return networkNames, nil
+}
+
+func (client *VMWareClient) CheckVMLinks(ctx context.Context, vmNetworks []types.ManagedObjectReference, linkNames []string) error {
+	if vmNetworks == nil {
+		return fmt.Errorf("failed to retrieve VM network list")
+	}
+
+	var vmNetworkNames string
+	for _, network := range vmNetworks {
+		vmNetworkNames = vmNetworkNames + " " + network.Value
+	}
+
+	networkNames, err := client.findLinks(ctx, linkNames)
+	if err != nil {
+		return err
+	}
+
+	for _, networkName := range networkNames {
+		if !strings.Contains(vmNetworkNames, networkName) {
+			return fmt.Errorf("link %v is not added to VM", networkName)
+		}
+	}
+	return nil
 }
