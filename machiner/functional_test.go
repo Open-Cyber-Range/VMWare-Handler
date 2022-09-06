@@ -237,7 +237,7 @@ func createExerciseAndLinks(t *testing.T, client *library.VMWareClient, ctx cont
 			t.Fatalf("Failed to cleanup: %v", cleanupError)
 		}
 		for _, linkName := range linkNames {
-			segmentDeletionError := deleteLink(ctx, apiClient, linkName)
+			segmentDeletionError := deleteLink(ctx, apiClient.SegmentsApi, linkName)
 			if segmentDeletionError != nil {
 				t.Fatalf("Could not delete segment: %v (%v)", linkName, segmentDeletionError)
 			}
@@ -246,9 +246,12 @@ func createExerciseAndLinks(t *testing.T, client *library.VMWareClient, ctx cont
 	return
 }
 
-func deleteLink(ctx context.Context, apiClient *swagger.APIClient, virtualSwitchName string) error {
-	segmentApiService := apiClient.SegmentsApi
-	_, err := segmentApiService.DeleteInfraSegment(ctx, virtualSwitchName)
+func deleteLink(ctx context.Context, segmentApiService *swagger.SegmentsApiService, virtualSwitchName string) error {
+	_, httpResponse, err := segmentApiService.ReadInfraSegment(ctx, virtualSwitchName)
+	if err != nil && httpResponse.StatusCode != http.StatusNotFound {
+		return fmt.Errorf("Segment not found for deleting, HTTP response: %v, error: %v", httpResponse, err)
+	}
+	_, err = segmentApiService.DeleteInfraSegment(ctx, virtualSwitchName)
 	if err != nil {
 		httpResponse, err := segmentApiService.ForceDeleteInfraSegment(ctx, virtualSwitchName, &swagger.SegmentsApiForceDeleteInfraSegmentOpts{})	
 		if err != nil {
@@ -353,7 +356,7 @@ func TestLinkCreationAndDeletion(t *testing.T) {
 	if linkCreationError!= nil {
 		t.Fatalf("Couldn't create link: %v", linkCreationError)
 	}
-	linkDeletionError := deleteLink(ctx, apiClient, linkName)
+	linkDeletionError := deleteLink(ctx, apiClient.SegmentsApi, linkName)
 	if linkCreationError!= nil {
 		t.Fatalf("Couldn't delete link: %v", linkDeletionError)
 	}
