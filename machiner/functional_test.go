@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"math/rand"
+	"net/http"
 	"os"
 	"path"
 	"strings"
@@ -13,6 +15,7 @@ import (
 	"github.com/open-cyber-range/vmware-handler/grpc/capability"
 	node "github.com/open-cyber-range/vmware-handler/grpc/node"
 	"github.com/open-cyber-range/vmware-handler/library"
+	swagger "github.com/open-cyber-range/vmware-handler/nsx_t_openapi"
 	"github.com/vmware/govmomi/vim25/mo"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -28,6 +31,10 @@ var testConfiguration = library.Configuration{
 	ServerAddress:      "127.0.0.1",
 	ResourcePoolPath:   os.Getenv("TEST_VMWARE_RESOURCE_POOL_PATH"),
 	ExerciseRootPath:   os.Getenv("TEST_VMWARE_EXERCISE_ROOT_PATH"),
+	NsxtApi:            os.Getenv("TEST_NSXT_API"),
+	NsxtAuth:           os.Getenv("TEST_NSXT_AUTH"),
+	TransportZoneName:  os.Getenv("TEST_NSXT_TRANSPORT_ZONE_NAME"),
+	SiteId:				"default",
 }
 
 var virtualMachineHardwareConfiguration = &node.Configuration{
@@ -114,7 +121,7 @@ func createExercise(t *testing.T, client *library.VMWareClient) (exerciseName st
 	return
 }
 
-func createVmNode(t *testing.T, client node.NodeServiceClient, exerciseName string, vmwareClient *library.VMWareClient) *node.NodeIdentifier {
+func createVmNode(t *testing.T, client node.NodeServiceClient, exerciseName string, vmwareClient *library.VMWareClient, links []string) *node.NodeIdentifier {
 	templateVirtualMachine, err := vmwareClient.GetTemplateByName("debian10")
 	if err != nil {
 		t.Fatalf("Failed to find template by name: %v", err)
@@ -126,7 +133,7 @@ func createVmNode(t *testing.T, client node.NodeServiceClient, exerciseName stri
 			Name:         "test-node",
 			TemplateId:   templateVirtualMachine.UUID(ctx),
 			ExerciseName: exerciseName,
-			Links:        []string{"TEST1", "TEST2"},
+			Links:        links,
 		},
 		Node: &node.Node{
 			Identifier: &node.NodeIdentifier{
@@ -159,30 +166,99 @@ func getVmConfigurations(client *library.VMWareClient, exerciseName string, node
 	return managedVirtualMachine, nil
 }
 
-func checkLinks(t *testing.T, client *library.VMWareClient, ctx context.Context, managedVirtualMachine mo.VirtualMachine) {
-	finder, _, _ := client.CreateFinderAndDatacenter()
-
-	// If test vm links are changed under createVmNode function, then these network names need to be changed as well
-	networkTest1, _ := finder.Network(ctx, "TEST1")
-	networkTest2, _ := finder.Network(ctx, "TEST2")
-	testNetworkNames := [2]string{networkTest1.Reference().Value, networkTest2.Reference().Value}
-
-	vmNetworks := managedVirtualMachine.Network
-
-	if vmNetworks == nil {
-		t.Fatalf("Failed to retrieve VM network list")
+func createAPIConfiguration() (apiConfiguration *swagger.Configuration) {
+	apiConfiguration = swagger.NewConfiguration()
+	apiConfiguration.BasePath = "https://" + testConfiguration.NsxtApi + "/policy/api/v1"
+	apiConfiguration.DefaultHeader["Authorization"] = fmt.Sprintf("Basic %v", testConfiguration.NsxtAuth)
+	apiConfiguration.HTTPClient = &http.Client{
+		// TODO TLS still insecure
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: testConfiguration.Insecure},
+		},
 	}
+	return
+}
 
-	var vmNetworkNames string
-	for _, network := range vmNetworks {
-		vmNetworkNames = vmNetworkNames + " " + network.Value
+func createAPIClient() (apiClient *swagger.APIClient) {
+	apiConfiguration := createAPIConfiguration()
+	apiClient = swagger.NewAPIClient(apiConfiguration)
+	return
+}
+
+func getTransportZone(ctx context.Context, apiClient *swagger.APIClient) (transportZone *swagger.PolicyTransportZone, err error) {
+	segmentApiService := apiClient.ConnectivityApi
+	policyTransportZoneListResult, _, err := segmentApiService.ListTransportZonesForEnforcementPoint(ctx, testConfiguration.SiteId,
+		"default", &swagger.ConnectivityApiListTransportZonesForEnforcementPointOpts{})
+	if err != nil {
+		return nil, err
 	}
-
-	for _, networkName := range testNetworkNames {
-		if !strings.Contains(vmNetworkNames, networkName) {
-			t.Fatalf("Link %v is not added to VM", networkName)
+	for _, transportZone := range policyTransportZoneListResult.Results {
+		if testConfiguration.TransportZoneName == transportZone.DisplayName {
+			return &transportZone, nil
 		}
 	}
+	return nil, fmt.Errorf("Transport zone not in list")
+}
+
+func createLink(ctx context.Context, transportZone *swagger.PolicyTransportZone, exerciseName string, segmentApiService *swagger.SegmentsApiService) (linkName string, err error) {
+	var segment = swagger.Segment{
+		Id: fmt.Sprintf("test-virtual-switch-%v", library.CreateRandomString(5)) + "_" +
+			exerciseName + "_" + transportZone.Id,
+		TransportZonePath: transportZone.Path,
+	}
+	segmentResponse, httpResponse, err := segmentApiService.CreateOrReplaceInfraSegment(ctx, segment.Id, segment)
+	if err != nil {
+		return "", fmt.Errorf("API request to create segment failed (%v)", err)
+	}
+	if httpResponse.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("Segment not created (%v)", httpResponse.Status)
+	}
+	return segmentResponse.DisplayName, nil
+}
+
+func createExerciseAndLinks(t *testing.T, client *library.VMWareClient, ctx context.Context, apiClient *swagger.APIClient, amountOfLinks int) (exerciseName string, linkNames []string) {
+	exerciseName = library.CreateRandomString(10)
+	fullExercisePath := path.Join(testConfiguration.ExerciseRootPath, exerciseName)
+
+	transportZone, err := getTransportZone(ctx, apiClient)
+	if err != nil {
+		t.Fatalf("Could not find transport zone: %v", err)
+	}
+	for i := 0; i < amountOfLinks; i++ {
+		linkName, err := createLink(ctx, transportZone, exerciseName, apiClient.SegmentsApi)
+		if err != nil {
+			t.Fatalf("Link creation failed: %v", err)
+		}
+		linkNames = append(linkNames, linkName)
+	}
+	t.Cleanup(func() {
+		cleanupError := exerciseCleanup(client, fullExercisePath)
+		if cleanupError != nil {
+			t.Fatalf("Failed to cleanup: %v", cleanupError)
+		}
+		for _, linkName := range linkNames {
+			segmentDeletionError := deleteLink(ctx, apiClient.SegmentsApi, linkName)
+			if segmentDeletionError != nil {
+				t.Fatalf("Could not delete segment: %v (%v)", linkName, segmentDeletionError)
+			}
+		}
+	})
+	return
+}
+
+func deleteLink(ctx context.Context, segmentApiService *swagger.SegmentsApiService, virtualSwitchName string) error {
+	_, httpResponse, err := segmentApiService.ReadInfraSegment(ctx, virtualSwitchName)
+	if err != nil && httpResponse.StatusCode != http.StatusNotFound {
+		return fmt.Errorf("Segment not found for deleting, HTTP response: %v, error: %v", httpResponse, err)
+	}
+	_, err = segmentApiService.DeleteInfraSegment(ctx, virtualSwitchName)
+	if err != nil {
+		httpResponse, err := segmentApiService.ForceDeleteInfraSegment(ctx, virtualSwitchName, &swagger.SegmentsApiForceDeleteInfraSegmentOpts{})
+		if err != nil {
+			return fmt.Errorf("Segment not deleted, HTTP response: %v, error: %v", httpResponse, err)
+		}
+	}
+	return nil
 }
 
 func TestVerifyNodeCpuAndMemory(t *testing.T) {
@@ -196,7 +272,7 @@ func TestVerifyNodeCpuAndMemory(t *testing.T) {
 	vmwareClient := library.NewVMWareClient(govmomiClient, testConfiguration.TemplateFolderPath)
 	gRPCClient := creategRPCClient(t, configuration.ServerAddress)
 	exerciseName, _ := createExercise(t, &vmwareClient)
-	createVmNode(t, gRPCClient, exerciseName, &vmwareClient)
+	createVmNode(t, gRPCClient, exerciseName, &vmwareClient, []string{})
 	managedVirtualMachine, err := getVmConfigurations(&vmwareClient, exerciseName, "test-node")
 	if err != nil {
 		t.Fatalf("Failed to retrieve VM configuration: %v", err)
@@ -220,7 +296,7 @@ func TestNodeDeletion(t *testing.T) {
 	vmwareClient := library.NewVMWareClient(govmomiClient, testConfiguration.TemplateFolderPath)
 	gRPCClient := creategRPCClient(t, configuration.ServerAddress)
 	exerciseName, _ := createExercise(t, &vmwareClient)
-	virtualMachineIdentifier := createVmNode(t, gRPCClient, exerciseName, &vmwareClient)
+	virtualMachineIdentifier := createVmNode(t, gRPCClient, exerciseName, &vmwareClient, []string{})
 
 	gRPCClient.Delete(context.Background(), virtualMachineIdentifier)
 	if vmNodeExists(&vmwareClient, exerciseName, "test-node") {
@@ -241,7 +317,7 @@ func TestNodeCreation(t *testing.T) {
 	gRPCClient := creategRPCClient(t, configuration.ServerAddress)
 	exerciseName, _ := createExercise(t, &vmwareClient)
 
-	nodeIdentifier := createVmNode(t, gRPCClient, exerciseName, &vmwareClient)
+	nodeIdentifier := createVmNode(t, gRPCClient, exerciseName, &vmwareClient, []string{})
 	nodeExists := vmNodeExists(&vmwareClient, exerciseName, "test-node")
 
 	if nodeIdentifier.GetIdentifier().GetValue() == "" && nodeExists {
@@ -267,6 +343,25 @@ func TestSwitcherCapability(t *testing.T) {
 	}
 }
 
+func TestLinkCreationAndDeletion(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	exerciseName := library.CreateRandomString(10)
+	apiClient := createAPIClient()
+	transportZone, transportZoneError := getTransportZone(ctx, apiClient)
+	if transportZoneError!= nil {
+		t.Fatalf("Couldn't get transport zone: %v", transportZoneError)
+	}
+	linkName, linkCreationError := createLink(ctx, transportZone, exerciseName, apiClient.SegmentsApi)
+	if linkCreationError!= nil {
+		t.Fatalf("Couldn't create link: %v", linkCreationError)
+	}
+	linkDeletionError := deleteLink(ctx, apiClient.SegmentsApi, linkName)
+	if linkCreationError!= nil {
+		t.Fatalf("Couldn't delete link: %v", linkDeletionError)
+	}
+}
+
 func TestLinkAddition(t *testing.T) {
 	t.Parallel()
 	configuration := startServer(3 * time.Second)
@@ -278,14 +373,18 @@ func TestLinkAddition(t *testing.T) {
 	}
 	vmwareClient := library.NewVMWareClient(govmomiClient, testConfiguration.TemplateFolderPath)
 	gRPCClient := creategRPCClient(t, configuration.ServerAddress)
-	exerciseName, _ := createExercise(t, &vmwareClient)
-
-	createVmNode(t, gRPCClient, exerciseName, &vmwareClient)
+	apiClient := createAPIClient()
+	amountOfLinks := 3
+	exerciseName, linkNames := createExerciseAndLinks(t, &vmwareClient, ctx, apiClient, amountOfLinks)
+	createVmNode(t, gRPCClient, exerciseName, &vmwareClient, linkNames)
 	managedVirtualMachine, _ := getVmConfigurations(&vmwareClient, exerciseName, "test-node")
 
 	if !vmNodeExists(&vmwareClient, exerciseName, "test-node") {
 		t.Fatalf("Node does not exist")
 	}
 
-	checkLinks(t, &vmwareClient, ctx, managedVirtualMachine)
+	checkError := vmwareClient.CheckVMLinks(ctx, managedVirtualMachine.Network, linkNames)
+	if checkError != nil {
+		t.Fatalf("Failed to check links: %v", checkError)
+	}
 }

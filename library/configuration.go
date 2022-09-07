@@ -71,6 +71,10 @@ type Configuration struct {
 	ResourcePoolPath   string `yaml:"resource_pool_path,omitempty"`
 	ExerciseRootPath   string `yaml:"exercise_root_path,omitempty"`
 	DatastorePath      string `yaml:"datastore_path,omitempty"`
+	NsxtApi            string `yaml:"nsxt_api,omitempty"`
+	NsxtAuth           string `yaml:"nsxt_auth,omitempty"`
+	TransportZoneName  string `yaml:"transport_zone_name,omitempty"`
+	SiteId             string `yaml:"site_id,omitempty"`
 }
 
 func (configuration *Configuration) Validate(validator *Validator) error {
@@ -94,6 +98,18 @@ func (configuration *Configuration) Validate(validator *Validator) error {
 	}
 	if validator.requireDatastorePath && configuration.DatastorePath == "" {
 		return status.Error(codes.InvalidArgument, "Vsphere datastore path not provided")
+	}
+	if configuration.NsxtApi == "" {
+		return status.Error(codes.InvalidArgument, "NSX-T API not provided")
+	}
+	if configuration.NsxtAuth == "" {
+		return status.Error(codes.InvalidArgument, "NSX-T Authorization key not provided")
+	}
+	if configuration.TransportZoneName == "" {
+		return status.Error(codes.InvalidArgument, "NSX-T Transport Zone Name not provided")
+	}
+	if configuration.SiteId == "" {
+		configuration.SiteId = "default"
 	}
 	return nil
 }

@@ -55,7 +55,7 @@ func getTransportZone(ctx context.Context, server *nsxtNodeServer) (transportZon
 			return &transportZone, nil
 		}
 	}
-	return nil, status.Error(codes.Internal, fmt.Sprintf("getTransportZone: could not find transportzone"))
+	return nil, status.Error(codes.Internal, fmt.Sprintln("getTransportZone: could not find transportzone"))
 }
 
 func createNetworkSegment(ctx context.Context, nodeDeployment *node.NodeDeployment, server *nsxtNodeServer) (*swagger.Segment, error) {

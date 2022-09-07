@@ -61,7 +61,7 @@ build-templater: compile-protobuf
 
 test: build test-machiner test-switcher test-templater
 
-test-machiner:
+test-machiner: build-machiner
 	go test -v ./machiner
 
 test-switcher: build-switcher
