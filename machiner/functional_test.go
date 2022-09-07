@@ -2,15 +2,15 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"math/rand"
+	"net/http"
 	"os"
 	"path"
 	"strings"
 	"testing"
 	"time"
-	"net/http"
-	"crypto/tls"
 
 	"github.com/open-cyber-range/vmware-handler/grpc/capability"
 	node "github.com/open-cyber-range/vmware-handler/grpc/node"
@@ -253,7 +253,7 @@ func deleteLink(ctx context.Context, segmentApiService *swagger.SegmentsApiServi
 	}
 	_, err = segmentApiService.DeleteInfraSegment(ctx, virtualSwitchName)
 	if err != nil {
-		httpResponse, err := segmentApiService.ForceDeleteInfraSegment(ctx, virtualSwitchName, &swagger.SegmentsApiForceDeleteInfraSegmentOpts{})	
+		httpResponse, err := segmentApiService.ForceDeleteInfraSegment(ctx, virtualSwitchName, &swagger.SegmentsApiForceDeleteInfraSegmentOpts{})
 		if err != nil {
 			return fmt.Errorf("Segment not deleted, HTTP response: %v, error: %v", httpResponse, err)
 		}
