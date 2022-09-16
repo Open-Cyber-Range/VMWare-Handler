@@ -3,9 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"net"
+	"net/http"
+
 	"github.com/open-cyber-range/vmware-handler/grpc/capability"
 	common "github.com/open-cyber-range/vmware-handler/grpc/common"
-	node "github.com/open-cyber-range/vmware-handler/grpc/node"
+	switch_grpc "github.com/open-cyber-range/vmware-handler/grpc/switch"
 	"github.com/open-cyber-range/vmware-handler/library"
 	swagger "github.com/open-cyber-range/vmware-handler/nsx_t_openapi"
 	log "github.com/sirupsen/logrus"
@@ -13,8 +16,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
-	"net"
-	"net/http"
 )
 
 func createAPIClient(serverConfiguration *Configuration) (apiClient *swagger.APIClient) {
@@ -27,48 +28,44 @@ func createAPIClient(serverConfiguration *Configuration) (apiClient *swagger.API
 	return
 }
 
-type nsxtNodeServer struct {
-	node.UnimplementedNodeServiceServer
+type switchServer struct {
+	switch_grpc.UnimplementedSwitchServiceServer
 	Configuration Configuration
 	APIClient     *swagger.APIClient
 }
 
-func segmentExists(ctx context.Context, server *nsxtNodeServer, virtualSwitchUuid string) (bool, error) {
-	segmentApiService := server.APIClient.SegmentsApi
-	_, httpResponse, err := segmentApiService.ReadInfraSegment(ctx, virtualSwitchUuid)
-	if err != nil && httpResponse.StatusCode != http.StatusNotFound {
-		return false, err
-	}
-	return httpResponse.StatusCode == http.StatusOK, nil
+type DeploySwitch struct {
+	DeploymentMessge *switch_grpc.DeploySwitch
+	Configuration    Configuration
+	APIClient        *swagger.APIClient
 }
 
-func getTransportZone(ctx context.Context, server *nsxtNodeServer) (transportZone *swagger.PolicyTransportZone, err error) {
-	segmentApiService := server.APIClient.ConnectivityApi
-	policyTransportZoneListResult, _, err := segmentApiService.ListTransportZonesForEnforcementPoint(ctx, server.Configuration.SiteId,
+func (deploySwitch *DeploySwitch) getTransportZone(ctx context.Context) (transportZone *swagger.PolicyTransportZone, err error) {
+	segmentApiService := deploySwitch.APIClient.ConnectivityApi
+	policyTransportZoneListResult, _, err := segmentApiService.ListTransportZonesForEnforcementPoint(ctx, deploySwitch.Configuration.SiteId,
 		"default", &swagger.ConnectivityApiListTransportZonesForEnforcementPointOpts{})
 	if err != nil {
 		err = status.Error(codes.Internal, fmt.Sprintf("getTransportZone: %v", err))
 		return nil, err
 	}
 	for _, transportZone := range policyTransportZoneListResult.Results {
-		if server.Configuration.TransportZoneName == transportZone.DisplayName {
+		if deploySwitch.Configuration.TransportZoneName == transportZone.DisplayName {
 			return &transportZone, nil
 		}
 	}
-	return nil, status.Error(codes.Internal, fmt.Sprintf("getTransportZone: could not find transportzone"))
+	return nil, status.Error(codes.Internal, fmt.Sprintln("getTransportZone: could not find transportzone"))
 }
 
-func createNetworkSegment(ctx context.Context, nodeDeployment *node.NodeDeployment, server *nsxtNodeServer) (*swagger.Segment, error) {
-	transportZone, err := getTransportZone(ctx, server)
+func (deploySwitch *DeploySwitch) createNetworkSegment(ctx context.Context) (*swagger.Segment, error) {
+	transportZone, err := deploySwitch.getTransportZone(ctx)
 	if err != nil {
 		return nil, err
 	}
 	var segment = swagger.Segment{
-		Id: nodeDeployment.GetParameters().GetName() + "_" +
-			nodeDeployment.GetParameters().GetExerciseName() + "_" + transportZone.Id,
+		Id:                deploySwitch.DeploymentMessge.MetaInfo.GetExerciseName() + "_" + deploySwitch.DeploymentMessge.MetaInfo.GetDeploymentName() + "_" + deploySwitch.DeploymentMessge.Switch.GetName(),
 		TransportZonePath: transportZone.Path,
 	}
-	segmentApiService := server.APIClient.SegmentsApi
+	segmentApiService := deploySwitch.APIClient.SegmentsApi
 	segmentResponse, httpResponse, err := segmentApiService.CreateOrReplaceInfraSegment(ctx, segment.Id, segment)
 	if err != nil {
 		err = status.Error(codes.Internal, fmt.Sprintf("CreateSegment: API request (%v)", err))
@@ -81,8 +78,8 @@ func createNetworkSegment(ctx context.Context, nodeDeployment *node.NodeDeployme
 	return &segmentResponse, nil
 }
 
-func deleteInfraSegment(ctx context.Context, server *nsxtNodeServer, virtualSwitchUuid string) (bool, error) {
-	segmentApiService := server.APIClient.SegmentsApi
+func (switchServer *switchServer) deleteInfraSegment(ctx context.Context, virtualSwitchUuid string) (bool, error) {
+	segmentApiService := switchServer.APIClient.SegmentsApi
 	httpResponse, err := segmentApiService.DeleteInfraSegment(ctx, virtualSwitchUuid)
 	if err != nil && httpResponse.StatusCode != http.StatusNotFound {
 		return false, err
@@ -90,36 +87,28 @@ func deleteInfraSegment(ctx context.Context, server *nsxtNodeServer, virtualSwit
 	return httpResponse.StatusCode == http.StatusOK, nil
 }
 
-func (server *nsxtNodeServer) Create(ctx context.Context, nodeDeployment *node.NodeDeployment) (identifier *node.NodeIdentifier, err error) {
-	virtualSwitchDisplayName := nodeDeployment.GetParameters().GetName()
-	log.Printf("received request for switch creation: %v\n", virtualSwitchDisplayName)
-	segment, err := createNetworkSegment(ctx, nodeDeployment, server)
-	if err != nil {
-		log.Printf("virtual segment creation failed: %v", err)
-		return
+func (switchServer *switchServer) segmentExists(ctx context.Context, virtualSwitchUuid string) (bool, error) {
+	segmentApiService := switchServer.APIClient.SegmentsApi
+	_, httpResponse, err := segmentApiService.ReadInfraSegment(ctx, virtualSwitchUuid)
+	if err != nil && httpResponse.StatusCode != http.StatusNotFound {
+		return false, err
 	}
-	log.Infof("Virtual segment: %v created in transport zone: %v", segment.Id, segment.TransportZonePath)
-	return &node.NodeIdentifier{
-		Identifier: &common.Identifier{
-			Value: segment.Id,
-		},
-		NodeType: node.NodeType_switch,
-	}, nil
+	return httpResponse.StatusCode == http.StatusOK, nil
 }
 
-func deleteAndVerifyInfraSegment(ctx context.Context, virtualSwitchUuid string, server *nsxtNodeServer) error {
-	switchExists, err := segmentExists(ctx, server, virtualSwitchUuid)
+func (switchServer *switchServer) deleteAndVerifyInfraSegment(ctx context.Context, virtualSwitchUuid string) error {
+	switchExists, err := switchServer.segmentExists(ctx, virtualSwitchUuid)
 	if err != nil {
 		return fmt.Errorf("segment check error (%v)", err)
 	}
 	if !switchExists {
 		return fmt.Errorf("switch (UUID \" %v \") not found", virtualSwitchUuid)
 	} else {
-		_, err = deleteInfraSegment(ctx, server, virtualSwitchUuid)
+		_, err = switchServer.deleteInfraSegment(ctx, virtualSwitchUuid)
 		if err != nil {
 			return fmt.Errorf("API request error (%v)", err)
 		}
-		switchExists, err = segmentExists(ctx, server, virtualSwitchUuid)
+		switchExists, err = switchServer.segmentExists(ctx, virtualSwitchUuid)
 		if err != nil {
 			return fmt.Errorf("segment check error (%v)", err)
 		}
@@ -130,19 +119,36 @@ func deleteAndVerifyInfraSegment(ctx context.Context, virtualSwitchUuid string, 
 	return nil
 }
 
-func (server *nsxtNodeServer) Delete(ctx context.Context, nodeIdentifier *node.NodeIdentifier) (*emptypb.Empty, error) {
-	if *nodeIdentifier.GetNodeType().Enum() == *node.NodeType_switch.Enum() {
-		log.Infof("Received segment for deleting: UUID: %v", nodeIdentifier.GetIdentifier().GetValue())
-
-		err := deleteAndVerifyInfraSegment(ctx, nodeIdentifier.GetIdentifier().GetValue(), server)
-		if err != nil {
-			log.Errorf("Failed to delete segment (%v)", err)
-			return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to delete segment (%v)", err))
-		}
-		log.Infof("Deleted segment: %v", nodeIdentifier.GetIdentifier().GetValue())
-		return new(emptypb.Empty), nil
+func (server *switchServer) Create(ctx context.Context, switchDeployment *switch_grpc.DeploySwitch) (identifier *common.Identifier, err error) {
+	var deploySwitch = DeploySwitch{
+		DeploymentMessge: switchDeployment,
+		Configuration:    server.Configuration,
+		APIClient:        server.APIClient,
 	}
-	return nil, status.Error(codes.InvalidArgument, "Node is not a virtual switch")
+	log.Printf("received request for switch creation: %v\n", deploySwitch.DeploymentMessge.Switch.GetName())
+	segment, err := deploySwitch.createNetworkSegment(ctx)
+	if err != nil {
+		log.Printf("virtual segment creation failed: %v", err)
+		return
+	}
+	log.Infof("Virtual segment: %v created in transport zone: %v", segment.Id, segment.TransportZonePath)
+	return &common.Identifier{
+		Value: segment.Id,
+	}, nil
+}
+
+func (server *switchServer) Delete(ctx context.Context, identifier *common.Identifier) (*emptypb.Empty, error) {
+
+	log.Infof("Received segment for deleting: UUID: %v", identifier.GetValue())
+
+	err := server.deleteAndVerifyInfraSegment(ctx, identifier.GetValue())
+	if err != nil {
+		log.Errorf("Failed to delete segment (%v)", err)
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to delete segment (%v)", err))
+	}
+	log.Infof("Deleted segment: %v", identifier.GetValue())
+	return new(emptypb.Empty), nil
+
 }
 
 func RealMain(serverConfiguration *Configuration) {
@@ -153,7 +159,7 @@ func RealMain(serverConfiguration *Configuration) {
 
 	server := grpc.NewServer()
 	apiClient := createAPIClient(serverConfiguration)
-	node.RegisterNodeServiceServer(server, &nsxtNodeServer{
+	switch_grpc.RegisterSwitchServiceServer(server, &switchServer{
 		APIClient:     apiClient,
 		Configuration: *serverConfiguration,
 	})

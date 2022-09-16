@@ -1,3 +1,9 @@
+ranger-vmware-handlers (3.0.0) stretch; urgency=medium
+
+  * Adapt to new gRPC contract
+
+ -- Kaarel Allemann <developers@cr14.ee>  Fri, 16 Sep 2022 12:38:46 +0000
+
 ranger-vmware-handlers (2.4.1) stretch; urgency=medium
 
   * Use transport zones when creating switches

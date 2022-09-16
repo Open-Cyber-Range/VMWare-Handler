@@ -9,7 +9,8 @@ import (
 	"time"
 
 	"github.com/open-cyber-range/vmware-handler/grpc/capability"
-	node "github.com/open-cyber-range/vmware-handler/grpc/node"
+	"github.com/open-cyber-range/vmware-handler/grpc/common"
+	swithc_grpc "github.com/open-cyber-range/vmware-handler/grpc/switch"
 	"github.com/open-cyber-range/vmware-handler/library"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -24,19 +25,17 @@ var testConfiguration = Configuration{
 	Insecure:          true,
 }
 
-func createNodeDeploymentOfTypeSwitch() *node.NodeDeployment {
-	nodeDeployment := &node.NodeDeployment{
-		Parameters: &node.DeploymentParameters{
-			Name:         fmt.Sprintf("test-virtual-switch-%v", library.CreateRandomString(5)),
-			ExerciseName: library.CreateRandomString(10),
+func createNodeDeploymentOfTypeSwitch() *swithc_grpc.DeploySwitch {
+	switchDeployment := &swithc_grpc.DeploySwitch{
+		MetaInfo: &common.MetaInfo{
+			DeploymentName: library.CreateRandomString(10),
+			ExerciseName:   library.CreateRandomString(10),
 		},
-		Node: &node.Node{
-			Identifier: &node.NodeIdentifier{
-				NodeType: node.NodeType_switch,
-			},
+		Switch: &swithc_grpc.Switch{
+			Name: fmt.Sprintf("test-virtual-switch-%v", library.CreateRandomString(5)),
 		},
 	}
-	return nodeDeployment
+	return switchDeployment
 }
 
 func createCapabilityClient(t *testing.T, serverPath string) capability.CapabilityClient {
@@ -81,19 +80,24 @@ func TestSwitcherCapability(t *testing.T) {
 
 func TestSegmentCreationAndDeletion(t *testing.T) {
 	ctx := context.Background()
-	nodeDeployment := createNodeDeploymentOfTypeSwitch()
+	switchDeployment := createNodeDeploymentOfTypeSwitch()
 	serverConfiguration := startServer(time.Second * 3)
 	apiClient := createAPIClient(&serverConfiguration)
-	var nsxtNodeServer = nsxtNodeServer{
-		UnimplementedNodeServiceServer: node.UnimplementedNodeServiceServer{},
-		APIClient:                      apiClient,
-		Configuration:                  serverConfiguration,
+	var nsxtNodeServer = switchServer{
+		UnimplementedSwitchServiceServer: swithc_grpc.UnimplementedSwitchServiceServer{},
+		APIClient:                        apiClient,
+		Configuration:                    serverConfiguration,
 	}
-	segment, err := createNetworkSegment(ctx, nodeDeployment, &nsxtNodeServer)
+	var deploySwitch = DeploySwitch{
+		DeploymentMessge: switchDeployment,
+		APIClient:        apiClient,
+		Configuration:    serverConfiguration,
+	}
+	segment, err := deploySwitch.createNetworkSegment(ctx)
 	if err != nil {
 		t.Fatalf("Failed to create network segment: %v", err)
 	}
-	err = deleteAndVerifyInfraSegment(ctx, segment.Id, &nsxtNodeServer)
+	err = nsxtNodeServer.deleteAndVerifyInfraSegment(ctx, segment.Id)
 	if err != nil {
 		t.Fatalf("Failed to delete network segment: %v", err)
 	}
