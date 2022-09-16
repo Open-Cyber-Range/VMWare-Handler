@@ -3,10 +3,11 @@ package main
 import (
 	"crypto/tls"
 	"fmt"
-	swagger "github.com/open-cyber-range/vmware-handler/nsx_t_openapi"
 	"io/ioutil"
 	"net/http"
 	"os"
+
+	swagger "github.com/open-cyber-range/vmware-handler/nsx_t_openapi"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

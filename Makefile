@@ -33,15 +33,17 @@ compile-protobuf:
 	protoc --go_out=grpc --go-grpc_out=grpc \
 	--go_opt=Msrc/common.proto=github.com/open-cyber-range/vmware-handler/grpc/common \
 	--go_opt=Msrc/template.proto=github.com/open-cyber-range/vmware-handler/grpc/template \
-	--go_opt=Msrc/node.proto=github.com/open-cyber-range/vmware-handler/grpc/node \
 	--go_opt=Msrc/capability.proto=github.com/open-cyber-range/vmware-handler/grpc/capability \
+	--go_opt=Msrc/virtual-machine.proto=github.com/open-cyber-range/vmware-handler/grpc/virtual-machine \
+	--go_opt=Msrc/switch.proto=github.com/open-cyber-range/vmware-handler/grpc/switch \
 	--go-grpc_opt=Msrc/common.proto=github.com/open-cyber-range/vmware-handler/grpc/common \
 	--go-grpc_opt=Msrc/template.proto=github.com/open-cyber-range/vmware-handler/grpc/template \
-	--go-grpc_opt=Msrc/node.proto=github.com/open-cyber-range/vmware-handler/grpc/node  \
 	--go-grpc_opt=Msrc/capability.proto=github.com/open-cyber-range/vmware-handler/grpc/capability  \
+	--go-grpc_opt=Msrc/virtual-machine.proto=github.com/open-cyber-range/vmware-handler/grpc/virtual-machine  \
+	--go-grpc_opt=Msrc/switch.proto=github.com/open-cyber-range/vmware-handler/grpc/switch  \
 	--go_opt=module=github.com/open-cyber-range/vmware-handler/grpc \
 	--go-grpc_opt=module=github.com/open-cyber-range/vmware-handler/grpc \
-	--proto_path=grpc/proto src/node.proto src/common.proto src/capability.proto src/template.proto
+	--proto_path=grpc/proto src/virtual-machine.proto src/switch.proto src/common.proto src/capability.proto src/template.proto
 
 generate-nsx-t-openapi:
 	java -Dapis=Segments,Connectivity -Dmodels -DsupportingFiles -jar /var/opt/swagger/swagger-codegen-cli.jar generate -DpackageName=nsx_t_openapi -DmodelTests=false -DapiTests=false -DapiDocs=false -DmodelDocs=false -D io.swagger.parser.util.RemoteUrl.trustAll=true -i extra/nsx_policy_api.yaml -l go -o nsx_t_openapi &&\

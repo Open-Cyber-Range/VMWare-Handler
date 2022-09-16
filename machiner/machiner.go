@@ -8,7 +8,7 @@ import (
 
 	"github.com/open-cyber-range/vmware-handler/grpc/capability"
 	common "github.com/open-cyber-range/vmware-handler/grpc/common"
-	node "github.com/open-cyber-range/vmware-handler/grpc/node"
+	virtual_machine "github.com/open-cyber-range/vmware-handler/grpc/virtual-machine"
 	"github.com/open-cyber-range/vmware-handler/library"
 	log "github.com/sirupsen/logrus"
 	"github.com/vmware/govmomi"
@@ -22,51 +22,62 @@ import (
 )
 
 type Deployment struct {
-	Client        *library.VMWareClient
-	Node          *node.Node
-	Configuration *library.Configuration
-	Parameters    *node.DeploymentParameters
+	Client         *library.VMWareClient
+	VirtualMachine *virtual_machine.VirtualMachine
+	Configuration  *library.Configuration
+	MetaInfo       *common.MetaInfo
 }
 
-func (deployment *Deployment) createOrFindExerciseFolder(call_count int) (_ *object.Folder, err error) {
+func (deployment *Deployment) createOrFindDeploymentFolder(call_count int) (_ *object.Folder, err error) {
 	finder, _, err := deployment.Client.CreateFinderAndDatacenter()
 	if err != nil {
 		return
 	}
 	ctx := context.Background()
-	folderPath := path.Join(deployment.Configuration.ExerciseRootPath, deployment.Parameters.ExerciseName)
-
-	existingFolder, _ := finder.Folder(ctx, folderPath)
-	if existingFolder != nil {
-		return existingFolder, nil
-	}
-
 	baseFolder, err := finder.Folder(ctx, deployment.Configuration.ExerciseRootPath)
 	if err != nil {
 		return
 	}
 
-	exerciseFolder, err := baseFolder.CreateFolder(ctx, deployment.Parameters.ExerciseName)
+	exerciseFolderPath := path.Join(deployment.Configuration.ExerciseRootPath, deployment.MetaInfo.ExerciseName)
+	exerciseFolder, err := finder.Folder(ctx, exerciseFolderPath)
+	if exerciseFolder == nil && err != nil {
+		exerciseFolder, err = baseFolder.CreateFolder(ctx, deployment.MetaInfo.ExerciseName)
+	}
+
 	if err != nil {
 		if call_count < 3 {
-			return deployment.createOrFindExerciseFolder(call_count + 1)
+			return deployment.createOrFindDeploymentFolder(call_count + 1)
 		}
 		return
 	}
 
-	return exerciseFolder, nil
+	deploymentFolderPath := path.Join(exerciseFolderPath, deployment.MetaInfo.DeploymentName)
+	deploymentFolder, err := finder.Folder(ctx, deploymentFolderPath)
+	if deploymentFolder == nil && err != nil {
+		deploymentFolder, err = exerciseFolder.CreateFolder(ctx, deployment.MetaInfo.DeploymentName)
+	}
+
+	if err != nil {
+		if call_count < 3 {
+			return deployment.createOrFindDeploymentFolder(call_count + 1)
+		}
+		return
+	}
+
+	return deploymentFolder, nil
 }
 
 func (deployment *Deployment) create() (err error) {
 	ctx := context.Background()
-	template, err := deployment.Client.GetVirtualMachineByUUID(ctx, deployment.Parameters.TemplateId)
+	template, err := deployment.Client.GetVirtualMachineByUUID(ctx, deployment.VirtualMachine.TemplateId)
 	if template == nil {
-		return fmt.Errorf("template not found, uuid: %v", deployment.Parameters.TemplateId)
+		return fmt.Errorf("template not found, uuid: %v", deployment.VirtualMachine.TemplateId)
 	}
 	if err != nil {
 		return
 	}
-	exersiceFolder, err := deployment.createOrFindExerciseFolder(0)
+	deploymentFolder, err := deployment.createOrFindDeploymentFolder(0)
 	if err != nil {
 		return
 	}
@@ -77,9 +88,9 @@ func (deployment *Deployment) create() (err error) {
 	resourcePoolReference := resourcePool.Reference()
 
 	vmConfiguration := types.VirtualMachineConfigSpec{}
-	if deployment.Node.Configuration != nil {
-		ramBytesAsMegabytes := (int64(deployment.Node.Configuration.GetRam()) >> 20)
-		vmConfiguration.NumCPUs = int32(deployment.Node.Configuration.GetCpu())
+	if deployment.VirtualMachine.Configuration != nil {
+		ramBytesAsMegabytes := (int64(deployment.VirtualMachine.Configuration.GetRam()) >> 20)
+		vmConfiguration.NumCPUs = int32(deployment.VirtualMachine.Configuration.GetCpu())
 		vmConfiguration.MemoryMB = ramBytesAsMegabytes
 	}
 
@@ -90,7 +101,7 @@ func (deployment *Deployment) create() (err error) {
 			Pool: &resourcePoolReference,
 		},
 	}
-	task, err := template.Clone(context.Background(), exersiceFolder, deployment.Parameters.Name, cloneSpesifcation)
+	task, err := template.Clone(context.Background(), deploymentFolder, deployment.VirtualMachine.Name, cloneSpesifcation)
 	if err != nil {
 		return
 	}
@@ -107,8 +118,7 @@ func (deployment *Deployment) create() (err error) {
 	return fmt.Errorf("failed to clone template")
 }
 
-func createLinks(ctx context.Context, nodeDeployment *node.NodeDeployment, finder *find.Finder) (object.VirtualDeviceList, error) {
-	linkNames := nodeDeployment.Parameters.Links
+func createLinks(ctx context.Context, linkNames []string, finder *find.Finder) (object.VirtualDeviceList, error) {
 	var links object.VirtualDeviceList
 
 	for _, linkName := range linkNames {
@@ -144,21 +154,21 @@ func addLinks(ctx context.Context, links object.VirtualDeviceList, virtualMachin
 	return nil
 }
 
-type nodeServer struct {
-	node.UnimplementedNodeServiceServer
+type virtualMachineServer struct {
+	virtual_machine.UnimplementedVirtualMachineServiceServer
 	Client        *govmomi.Client
 	Configuration *library.Configuration
 }
 
-func (server *nodeServer) Create(ctx context.Context, nodeDeployment *node.NodeDeployment) (*node.NodeIdentifier, error) {
+func (server *virtualMachineServer) Create(ctx context.Context, virtualMachineDeployment *virtual_machine.DeployVirtualMachine) (*common.Identifier, error) {
 	vmwareClient := library.NewVMWareClient(server.Client, server.Configuration.TemplateFolderPath)
 	deployment := Deployment{
-		Client:        &vmwareClient,
-		Configuration: server.Configuration,
-		Node:          nodeDeployment.Node,
-		Parameters:    nodeDeployment.Parameters,
+		Client:         &vmwareClient,
+		Configuration:  server.Configuration,
+		VirtualMachine: virtualMachineDeployment.VirtualMachine,
+		MetaInfo:       virtualMachineDeployment.MetaInfo,
 	}
-	log.Infof("Received node: %v for deployment in exercise: %v", nodeDeployment.Parameters.Name, nodeDeployment.Parameters.ExerciseName)
+	log.Infof("Received node: %v for deployment in exercise: %v, deployment: %v", deployment.VirtualMachine.Name, deployment.MetaInfo.ExerciseName, deployment.MetaInfo.DeploymentName)
 	deploymentError := deployment.create()
 	if deploymentError != nil {
 		log.Errorf("Deployment creation error (%v)", deploymentError)
@@ -169,15 +179,15 @@ func (server *nodeServer) Create(ctx context.Context, nodeDeployment *node.NodeD
 		log.Errorf("Datacenter creation error (%v)", datacenterError)
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Datacenter creation error (%v)", datacenterError))
 	}
-	nodePath := path.Join(deployment.Configuration.ExerciseRootPath, deployment.Parameters.ExerciseName, deployment.Parameters.Name)
+	nodePath := path.Join(deployment.Configuration.ExerciseRootPath, deployment.MetaInfo.ExerciseName, deployment.MetaInfo.DeploymentName, deployment.VirtualMachine.Name)
 	virtualMachine, virtualMachineError := finder.VirtualMachine(context.Background(), nodePath)
 	if virtualMachineError != nil {
 		log.Errorf("Node creation error (%v)", virtualMachineError)
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Node creation error (%v)", virtualMachineError))
 	}
-	log.Infof("Deployed: %v", nodeDeployment.Parameters.GetName())
+	log.Infof("Deployed: %v", deployment.VirtualMachine.GetName())
 
-	links, linkCreationError := createLinks(ctx, nodeDeployment, finder)
+	links, linkCreationError := createLinks(ctx, deployment.VirtualMachine.Links, finder)
 	if linkCreationError != nil {
 		log.Errorf("Link creation error (%v)", linkCreationError)
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Link creation error (%v)", linkCreationError))
@@ -189,42 +199,35 @@ func (server *nodeServer) Create(ctx context.Context, nodeDeployment *node.NodeD
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Adding links to node error (%v)", linkAddingError))
 	}
 
-	log.Infof("Node: %v deployed in exercise: %v", nodeDeployment.Parameters.Name, nodeDeployment.Parameters.ExerciseName)
-	return &node.NodeIdentifier{
-		Identifier: &common.Identifier{
-			Value: virtualMachine.UUID(ctx),
-		},
-		NodeType: node.NodeType_vm,
+	log.Infof("Node: %v deployed  in exercise: %v, deployment: %v", deployment.VirtualMachine.Name, deployment.MetaInfo.ExerciseName, deployment.MetaInfo.DeploymentName)
+	return &common.Identifier{
+		Value: virtualMachine.UUID(ctx),
 	}, nil
 }
 
-func (server *nodeServer) Delete(ctx context.Context, nodeIdentifier *node.NodeIdentifier) (*emptypb.Empty, error) {
+func (server *virtualMachineServer) Delete(ctx context.Context, identifier *common.Identifier) (*emptypb.Empty, error) {
 	vmwareClient := library.NewVMWareClient(server.Client, server.Configuration.TemplateFolderPath)
-	uuid := nodeIdentifier.Identifier.GetValue()
+	uuid := identifier.GetValue()
 	deployment := Deployment{
 		Client:        &vmwareClient,
 		Configuration: server.Configuration,
 	}
 
 	virtualMachine, _ := deployment.Client.GetVirtualMachineByUUID(ctx, uuid)
-	nodeName, nodeNameError := virtualMachine.ObjectName(ctx)
-	if nodeNameError != nil {
-		log.Errorf("Node name retrieval error (%v)", nodeNameError)
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Node name retrieval error (%v)", nodeNameError))
+	virtualMachineName, virtualMachineNameError := virtualMachine.ObjectName(ctx)
+	if virtualMachineNameError != nil {
+		log.Errorf("Node name retrieval error (%v)", virtualMachineNameError)
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Node name retrieval error (%v)", virtualMachineNameError))
 	}
-	parameters := node.DeploymentParameters{
-		Name: nodeName,
-	}
-	deployment.Parameters = &parameters
 
-	log.Infof("Received node: %v for deleting with UUID: %v", parameters.Name, uuid)
+	log.Infof("Received node: %v for deleting with UUID: %v", virtualMachineName, uuid)
 
 	deploymentError := deployment.Client.DeleteVirtualMachineByUUID(uuid)
 	if deploymentError != nil {
 		log.Errorf("Error during node deletion (%v)", deploymentError)
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Error during node deletion (%v)", deploymentError))
 	}
-	log.Infof("Deleted node: %v", parameters.GetName())
+	log.Infof("Deleted node: %v", virtualMachineName)
 	return new(emptypb.Empty), nil
 }
 
@@ -241,7 +244,7 @@ func RealMain(configuration *library.Configuration) {
 	}
 
 	server := grpc.NewServer()
-	node.RegisterNodeServiceServer(server, &nodeServer{
+	virtual_machine.RegisterVirtualMachineServiceServer(server, &virtualMachineServer{
 		Client:        client,
 		Configuration: configuration,
 	})

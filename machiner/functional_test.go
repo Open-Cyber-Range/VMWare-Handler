@@ -13,7 +13,8 @@ import (
 	"time"
 
 	"github.com/open-cyber-range/vmware-handler/grpc/capability"
-	node "github.com/open-cyber-range/vmware-handler/grpc/node"
+	"github.com/open-cyber-range/vmware-handler/grpc/common"
+	virtual_machine "github.com/open-cyber-range/vmware-handler/grpc/virtual-machine"
 	"github.com/open-cyber-range/vmware-handler/library"
 	swagger "github.com/open-cyber-range/vmware-handler/nsx_t_openapi"
 	"github.com/vmware/govmomi/vim25/mo"
@@ -34,10 +35,10 @@ var testConfiguration = library.Configuration{
 	NsxtApi:            os.Getenv("TEST_NSXT_API"),
 	NsxtAuth:           os.Getenv("TEST_NSXT_AUTH"),
 	TransportZoneName:  os.Getenv("TEST_NSXT_TRANSPORT_ZONE_NAME"),
-	SiteId:				"default",
+	SiteId:             "default",
 }
 
-var virtualMachineHardwareConfiguration = &node.Configuration{
+var virtualMachineHardwareConfiguration = &virtual_machine.Configuration{
 	Cpu: 2,
 	Ram: 1073741824, // 1024mb
 }
@@ -53,12 +54,12 @@ func startServer(timeout time.Duration) (configuration library.Configuration) {
 	return configuration
 }
 
-func exerciseCleanup(client *library.VMWareClient, folderPath string) (err error) {
+func exerciseCleanup(client *library.VMWareClient, exerciseFolder string, deploymentFolder string) (err error) {
 	finder, _, _ := client.CreateFinderAndDatacenter()
 	ctx := context.Background()
 
-	virtualMachines, err := finder.VirtualMachineList(ctx, folderPath+"/*")
-	if err != nil && !strings.HasSuffix(err.Error(), "vm '"+folderPath+"/*"+"' not found") {
+	virtualMachines, err := finder.VirtualMachineList(ctx, exerciseFolder+"/"+deploymentFolder+"/*")
+	if err != nil && !strings.HasSuffix(err.Error(), "vm '"+exerciseFolder+"/"+deploymentFolder+"/*"+"' not found") {
 		return
 	}
 
@@ -75,7 +76,7 @@ func exerciseCleanup(client *library.VMWareClient, folderPath string) (err error
 		destroyMachineTask.Wait(ctx)
 	}
 
-	folder, err := finder.Folder(ctx, folderPath)
+	folder, err := finder.Folder(ctx, exerciseFolder)
 	if err != nil {
 		return
 	}
@@ -87,15 +88,15 @@ func exerciseCleanup(client *library.VMWareClient, folderPath string) (err error
 	return nil
 }
 
-func vmNodeExists(client *library.VMWareClient, exerciseName string, nodeName string) bool {
+func vmNodeExists(client *library.VMWareClient, exerciseName string, deploymentName string, nodeName string) bool {
 	finder, _, _ := client.CreateFinderAndDatacenter()
 
 	ctx := context.Background()
-	virtualMachine, _ := finder.VirtualMachine(ctx, path.Join(testConfiguration.ExerciseRootPath, exerciseName, nodeName))
+	virtualMachine, _ := finder.VirtualMachine(ctx, path.Join(testConfiguration.ExerciseRootPath, exerciseName, deploymentName, nodeName))
 	return virtualMachine != nil
 }
 
-func creategRPCClient(t *testing.T, serverPath string) node.NodeServiceClient {
+func creategRPCClient(t *testing.T, serverPath string) virtual_machine.VirtualMachineServiceClient {
 	connection, connectionError := grpc.Dial(serverPath, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if connectionError != nil {
 		t.Fatalf("did not connect: %v", connectionError)
@@ -106,14 +107,15 @@ func creategRPCClient(t *testing.T, serverPath string) node.NodeServiceClient {
 			t.Fatalf("Failed to close connection: %v", connectionError)
 		}
 	})
-	return node.NewNodeServiceClient(connection)
+	return virtual_machine.NewVirtualMachineServiceClient(connection)
 }
 
-func createExercise(t *testing.T, client *library.VMWareClient) (exerciseName string, fullExercisePath string) {
+func createExercise(t *testing.T, client *library.VMWareClient) (exerciseName string, deploymentName string, fullExercisePath string) {
 	exerciseName = library.CreateRandomString(10)
+	deploymentName = library.CreateRandomString(10)
 	fullExercisePath = path.Join(testConfiguration.ExerciseRootPath, exerciseName)
 	t.Cleanup(func() {
-		cleanupError := exerciseCleanup(client, fullExercisePath)
+		cleanupError := exerciseCleanup(client, fullExercisePath, deploymentName)
 		if cleanupError != nil {
 			t.Fatalf("Failed to cleanup: %v", cleanupError)
 		}
@@ -121,43 +123,41 @@ func createExercise(t *testing.T, client *library.VMWareClient) (exerciseName st
 	return
 }
 
-func createVmNode(t *testing.T, client node.NodeServiceClient, exerciseName string, vmwareClient *library.VMWareClient, links []string) *node.NodeIdentifier {
+func createVmNode(t *testing.T, client virtual_machine.VirtualMachineServiceClient, exerciseName string, deploymentName string, vmwareClient *library.VMWareClient, links []string) *common.Identifier {
 	templateVirtualMachine, err := vmwareClient.GetTemplateByName("debian10")
 	if err != nil {
 		t.Fatalf("Failed to find template by name: %v", err)
 	}
 
 	ctx := context.Background()
-	nodeDeployment := &node.NodeDeployment{
-		Parameters: &node.DeploymentParameters{
-			Name:         "test-node",
-			TemplateId:   templateVirtualMachine.UUID(ctx),
-			ExerciseName: exerciseName,
-			Links:        links,
-		},
-		Node: &node.Node{
-			Identifier: &node.NodeIdentifier{
-				NodeType: node.NodeType_vm,
-			},
+	virtualMachineDeployment := &virtual_machine.DeployVirtualMachine{
+		VirtualMachine: &virtual_machine.VirtualMachine{
+			Name:          "test-node",
+			TemplateId:    templateVirtualMachine.UUID(ctx),
 			Configuration: virtualMachineHardwareConfiguration,
+			Links:         links,
+		},
+		MetaInfo: &common.MetaInfo{
+			ExerciseName:   exerciseName,
+			DeploymentName: deploymentName,
 		},
 	}
 
-	resultNode, err := client.Create(context.Background(), nodeDeployment)
+	result, err := client.Create(context.Background(), virtualMachineDeployment)
 	if err != nil {
 		t.Fatalf("Failed to send request: %v", err)
 	}
-	if resultNode.GetIdentifier().GetValue() == "" {
+	if result.GetValue() == "" {
 		t.Logf("Failed to retrieve UUID")
 	}
-	return resultNode
+	return result
 }
 
-func getVmConfigurations(client *library.VMWareClient, exerciseName string, nodeName string) (managedVirtualMachine mo.VirtualMachine, err error) {
+func getVmConfigurations(client *library.VMWareClient, exerciseName string, deploymentName string, nodeName string) (managedVirtualMachine mo.VirtualMachine, err error) {
 	finder, _, _ := client.CreateFinderAndDatacenter()
 
 	ctx := context.Background()
-	virtualMachine, _ := finder.VirtualMachine(ctx, path.Join("functional-tests", exerciseName, nodeName))
+	virtualMachine, _ := finder.VirtualMachine(ctx, path.Join("functional-tests", exerciseName, deploymentName, nodeName))
 
 	err = virtualMachine.Properties(ctx, virtualMachine.Reference(), []string{}, &managedVirtualMachine)
 	if err != nil {
@@ -216,8 +216,9 @@ func createLink(ctx context.Context, transportZone *swagger.PolicyTransportZone,
 	return segmentResponse.DisplayName, nil
 }
 
-func createExerciseAndLinks(t *testing.T, client *library.VMWareClient, ctx context.Context, apiClient *swagger.APIClient, amountOfLinks int) (exerciseName string, linkNames []string) {
+func createExerciseAndLinks(t *testing.T, client *library.VMWareClient, ctx context.Context, apiClient *swagger.APIClient, amountOfLinks int) (exerciseName string, deploymentName string, linkNames []string) {
 	exerciseName = library.CreateRandomString(10)
+	deploymentName = library.CreateRandomString(10)
 	fullExercisePath := path.Join(testConfiguration.ExerciseRootPath, exerciseName)
 
 	transportZone, err := getTransportZone(ctx, apiClient)
@@ -232,7 +233,7 @@ func createExerciseAndLinks(t *testing.T, client *library.VMWareClient, ctx cont
 		linkNames = append(linkNames, linkName)
 	}
 	t.Cleanup(func() {
-		cleanupError := exerciseCleanup(client, fullExercisePath)
+		cleanupError := exerciseCleanup(client, fullExercisePath, deploymentName)
 		if cleanupError != nil {
 			t.Fatalf("Failed to cleanup: %v", cleanupError)
 		}
@@ -271,9 +272,9 @@ func TestVerifyNodeCpuAndMemory(t *testing.T) {
 	}
 	vmwareClient := library.NewVMWareClient(govmomiClient, testConfiguration.TemplateFolderPath)
 	gRPCClient := creategRPCClient(t, configuration.ServerAddress)
-	exerciseName, _ := createExercise(t, &vmwareClient)
-	createVmNode(t, gRPCClient, exerciseName, &vmwareClient, []string{})
-	managedVirtualMachine, err := getVmConfigurations(&vmwareClient, exerciseName, "test-node")
+	exerciseName, deploymentName, _ := createExercise(t, &vmwareClient)
+	createVmNode(t, gRPCClient, exerciseName, deploymentName, &vmwareClient, []string{})
+	managedVirtualMachine, err := getVmConfigurations(&vmwareClient, exerciseName, deploymentName, "test-node")
 	if err != nil {
 		t.Fatalf("Failed to retrieve VM configuration: %v", err)
 	}
@@ -295,11 +296,11 @@ func TestNodeDeletion(t *testing.T) {
 	}
 	vmwareClient := library.NewVMWareClient(govmomiClient, testConfiguration.TemplateFolderPath)
 	gRPCClient := creategRPCClient(t, configuration.ServerAddress)
-	exerciseName, _ := createExercise(t, &vmwareClient)
-	virtualMachineIdentifier := createVmNode(t, gRPCClient, exerciseName, &vmwareClient, []string{})
+	exerciseName, deploymentName, _ := createExercise(t, &vmwareClient)
+	virtualMachineIdentifier := createVmNode(t, gRPCClient, exerciseName, deploymentName, &vmwareClient, []string{})
 
 	gRPCClient.Delete(context.Background(), virtualMachineIdentifier)
-	if vmNodeExists(&vmwareClient, exerciseName, "test-node") {
+	if vmNodeExists(&vmwareClient, exerciseName, deploymentName, "test-node") {
 		t.Fatalf("Node was not deleted")
 	}
 }
@@ -315,12 +316,12 @@ func TestNodeCreation(t *testing.T) {
 	}
 	vmwareClient := library.NewVMWareClient(govmomiClient, testConfiguration.TemplateFolderPath)
 	gRPCClient := creategRPCClient(t, configuration.ServerAddress)
-	exerciseName, _ := createExercise(t, &vmwareClient)
+	exerciseName, deploymentName, _ := createExercise(t, &vmwareClient)
 
-	nodeIdentifier := createVmNode(t, gRPCClient, exerciseName, &vmwareClient, []string{})
-	nodeExists := vmNodeExists(&vmwareClient, exerciseName, "test-node")
+	identifier := createVmNode(t, gRPCClient, exerciseName, deploymentName, &vmwareClient, []string{})
+	nodeExists := vmNodeExists(&vmwareClient, exerciseName, deploymentName, "test-node")
 
-	if nodeIdentifier.GetIdentifier().GetValue() == "" && nodeExists {
+	if identifier.GetValue() == "" && nodeExists {
 		t.Fatalf("Node exists but failed to retrieve UUID")
 	}
 	if !nodeExists {
@@ -349,15 +350,15 @@ func TestLinkCreationAndDeletion(t *testing.T) {
 	exerciseName := library.CreateRandomString(10)
 	apiClient := createAPIClient()
 	transportZone, transportZoneError := getTransportZone(ctx, apiClient)
-	if transportZoneError!= nil {
+	if transportZoneError != nil {
 		t.Fatalf("Couldn't get transport zone: %v", transportZoneError)
 	}
 	linkName, linkCreationError := createLink(ctx, transportZone, exerciseName, apiClient.SegmentsApi)
-	if linkCreationError!= nil {
+	if linkCreationError != nil {
 		t.Fatalf("Couldn't create link: %v", linkCreationError)
 	}
 	linkDeletionError := deleteLink(ctx, apiClient.SegmentsApi, linkName)
-	if linkCreationError!= nil {
+	if linkCreationError != nil {
 		t.Fatalf("Couldn't delete link: %v", linkDeletionError)
 	}
 }
@@ -375,11 +376,11 @@ func TestLinkAddition(t *testing.T) {
 	gRPCClient := creategRPCClient(t, configuration.ServerAddress)
 	apiClient := createAPIClient()
 	amountOfLinks := 3
-	exerciseName, linkNames := createExerciseAndLinks(t, &vmwareClient, ctx, apiClient, amountOfLinks)
-	createVmNode(t, gRPCClient, exerciseName, &vmwareClient, linkNames)
-	managedVirtualMachine, _ := getVmConfigurations(&vmwareClient, exerciseName, "test-node")
+	exerciseName, deploymentName, linkNames := createExerciseAndLinks(t, &vmwareClient, ctx, apiClient, amountOfLinks)
+	createVmNode(t, gRPCClient, exerciseName, deploymentName, &vmwareClient, linkNames)
+	managedVirtualMachine, _ := getVmConfigurations(&vmwareClient, exerciseName, deploymentName, "test-node")
 
-	if !vmNodeExists(&vmwareClient, exerciseName, "test-node") {
+	if !vmNodeExists(&vmwareClient, exerciseName, deploymentName, "test-node") {
 		t.Fatalf("Node does not exist")
 	}
 
