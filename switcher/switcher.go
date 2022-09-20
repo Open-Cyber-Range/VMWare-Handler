@@ -62,7 +62,7 @@ func (deploySwitch *DeploySwitch) createNetworkSegment(ctx context.Context) (*sw
 		return nil, err
 	}
 	var segment = swagger.Segment{
-		Id:                deploySwitch.DeploymentMessge.MetaInfo.GetExerciseName() + "_" + deploySwitch.DeploymentMessge.MetaInfo.GetDeploymentName() + "_" + deploySwitch.DeploymentMessge.Switch.GetName(),
+		Id:                library.SanitizeToCompatibleName(deploySwitch.DeploymentMessge.MetaInfo.GetExerciseName() + "_" + deploySwitch.DeploymentMessge.MetaInfo.GetDeploymentName() + "_" + deploySwitch.DeploymentMessge.Switch.GetName()),
 		TransportZonePath: transportZone.Path,
 	}
 	segmentApiService := deploySwitch.APIClient.SegmentsApi

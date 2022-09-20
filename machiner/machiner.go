@@ -168,6 +168,7 @@ func (server *virtualMachineServer) Create(ctx context.Context, virtualMachineDe
 		VirtualMachine: virtualMachineDeployment.VirtualMachine,
 		MetaInfo:       virtualMachineDeployment.MetaInfo,
 	}
+	deployment.VirtualMachine.Name = library.SanitizeToCompatibleName((deployment.VirtualMachine.Name))
 	log.Infof("Received node: %v for deployment in exercise: %v, deployment: %v", deployment.VirtualMachine.Name, deployment.MetaInfo.ExerciseName, deployment.MetaInfo.DeploymentName)
 	deploymentError := deployment.create()
 	if deploymentError != nil {

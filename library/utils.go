@@ -1,11 +1,12 @@
 package library
 
 import (
-	"io/ioutil"
 	"math/rand"
+	"os"
 	"testing"
 	"time"
 
+	"github.com/iancoleman/strcase"
 	"github.com/open-cyber-range/vmware-handler/grpc/capability"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -27,7 +28,7 @@ func ScaleBytesByUnit(byteSize uint64) int32 {
 
 func IOReadDir(root string) ([]string, error) {
 	var files []string
-	fileInfo, err := ioutil.ReadDir(root)
+	fileInfo, err := os.ReadDir(root)
 	if err != nil {
 		return files, err
 	}
@@ -50,4 +51,17 @@ func CreateCapabilityClient(t *testing.T, serverPath string) capability.Capabili
 		}
 	})
 	return capability.NewCapabilityClient(connection)
+}
+
+func truncateText(s string, max int) string {
+	if max > len(s) {
+		return s
+	}
+	return s[:max]
+}
+
+const maxNameLength int = 80
+
+func SanitizeToCompatibleName(input string) string {
+	return truncateText(strcase.ToLowerCamel(input), maxNameLength)
 }
