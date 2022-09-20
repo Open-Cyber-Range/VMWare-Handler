@@ -1,3 +1,10 @@
+ranger-vmware-handlers (3.0.1) stretch; urgency=medium
+
+  * Fix NSX-T configuration requirements for machiner ja templater
+  * Add deployment name transformation switches and virtual machines
+
+ -- Kaarel Allemann <developers@cr14.ee>  Tue, 20 Sep 2022 15:31:40 +0300
+
 ranger-vmware-handlers (3.0.0) stretch; urgency=medium
 
   * Adapt to new gRPC contract
