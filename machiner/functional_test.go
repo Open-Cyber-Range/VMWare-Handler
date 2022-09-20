@@ -32,10 +32,20 @@ var testConfiguration = library.Configuration{
 	ServerAddress:      "127.0.0.1",
 	ResourcePoolPath:   os.Getenv("TEST_VMWARE_RESOURCE_POOL_PATH"),
 	ExerciseRootPath:   os.Getenv("TEST_VMWARE_EXERCISE_ROOT_PATH"),
-	NsxtApi:            os.Getenv("TEST_NSXT_API"),
-	NsxtAuth:           os.Getenv("TEST_NSXT_AUTH"),
-	TransportZoneName:  os.Getenv("TEST_NSXT_TRANSPORT_ZONE_NAME"),
-	SiteId:             "default",
+}
+
+type TestNSXTConfiguration struct {
+	NsxtApi           string
+	NsxtAuth          string
+	TransportZoneName string
+	SiteId            string
+}
+
+var switchTestConfiguration = TestNSXTConfiguration{
+	NsxtApi:           os.Getenv("TEST_NSXT_API"),
+	NsxtAuth:          os.Getenv("TEST_NSXT_AUTH"),
+	TransportZoneName: os.Getenv("TEST_NSXT_TRANSPORT_ZONE_NAME"),
+	SiteId:            "default",
 }
 
 var virtualMachineHardwareConfiguration = &virtual_machine.Configuration{
@@ -132,7 +142,7 @@ func createVmNode(t *testing.T, client virtual_machine.VirtualMachineServiceClie
 	ctx := context.Background()
 	virtualMachineDeployment := &virtual_machine.DeployVirtualMachine{
 		VirtualMachine: &virtual_machine.VirtualMachine{
-			Name:          "test-node",
+			Name:          "testNode",
 			TemplateId:    templateVirtualMachine.UUID(ctx),
 			Configuration: virtualMachineHardwareConfiguration,
 			Links:         links,
@@ -168,8 +178,8 @@ func getVmConfigurations(client *library.VMWareClient, exerciseName string, depl
 
 func createAPIConfiguration() (apiConfiguration *swagger.Configuration) {
 	apiConfiguration = swagger.NewConfiguration()
-	apiConfiguration.BasePath = "https://" + testConfiguration.NsxtApi + "/policy/api/v1"
-	apiConfiguration.DefaultHeader["Authorization"] = fmt.Sprintf("Basic %v", testConfiguration.NsxtAuth)
+	apiConfiguration.BasePath = "https://" + switchTestConfiguration.NsxtApi + "/policy/api/v1"
+	apiConfiguration.DefaultHeader["Authorization"] = fmt.Sprintf("Basic %v", switchTestConfiguration.NsxtAuth)
 	apiConfiguration.HTTPClient = &http.Client{
 		// TODO TLS still insecure
 		Transport: &http.Transport{
@@ -187,13 +197,13 @@ func createAPIClient() (apiClient *swagger.APIClient) {
 
 func getTransportZone(ctx context.Context, apiClient *swagger.APIClient) (transportZone *swagger.PolicyTransportZone, err error) {
 	segmentApiService := apiClient.ConnectivityApi
-	policyTransportZoneListResult, _, err := segmentApiService.ListTransportZonesForEnforcementPoint(ctx, testConfiguration.SiteId,
+	policyTransportZoneListResult, _, err := segmentApiService.ListTransportZonesForEnforcementPoint(ctx, switchTestConfiguration.SiteId,
 		"default", &swagger.ConnectivityApiListTransportZonesForEnforcementPointOpts{})
 	if err != nil {
 		return nil, err
 	}
 	for _, transportZone := range policyTransportZoneListResult.Results {
-		if testConfiguration.TransportZoneName == transportZone.DisplayName {
+		if switchTestConfiguration.TransportZoneName == transportZone.DisplayName {
 			return &transportZone, nil
 		}
 	}
@@ -274,7 +284,7 @@ func TestVerifyNodeCpuAndMemory(t *testing.T) {
 	gRPCClient := creategRPCClient(t, configuration.ServerAddress)
 	exerciseName, deploymentName, _ := createExercise(t, &vmwareClient)
 	createVmNode(t, gRPCClient, exerciseName, deploymentName, &vmwareClient, []string{})
-	managedVirtualMachine, err := getVmConfigurations(&vmwareClient, exerciseName, deploymentName, "test-node")
+	managedVirtualMachine, err := getVmConfigurations(&vmwareClient, exerciseName, deploymentName, "testNode")
 	if err != nil {
 		t.Fatalf("Failed to retrieve VM configuration: %v", err)
 	}
@@ -300,7 +310,7 @@ func TestNodeDeletion(t *testing.T) {
 	virtualMachineIdentifier := createVmNode(t, gRPCClient, exerciseName, deploymentName, &vmwareClient, []string{})
 
 	gRPCClient.Delete(context.Background(), virtualMachineIdentifier)
-	if vmNodeExists(&vmwareClient, exerciseName, deploymentName, "test-node") {
+	if vmNodeExists(&vmwareClient, exerciseName, deploymentName, "testNode") {
 		t.Fatalf("Node was not deleted")
 	}
 }
@@ -319,7 +329,7 @@ func TestNodeCreation(t *testing.T) {
 	exerciseName, deploymentName, _ := createExercise(t, &vmwareClient)
 
 	identifier := createVmNode(t, gRPCClient, exerciseName, deploymentName, &vmwareClient, []string{})
-	nodeExists := vmNodeExists(&vmwareClient, exerciseName, deploymentName, "test-node")
+	nodeExists := vmNodeExists(&vmwareClient, exerciseName, deploymentName, "testNode")
 
 	if identifier.GetValue() == "" && nodeExists {
 		t.Fatalf("Node exists but failed to retrieve UUID")
@@ -378,9 +388,9 @@ func TestLinkAddition(t *testing.T) {
 	amountOfLinks := 3
 	exerciseName, deploymentName, linkNames := createExerciseAndLinks(t, &vmwareClient, ctx, apiClient, amountOfLinks)
 	createVmNode(t, gRPCClient, exerciseName, deploymentName, &vmwareClient, linkNames)
-	managedVirtualMachine, _ := getVmConfigurations(&vmwareClient, exerciseName, deploymentName, "test-node")
+	managedVirtualMachine, _ := getVmConfigurations(&vmwareClient, exerciseName, deploymentName, "testNode")
 
-	if !vmNodeExists(&vmwareClient, exerciseName, deploymentName, "test-node") {
+	if !vmNodeExists(&vmwareClient, exerciseName, deploymentName, "testNode") {
 		t.Fatalf("Node does not exist")
 	}
 
