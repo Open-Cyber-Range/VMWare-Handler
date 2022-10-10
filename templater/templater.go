@@ -4,11 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net"
-	"os/exec"
 	"path"
-	"strings"
 	"sync"
 	"time"
 
@@ -98,67 +95,6 @@ type TemplateDeployment struct {
 	templateName  string
 }
 
-func createRandomPackagePath() (string, error) {
-	return ioutil.TempDir("/tmp", "deputy-package")
-}
-
-func (templateDeployment *TemplateDeployment) downloadPackage() (packagePath string, err error) {
-	packageBasePath, err := createRandomPackagePath()
-	if err != nil {
-		return
-	}
-	log.Infof("Created package base path: %v", packageBasePath)
-
-	downloadCommand := exec.Command("deputy", "fetch", templateDeployment.source.Name, "-v", templateDeployment.source.Version, "-s", packagePath)
-	downloadCommand.Dir = packageBasePath
-	_, err = downloadCommand.Output()
-	if err != nil {
-		return
-	}
-	directories, err := library.IOReadDir(packageBasePath)
-	if err != nil {
-		return
-	}
-
-	if len(directories) != 1 {
-		err = fmt.Errorf("expected one directory in package base path, got %v", len(directories))
-		return
-	}
-
-	return path.Join(packageBasePath, directories[0]), nil
-}
-
-func getPackageChecksum(name string, version string) (checksum string, err error) {
-	checksumCommand := exec.Command("deputy", "checksum", name, "-v", version)
-	output, err := checksumCommand.Output()
-	if err != nil {
-		return
-	}
-	checksum = strings.TrimSpace(string(output))
-	return
-}
-
-func normalizePackageVersion(packageName string, versionRequirement string) (normalizedVersion string, err error) {
-	versionCommand := exec.Command("deputy", "normalize-version", packageName, "-v", versionRequirement)
-	output, err := versionCommand.Output()
-	if err != nil {
-		return
-	}
-	normalizedVersion = strings.TrimSpace(string(output))
-	return
-}
-
-func (templateDeployment *TemplateDeployment) getPackageData(packagePath string) (packageData map[string]interface{}, err error) {
-	packageTomlPath := path.Join(packagePath, "package.toml")
-	checksumCommand := exec.Command("deputy", "parse-toml", packageTomlPath)
-	output, err := checksumCommand.Output()
-	if err != nil {
-		return
-	}
-	json.Unmarshal(output, &packageData)
-	return
-}
-
 type VirtualMachine struct {
 	OperatingSystem string   `json:"operating_system,omitempty"`
 	Architecture    string   `json:"architecture,omitempty"`
@@ -188,7 +124,7 @@ func (templateDeployment *TemplateDeployment) handleTemplateBasedOnType(packageD
 }
 
 func (templateDeployment *TemplateDeployment) createTemplate(packagePath string) (err error) {
-	packageData, err := templateDeployment.getPackageData(packagePath)
+	packageData, err := library.GetPackageData(packagePath)
 	if err != nil {
 		return
 	}
@@ -217,12 +153,12 @@ func (server *templaterServer) Create(ctx context.Context, source *common.Source
 	log.Infof("Received template package: %v, version: %v", source.Name, source.Version)
 
 	vmwareClient := library.NewVMWareClient(server.Client, server.Configuration.TemplateFolderPath)
-	checksum, checksumError := getPackageChecksum(source.Name, source.Version)
+	checksum, checksumError := library.GetPackageChecksum(source.Name, source.Version)
 	if checksumError != nil {
 		log.Errorf("Error getting package checksum: %v", checksumError)
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to get package checksum (%v)", checksumError))
 	}
-	normalizedVersion, normalizedVersionError := normalizePackageVersion(source.Name, source.Version)
+	normalizedVersion, normalizedVersionError := library.NormalizePackageVersion(source.Name, source.Version)
 	if normalizedVersionError != nil {
 		log.Errorf("Failed to normalize package version (%v)", normalizedVersionError)
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to normalize package version (%v)", normalizedVersionError))
@@ -248,7 +184,7 @@ func (server *templaterServer) Create(ctx context.Context, source *common.Source
 			Configuration: server.Configuration,
 			templateName:  templateName,
 		}
-		packagePath, downloadError := templateDeployment.downloadPackage()
+		packagePath, downloadError := library.DownloadPackage(templateDeployment.source.Name, templateDeployment.source.Version)
 		if downloadError != nil {
 			log.Errorf("Failed to download package (%v)", downloadError)
 			return nil, status.Error(codes.NotFound, fmt.Sprintf("Failed to download package (%v)", downloadError))
