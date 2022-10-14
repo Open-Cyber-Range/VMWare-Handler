@@ -1,0 +1,12 @@
+[package]
+name = "test-feature"
+description = "This is a simple echo command package"
+version = "0.1.0"
+authors = ["Rait Rotšan rait.rotsan@cr14.ee"]
+
+[content]
+type = "feature"
+
+## [feature.destination_map]
+## "src/echo.sh" = "/tmp/test-folder/"
+
