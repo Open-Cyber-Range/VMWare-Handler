@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"math/rand"
 	"os"
 	"os/exec"
@@ -14,6 +13,7 @@ import (
 	"github.com/open-cyber-range/vmware-handler/grpc/common"
 	"github.com/open-cyber-range/vmware-handler/grpc/feature"
 	"github.com/open-cyber-range/vmware-handler/library"
+	log "github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -74,46 +74,46 @@ func uploadTestFeaturePackage() (err error) {
 	if err != nil {
 		return
 	}
-	uploadCommand.Dir = path.Join(workingDirectory, "..", "extra", "test-deputy-packages", "test-feature-package")
+	uploadCommand.Dir = path.Join(workingDirectory, "..", "extra", "test-deputy-packages", "feature-config-package")
 	uploadCommand.Run()
 
 	return
 }
 
-func TestFeatureDeployment(t *testing.T) {
+func TestFeatureDeploymentAndDeletion(t *testing.T) {
 	t.Parallel()
 	configuration := startServer(3 * time.Second)
 
 	ctx := context.Background()
 	gRPCClient := creategRPCClient(t, configuration.ServerAddress)
 
-	// feature packages not fully implemented yet deputy side
-	// err := uploadTestFeaturePackage()
-	// if err != nil {
-	// 	t.Fatalf("Failed to upload test feature package: %v", err)
-	// }
-	// log.Printf("Uploaded test package")
+	err := uploadTestFeaturePackage()
+	if err != nil {
+		t.Fatalf("Failed to upload test feature package: %v", err)
+	}
+	log.Printf("Uploaded test package")
 
 	feature := &feature.Feature{
 		Name:             "test-feature",
-		VirtualMachineId: "42127656-e390-d6a8-0703-c3425dbc8052", //debian - ok
-		// VirtualMachineId: "4212d163-02a1-1aa2-12dc-aa822f9bd7dc", // opensuse - ok root Password123!@# vms
-		// VirtualMachineId: "4212670f-6cfc-fccd-3c1b-598be72f5bf6", // dsl - not installed, unusable
-		// VirtualMachineId: "42123aaa-89b4-bd8c-f677-dfd00282901d", // alpine 5 out of date
-		// VirtualMachineId: "421268bf-097a-06ed-306f-a4282e0e09e5", // alpine 3 out of date root Password123!@# vms
-		// VirtualMachineId: "4212de87-37d5-37b0-d1ad-398328e1c040", // alpine 2 out of date
-		User:     "root",
-		Password: "password",
+		VirtualMachineId: "42127656-e390-d6a8-0703-c3425dbc8052",
+		User:             "root",
+		Password:         "password",
+		FeatureType:      feature.FeatureType_service,
 		Source: &common.Source{
-			Name:    "test-feature",
+			Name:    "test-service",
 			Version: "*",
 		},
 	}
-	result, err := gRPCClient.Create(ctx, feature)
+	identifier, err := gRPCClient.Create(ctx, feature)
 	if err != nil {
-		t.Fatalf("Failed to complete Feature Create request: %v", err)
+		t.Fatalf("Test Create request error: %v", err)
 	}
 
-	log.Printf("Result: %v", result)
+	log.Infof("Feature create finished, id: %v", identifier.Value)
+	_, err = gRPCClient.Delete(ctx, identifier)
+	if err != nil {
+		t.Fatalf("Test Delete request error: %v", err)
+	}
+	log.Infof("Feature delete finished")
 
 }

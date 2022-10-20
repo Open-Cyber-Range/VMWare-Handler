@@ -3,6 +3,7 @@ module github.com/open-cyber-range/vmware-handler
 go 1.17
 
 require (
+	github.com/google/uuid v1.3.0
 	github.com/vmware/govmomi v0.29.0
 	google.golang.org/grpc v1.45.0
 	google.golang.org/protobuf v1.28.0
@@ -21,7 +22,6 @@ require (
 )
 
 require (
-	github.com/ScottHolden/go-vmware-nsxt v0.0.0-20210317101230-cc6fb7d931b4
 	github.com/golang/protobuf v1.5.2
 	github.com/phayes/freeport v0.0.0-20220201140144-74d24b5ae9f5
 	github.com/sirupsen/logrus v1.9.0
