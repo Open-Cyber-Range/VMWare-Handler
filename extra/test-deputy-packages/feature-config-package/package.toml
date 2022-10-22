@@ -1,6 +1,6 @@
 [package]
 name = "test-configuration"
-description = "This is a simple echo command package"
+description = "This is a simple configuration feature package"
 version = "0.1.0"
 authors = ["Rait Rotšan rait.rotsan@cr14.ee"]
 

@@ -11,7 +11,9 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,6 +26,7 @@ import (
 	"github.com/vmware/govmomi"
 	"github.com/vmware/govmomi/guest"
 	"github.com/vmware/govmomi/object"
+	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/types"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -46,12 +49,31 @@ type featureContainer struct {
 type guestManager struct {
 	VirtualMachine *object.VirtualMachine
 	Auth           types.BaseGuestAuthentication
-	Processes      *guest.ProcessManager
-	Files          *guest.FileManager
+	ProcessManager *guest.ProcessManager
+	FileManager    *guest.FileManager
 }
 
 type Feature struct {
 	Assets [][]string `json:"assets"`
+}
+
+type GuestOSFamily int
+
+const (
+	Linux GuestOSFamily = iota
+	Windows
+)
+
+var (
+	OsFamilyMap = map[string]GuestOSFamily{
+		"linux":   Linux,
+		"windows": Windows,
+	}
+)
+
+func ParseOsFamily(str string) (family GuestOSFamily, success bool) {
+	family, success = OsFamilyMap[strings.ToLower(str)]
+	return
 }
 
 var deployedFeatures = make(map[string]*featureContainer)
@@ -74,18 +96,20 @@ func sendFileToVM(url string, filePath string) error {
 		return status.Error(codes.Internal, fmt.Sprintf("Error sending HTTP request: %v", err))
 	}
 	if response.StatusCode != 200 {
-		return status.Error(codes.Internal, fmt.Sprintf("Error while uploading file: %v", response.StatusCode))
+		return status.Error(codes.Internal, fmt.Sprintf("Error while uploading file: %v", response.Status))
 	} else {
-		log.Printf("Successfully uploaded file: %v", filePath)
+		log.Printf("Successfully uploaded file to vm")
 	}
 	return err
 }
 
-func receiveFileFromVM(url string, filePath string) (string, error) {
-	out, err := os.Create(filePath)
+func receiveFileFromVM(url string) (string, error) {
+	out, err := os.CreateTemp("", "featurer.log")
 	if err != nil {
 		return "", status.Error(codes.Internal, fmt.Sprintf("Error creating file, %v", err))
 	}
+
+	logPath := out.Name()
 	defer out.Close()
 
 	transport := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
@@ -100,15 +124,28 @@ func receiveFileFromVM(url string, filePath string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filePath, nil
+	return logPath, nil
 }
 
-func normalizeTargetPath(sourcePath string, destinationPath string) string {
-	if strings.HasSuffix(destinationPath, "/") {
-		sourcePathSlices := strings.Split(sourcePath, "/")
-		sourceFileName := sourcePathSlices[len(sourcePathSlices)-1]
-		destinationPath = strings.Join([]string{destinationPath, sourceFileName}, "")
+func normalizeTargetPathByOS(sourcePath string, destinationPath string, osFamily GuestOSFamily) string {
+
+	var vmOsSeperator string
+
+	switch osFamily {
+	case Linux:
+		vmOsSeperator = "/"
+		sourcePath = strings.ReplaceAll(sourcePath, "\\", vmOsSeperator)
+		destinationPath = strings.ReplaceAll(destinationPath, "\\", vmOsSeperator)
+
+	case Windows:
+		vmOsSeperator = string("\\")
+		destinationPath = strings.ReplaceAll(destinationPath, "/", vmOsSeperator)
 	}
+
+	if strings.HasSuffix(destinationPath, vmOsSeperator) {
+		destinationPath = strings.Join([]string{destinationPath, filepath.Base(sourcePath)}, "")
+	}
+
 	return destinationPath
 }
 
@@ -119,13 +156,53 @@ func getFeatureInfo(packegeDataMap *map[string]interface{}) (feature Feature, er
 	return
 }
 
-func (guestManager *guestManager) getVMLogContents(ctx context.Context, logPath string) (output string, err error) {
-	transferInfo, err := guestManager.Files.InitiateFileTransferFromGuest(ctx, guestManager.Auth, logPath)
+func createFileAttributesByOsFamily(guestOsFamily GuestOSFamily, filePermissions string) (fileAttributes types.BaseGuestFileAttributes, err error) {
+	switch guestOsFamily {
+	case Linux:
+		permissionsInt, err := strconv.Atoi(filePermissions)
+		if err != nil {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Error converting str to int, %v", err))
+		}
+		fileAttributes = &types.GuestPosixFileAttributes{
+			Permissions: int64(permissionsInt),
+		}
+
+	case Windows:
+		// TODO: Implement application of Windows file permissions
+		fileAttributes = &types.GuestWindowsFileAttributes{}
+	}
+	return fileAttributes, nil
+}
+
+func (guestManager *guestManager) findGuestOSFamily(ctx context.Context) (GuestOSFamily, error) {
+	var vmProperties mo.VirtualMachine
+	guestManager.VirtualMachine.Properties(ctx, guestManager.VirtualMachine.Reference(), []string{}, &vmProperties)
+
+	supportedOSFamilies := make([]string, len(OsFamilyMap))
+	for k := range OsFamilyMap {
+		supportedOSFamilies = append(supportedOSFamilies, k)
+	}
+
+	for i := 0; i < len(supportedOSFamilies); i++ {
+		regex := regexp.MustCompile(supportedOSFamilies[i])
+		result := regex.FindString(vmProperties.Guest.GuestFamily)
+		matchedFamily, successful_match := ParseOsFamily(result)
+		if successful_match {
+			return matchedFamily, nil
+		} else if i+1 == len(supportedOSFamilies) {
+			return 0, status.Error(codes.Internal, fmt.Sprintf("OS Family (%v) not supported by Featurer", result))
+		}
+	}
+	return 0, status.Error(codes.Internal, "Error finding guest family")
+}
+
+func (guestManager *guestManager) getVMLogContents(ctx context.Context, vmLogPath string) (output string, err error) {
+	transferInfo, err := guestManager.FileManager.InitiateFileTransferFromGuest(ctx, guestManager.Auth, vmLogPath)
 	if err != nil {
 		return "", status.Error(codes.Internal, fmt.Sprintf("Error retrieving execution log from guest, %v", err))
 	}
 
-	filePath, err := receiveFileFromVM(transferInfo.Url, logPath)
+	filePath, err := receiveFileFromVM(transferInfo.Url)
 	if err != nil {
 		return "", err
 	}
@@ -138,24 +215,10 @@ func (guestManager *guestManager) getVMLogContents(ctx context.Context, logPath 
 	return string(logContent), nil
 }
 
-func (guestManager *guestManager) applyPermissionsToFile(ctx context.Context, filePath string, permissions string) (err error) {
-
-	programSpec := &types.GuestProgramSpec{
-		ProgramPath: "/usr/bin/chmod",
-		Arguments:   fmt.Sprintf("%v %v &> /tmp/featurer.log", permissions, filePath),
-	}
-	_, err = guestManager.Processes.StartProgram(ctx, guestManager.Auth, programSpec)
-	if err != nil {
-		return status.Error(codes.Internal, fmt.Sprintf("%v", err))
-	}
-
-	return
-}
-
 func (guestManager *guestManager) awaitProcessCompletion(ctx context.Context, processID int64) (bool, error) {
 	for {
 		log.Infof("Program running. PID: %v", processID)
-		active_process, err := guestManager.Processes.ListProcesses(ctx, guestManager.Auth, []int64{processID})
+		active_process, err := guestManager.ProcessManager.ListProcesses(ctx, guestManager.Auth, []int64{processID})
 		if err != nil {
 			return false, status.Error(codes.Internal, fmt.Sprintf("Error listing VM process' %v", err))
 		}
@@ -224,8 +287,8 @@ func (server *featurerServer) createGuestManagers(ctx context.Context, featureDe
 	guestManager := &guestManager{
 		VirtualMachine: virtualMachine,
 		Auth:           auth,
-		Files:          fileManager,
-		Processes:      processManager,
+		FileManager:    fileManager,
+		ProcessManager: processManager,
 	}
 	return guestManager, nil
 }
@@ -236,13 +299,11 @@ func (server *featurerServer) Create(ctx context.Context, featureDeployment *fea
 	if err != nil {
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("Failed to download package (%v)", err))
 	}
-	log.Infof("Downloaded package to: %v", packagePath)
 
 	packageTomlContent, err := library.GetPackageData(packagePath)
 	if err != nil {
 		log.Errorf("Failed to get package data, %v", err)
 	}
-	log.Infof("the entire package %v", packageTomlContent)
 
 	packageFeature, err := getFeatureInfo(&packageTomlContent)
 	if err != nil {
@@ -267,14 +328,15 @@ func (server *featurerServer) Create(ctx context.Context, featureDeployment *fea
 	}
 	deployedFeatures[featureId] = currentDeplyoment
 
+	guestOsFamily, err := guestManager.findGuestOSFamily(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	for i := 0; i < len(packageFeature.Assets); i++ {
 
-		sourcePath := path.Join(packagePath, packageFeature.Assets[i][0])
+		sourcePath := path.Join(packagePath, filepath.FromSlash(packageFeature.Assets[i][0]))
 		targetPath := packageFeature.Assets[i][1]
-
-		// TODO: Set log and target file path formats depetnding on guest os
-		vmLogPath := "/tmp/featurer.log"
-		normalizedTargetPath := normalizeTargetPath(sourcePath, targetPath)
 
 		var filePermissions string
 		if len(packageFeature.Assets[i]) < 3 {
@@ -288,12 +350,25 @@ func (server *featurerServer) Create(ctx context.Context, featureDeployment *fea
 			return nil, status.Error(codes.Internal, fmt.Sprintf("Error getting file information, %v", err))
 		}
 
-		err = guestManager.Files.MakeDirectory(ctx, auth, path.Dir(normalizedTargetPath), true)
+		vmLogPath, err := guestManager.FileManager.CreateTemporaryFile(ctx, guestManager.Auth, "featurer-", ".log", "")
+		if err != nil {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Error creating log file on vm, %v", err))
+
+		}
+
+		fileAttributes, err := createFileAttributesByOsFamily(guestOsFamily, filePermissions)
+		if err != nil {
+			return nil, err
+		}
+
+		normalizedTargetPath := normalizeTargetPathByOS(sourcePath, targetPath, guestOsFamily)
+
+		err = guestManager.FileManager.MakeDirectory(ctx, auth, path.Dir(normalizedTargetPath), true)
 		if err != nil && !strings.HasSuffix(err.Error(), "already exists") {
 			return nil, status.Error(codes.Internal, fmt.Sprintf("Error creating VM directories, %v", err))
 		}
 
-		transferUrl, err := guestManager.Files.InitiateFileTransferToGuest(ctx, auth, normalizedTargetPath, &types.GuestFileAttributes{}, fileInfo.Size(), true)
+		transferUrl, err := guestManager.FileManager.InitiateFileTransferToGuest(ctx, auth, normalizedTargetPath, fileAttributes, fileInfo.Size(), true)
 		if err != nil {
 			return nil, status.Error(codes.Internal, fmt.Sprintf("Error creating transfer URL, %v", err))
 		}
@@ -303,31 +378,14 @@ func (server *featurerServer) Create(ctx context.Context, featureDeployment *fea
 			return nil, err
 		}
 
-		if filePermissions != "" {
-			err = guestManager.applyPermissionsToFile(ctx, normalizedTargetPath, filePermissions)
-			if err != nil {
-				return nil, err
-			}
-
-			permissionsOutput, err := guestManager.getVMLogContents(ctx, vmLogPath)
-			if err != nil {
-				return nil, err
-			} else if permissionsOutput != "" {
-				return nil, status.Error(codes.Internal, fmt.Sprintf("Error applying permissions to file, %v", permissionsOutput))
-
-			}
-		} else {
-			log.Infof("No file permissions assigned for %v, skipping to next step", sourcePath)
-		}
-
 		if featureDeployment.FeatureType == *feature.FeatureType_service.Enum() {
 			programSpec := &types.GuestProgramSpec{
 				ProgramPath:      normalizedTargetPath,
-				Arguments:        fmt.Sprintf("-b -n &> %v", vmLogPath),
+				Arguments:        fmt.Sprintf("> %v 2>%%1", vmLogPath),
 				WorkingDirectory: path.Dir(normalizedTargetPath),
 			}
 
-			processID, err := guestManager.Processes.StartProgram(ctx, auth, programSpec)
+			processID, err := guestManager.ProcessManager.StartProgram(ctx, auth, programSpec)
 			if err != nil {
 				return nil, status.Error(codes.Internal, fmt.Sprintf("%v", err))
 			}

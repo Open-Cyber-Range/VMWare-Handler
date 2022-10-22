@@ -14,7 +14,6 @@ import (
 
 	"github.com/iancoleman/strcase"
 	"github.com/open-cyber-range/vmware-handler/grpc/capability"
-	log "github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -83,13 +82,12 @@ func DownloadPackage(name string, version string) (packagePath string, err error
 	if err != nil {
 		return
 	}
-	log.Infof("Created package base path: %v", packageBasePath)
 
 	downloadCommand := exec.Command("deputy", "fetch", name, "-v", version, "-s", packagePath)
 	downloadCommand.Dir = packageBasePath
-	_, err = downloadCommand.Output()
+	output, err := downloadCommand.CombinedOutput()
 	if err != nil {
-		return
+		return "", fmt.Errorf("%v (%v)", string(output), err)
 	}
 	directories, err := IOReadDir(packageBasePath)
 	if err != nil {

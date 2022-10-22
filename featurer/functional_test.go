@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
-	"os/exec"
-	"path"
 	"testing"
 	"time"
 
@@ -68,42 +66,16 @@ func creategRPCClient(t *testing.T, serverPath string) feature.FeatureServiceCli
 	return feature.NewFeatureServiceClient(connection)
 }
 
-func uploadTestFeaturePackage() (err error) {
-	uploadCommand := exec.Command("deputy", "publish")
-	workingDirectory, err := os.Getwd()
-	if err != nil {
-		return
-	}
-	uploadCommand.Dir = path.Join(workingDirectory, "..", "extra", "test-deputy-packages", "feature-config-package")
-	uploadCommand.Run()
-
-	return
-}
-
-func TestFeatureDeploymentAndDeletion(t *testing.T) {
-	t.Parallel()
+func createFeatureDeploymentRequest(t *testing.T, feature *feature.Feature, packageName string) {
 	configuration := startServer(3 * time.Second)
-
 	ctx := context.Background()
 	gRPCClient := creategRPCClient(t, configuration.ServerAddress)
 
-	err := uploadTestFeaturePackage()
+	err := library.PublishTestPackage(packageName)
 	if err != nil {
 		t.Fatalf("Failed to upload test feature package: %v", err)
 	}
-	log.Printf("Uploaded test package")
 
-	feature := &feature.Feature{
-		Name:             "test-feature",
-		VirtualMachineId: "42127656-e390-d6a8-0703-c3425dbc8052",
-		User:             "root",
-		Password:         "password",
-		FeatureType:      feature.FeatureType_service,
-		Source: &common.Source{
-			Name:    "test-service",
-			Version: "*",
-		},
-	}
 	identifier, err := gRPCClient.Create(ctx, feature)
 	if err != nil {
 		t.Fatalf("Test Create request error: %v", err)
@@ -115,5 +87,40 @@ func TestFeatureDeploymentAndDeletion(t *testing.T) {
 		t.Fatalf("Test Delete request error: %v", err)
 	}
 	log.Infof("Feature delete finished")
+}
 
+func TestFeatureDeploymentAndDeletionOnLinux(t *testing.T) {
+	t.Parallel()
+
+	packageName := "feature-service-package"
+	feature := &feature.Feature{
+		Name:             "test-feature",
+		VirtualMachineId: "42127656-e390-d6a8-0703-c3425dbc8052",
+		User:             "root",
+		Password:         "password",
+		FeatureType:      feature.FeatureType_service,
+		Source: &common.Source{
+			Name:    "test-service",
+			Version: "*",
+		},
+	}
+	createFeatureDeploymentRequest(t, feature, packageName)
+}
+
+func TestFeatureDeploymentAndDeletionOnWindows(t *testing.T) {
+	t.Parallel()
+
+	packageName := "feature-win-service-package"
+	feature := &feature.Feature{
+		Name:             "test-feature",
+		VirtualMachineId: "42122b12-3a17-c0fb-eb3c-7cd935bb595b",
+		User:             "user",
+		Password:         "password",
+		FeatureType:      feature.FeatureType_service,
+		Source: &common.Source{
+			Name:    "test-windows-service",
+			Version: "*",
+		},
+	}
+	createFeatureDeploymentRequest(t, feature, packageName)
 }
