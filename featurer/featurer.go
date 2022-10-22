@@ -65,14 +65,14 @@ const (
 )
 
 var (
-	OsFamilyMap = map[string]GuestOSFamily{
-		"linux":   Linux,
-		"windows": Windows,
+	SupportedOsFamilyMap = map[string]GuestOSFamily{
+		"linuxGuest":   Linux,
+		"windowsGuest": Windows,
 	}
 )
 
-func ParseOsFamily(str string) (family GuestOSFamily, success bool) {
-	family, success = OsFamilyMap[strings.ToLower(str)]
+func parseOsFamily(vmOsFamily string) (family GuestOSFamily, success bool) {
+	family, success = SupportedOsFamilyMap[vmOsFamily]
 	return
 }
 
@@ -173,27 +173,16 @@ func createFileAttributesByOsFamily(guestOsFamily GuestOSFamily, filePermissions
 	}
 	return fileAttributes, nil
 }
-
 func (guestManager *guestManager) findGuestOSFamily(ctx context.Context) (GuestOSFamily, error) {
 	var vmProperties mo.VirtualMachine
 	guestManager.VirtualMachine.Properties(ctx, guestManager.VirtualMachine.Reference(), []string{}, &vmProperties)
 
-	supportedOSFamilies := make([]string, len(OsFamilyMap))
-	for k := range OsFamilyMap {
-		supportedOSFamilies = append(supportedOSFamilies, k)
+	matchedFamily, successful_match := parseOsFamily(vmProperties.Guest.GuestFamily)
+	if successful_match {
+		return matchedFamily, nil
 	}
 
-	for i := 0; i < len(supportedOSFamilies); i++ {
-		regex := regexp.MustCompile(supportedOSFamilies[i])
-		result := regex.FindString(vmProperties.Guest.GuestFamily)
-		matchedFamily, successful_match := ParseOsFamily(result)
-		if successful_match {
-			return matchedFamily, nil
-		} else if i+1 == len(supportedOSFamilies) {
-			return 0, status.Error(codes.Internal, fmt.Sprintf("OS Family (%v) not supported by Featurer", result))
-		}
-	}
-	return 0, status.Error(codes.Internal, "Error finding guest family")
+	return 0, status.Error(codes.Internal, "Guest OS Family not supported")
 }
 
 func (guestManager *guestManager) getVMLogContents(ctx context.Context, vmLogPath string) (output string, err error) {
@@ -295,6 +284,21 @@ func (server *featurerServer) createGuestManagers(ctx context.Context, featureDe
 
 func (server *featurerServer) Create(ctx context.Context, featureDeployment *feature.Feature) (identifier *common.Identifier, err error) {
 
+	auth := &types.NamePasswordAuthentication{
+		Username: featureDeployment.User,
+		Password: featureDeployment.Password,
+	}
+
+	guestManager, err := server.createGuestManagers(ctx, featureDeployment, auth)
+	if err != nil {
+		return nil, err
+	}
+
+	err = library.CheckVMStatus(ctx, guestManager.VirtualMachine)
+	if err != nil {
+		return nil, err
+	}
+
 	packagePath, err := library.DownloadPackage(featureDeployment.GetSource().GetName(), featureDeployment.GetSource().GetVersion())
 	if err != nil {
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("Failed to download package (%v)", err))
@@ -311,15 +315,6 @@ func (server *featurerServer) Create(ctx context.Context, featureDeployment *fea
 	}
 
 	featureId := uuid.New().String()
-	auth := &types.NamePasswordAuthentication{
-		Username: featureDeployment.User,
-		Password: featureDeployment.Password,
-	}
-
-	guestManager, err := server.createGuestManagers(ctx, featureDeployment, auth)
-	if err != nil {
-		return nil, err
-	}
 
 	currentDeplyoment := &featureContainer{
 		VMID:      featureDeployment.VirtualMachineId,

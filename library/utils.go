@@ -1,9 +1,9 @@
 package library
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"math/rand"
 	"os"
 	"os/exec"
@@ -14,8 +14,13 @@ import (
 
 	"github.com/iancoleman/strcase"
 	"github.com/open-cyber-range/vmware-handler/grpc/capability"
+	"github.com/vmware/govmomi/object"
+	"github.com/vmware/govmomi/vim25/mo"
+	"github.com/vmware/govmomi/vim25/types"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 )
 
 func CreateRandomString(length int) string {
@@ -73,7 +78,7 @@ func SanitizeToCompatibleName(input string) string {
 }
 
 func createRandomPackagePath() (string, error) {
-	return ioutil.TempDir("/tmp", "deputy-package")
+	return os.MkdirTemp("/tmp", "deputy-package")
 }
 
 func DownloadPackage(name string, version string) (packagePath string, err error) {
@@ -147,4 +152,19 @@ func PublishTestPackage(packageFolderName string) (err error) {
 		return fmt.Errorf("%v (%v)", string(output), err)
 	}
 	return
+}
+
+func CheckVMStatus(ctx context.Context, virtualMachine *object.VirtualMachine) error {
+	var vmProperties mo.VirtualMachine
+	virtualMachine.Properties(ctx, virtualMachine.Reference(), []string{}, &vmProperties)
+
+	vmPowerState := vmProperties.Runtime.PowerState
+	vmToolsStatus := vmProperties.Guest.ToolsStatus
+
+	if vmPowerState == types.VirtualMachinePowerStatePoweredOn &&
+		vmToolsStatus == types.VirtualMachineToolsStatusToolsOk {
+		return nil
+	}
+
+	return status.Error(codes.Internal, fmt.Sprintf("Error: VM Power state: %v, VM Tools status: %v", vmPowerState, vmToolsStatus))
 }
