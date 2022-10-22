@@ -134,3 +134,19 @@ func GetPackageData(packagePath string) (packageData map[string]interface{}, err
 	json.Unmarshal(output, &packageData)
 	return
 }
+
+func PublishTestPackage(packageFolderName string) (err error) {
+	uploadCommand := exec.Command("deputy", "publish")
+	workingDirectory, err := os.Getwd()
+	if err != nil {
+		return
+	}
+	uploadCommand.Dir = path.Join(workingDirectory, "..", "extra", "test-deputy-packages", packageFolderName)
+	output, err := uploadCommand.CombinedOutput()
+	if strings.Contains(string(output), "Package version on the server is either same or later") {
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("%v (%v)", string(output), err)
+	}
+	return
+}
