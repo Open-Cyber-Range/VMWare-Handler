@@ -1,3 +1,10 @@
+ranger-vmware-handlers (3.0.2) stretch; urgency=medium
+
+  * Use only checksum as template name in vshpere
+  * Improve logging for not finding template
+
+ -- Kaarel Allemann <developers@cr14.ee>  Wed, 26 Oct 2022 14:00:02 +0300
+
 ranger-vmware-handlers (3.0.1) stretch; urgency=medium
 
   * Fix NSX-T configuration requirements for machiner ja templater

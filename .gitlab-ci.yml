@@ -6,7 +6,7 @@ stages:
 image: $DOCKER_REGISTRY_PULL/vmware-handler-builder
 
 services:
-  - name: nexus.ocr.cr14.net:8003/deputy-package-server-repository-combo
+  - name: $DOCKER_REGISTRY_PULL/deputy-package-server-repository-combo
     alias: deputy-package-server-combo
 
 variables:
