@@ -93,6 +93,7 @@ type TemplateDeployment struct {
 	source        *common.Source
 	Configuration library.Configuration
 	templateName  string
+	metaInfo      string
 }
 
 type VirtualMachine struct {
@@ -164,7 +165,7 @@ func (server *templaterServer) Create(ctx context.Context, source *common.Source
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to normalize package version (%v)", normalizedVersionError))
 	}
 
-	templateName := fmt.Sprintf("%v-%v-%v", source.Name, normalizedVersion, checksum)
+	templateName := checksum
 	templateExists, templateExistsError := vmwareClient.DoesTemplateExist(templateName)
 	if templateExistsError != nil {
 		log.Errorf("Failed to check if template exists (%v)", templateExistsError)
@@ -183,6 +184,7 @@ func (server *templaterServer) Create(ctx context.Context, source *common.Source
 			source:        source,
 			Configuration: server.Configuration,
 			templateName:  templateName,
+			metaInfo:      fmt.Sprintf("%v-%v", source.Name, normalizedVersion),
 		}
 		packagePath, downloadError := library.DownloadPackage(templateDeployment.source.Name, templateDeployment.source.Version)
 		if downloadError != nil {

@@ -71,11 +71,11 @@ func (deployment *Deployment) createOrFindDeploymentFolder(call_count int) (_ *o
 func (deployment *Deployment) create() (err error) {
 	ctx := context.Background()
 	template, err := deployment.Client.GetVirtualMachineByUUID(ctx, deployment.VirtualMachine.TemplateId)
+	if err != nil {
+		return fmt.Errorf("failed to find template with: %v, cause %v", deployment.VirtualMachine.TemplateId, err)
+	}
 	if template == nil {
 		return fmt.Errorf("template not found, uuid: %v", deployment.VirtualMachine.TemplateId)
-	}
-	if err != nil {
-		return
 	}
 	deploymentFolder, err := deployment.createOrFindDeploymentFolder(0)
 	if err != nil {
