@@ -25,6 +25,8 @@ var testConfiguration = library.Configuration{
 	ServerAddress:      "127.0.0.1",
 	ResourcePoolPath:   os.Getenv("TEST_VMWARE_RESOURCE_POOL_PATH"),
 	ExerciseRootPath:   os.Getenv("TEST_VMWARE_EXERCISE_ROOT_PATH"),
+	RedisAddress:       os.Getenv("TEST_REDIS_ADDRESS"),
+	RedisPassword:      os.Getenv("TEST_REDIS_PASSWORD"),
 }
 
 type TestNSXTConfiguration struct {

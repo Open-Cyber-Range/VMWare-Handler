@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-redis/redis/v8"
 	"github.com/google/uuid"
 	"github.com/open-cyber-range/vmware-handler/grpc/capability"
 	"github.com/open-cyber-range/vmware-handler/grpc/common"
@@ -38,17 +39,12 @@ type featurerServer struct {
 	feature.UnimplementedFeatureServiceServer
 	Client        *govmomi.Client
 	Configuration *library.Configuration
-}
-
-type featureContainer struct {
-	VMID      string
-	Auth      types.BaseGuestAuthentication
-	FilePaths []string
+	Storage       *Storage
 }
 
 type guestManager struct {
 	VirtualMachine *object.VirtualMachine
-	Auth           types.BaseGuestAuthentication
+	Auth           *types.NamePasswordAuthentication
 	ProcessManager *guest.ProcessManager
 	FileManager    *guest.FileManager
 }
@@ -75,8 +71,6 @@ func parseOsFamily(vmOsFamily string) (family GuestOSFamily, success bool) {
 	family, success = SupportedOsFamilyMap[vmOsFamily]
 	return
 }
-
-var deployedFeatures = make(map[string]*featureContainer)
 
 func sendFileToVM(url string, filePath string) error {
 	transport := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
@@ -256,7 +250,8 @@ func (guestManager *guestManager) awaitProcessWithTimeout(ctx context.Context, p
 	return nil
 }
 
-func (server *featurerServer) createGuestManagers(ctx context.Context, featureDeployment *feature.Feature, auth types.BaseGuestAuthentication) (*guestManager, error) {
+func (server *featurerServer) createGuestManagers(ctx context.Context, featureDeployment *feature.Feature,
+	auth *types.NamePasswordAuthentication) (*guestManager, error) {
 	vmwareClient := library.NewVMWareClient(server.Client, server.Configuration.TemplateFolderPath)
 	virtualMachine, err := vmwareClient.GetVirtualMachineByUUID(ctx, featureDeployment.VirtualMachineId)
 	if err != nil {
@@ -316,12 +311,13 @@ func (server *featurerServer) Create(ctx context.Context, featureDeployment *fea
 
 	featureId := uuid.New().String()
 
-	currentDeplyoment := &featureContainer{
+	currentDeplyoment := FeatureContainer{
 		VMID:      featureDeployment.VirtualMachineId,
-		Auth:      guestManager.Auth,
+		Auth:      *guestManager.Auth,
 		FilePaths: []string{},
 	}
-	deployedFeatures[featureId] = currentDeplyoment
+
+	server.Storage.Create(ctx, featureId, currentDeplyoment)
 
 	guestOsFamily, err := guestManager.findGuestOSFamily(ctx)
 	if err != nil {
@@ -398,8 +394,10 @@ func (server *featurerServer) Create(ctx context.Context, featureDeployment *fea
 			log.Infof("PID %v output: %v", processID, output)
 
 		}
-		deployedFeatures[featureId].FilePaths = append(deployedFeatures[featureId].FilePaths, normalizedTargetPath)
-
+		currentDeplyoment.FilePaths = append(currentDeplyoment.FilePaths, normalizedTargetPath)
+		if err = server.Storage.Update(ctx, featureId, currentDeplyoment); err != nil {
+			return nil, err
+		}
 	}
 	identifier = &common.Identifier{
 		Value: fmt.Sprintf("%v", featureId),
@@ -408,7 +406,10 @@ func (server *featurerServer) Create(ctx context.Context, featureDeployment *fea
 }
 
 func (server *featurerServer) Delete(ctx context.Context, identifier *common.Identifier) (*emptypb.Empty, error) {
-	featureContainer := deployedFeatures[identifier.Value]
+	featureContainer, err := server.Storage.Get(ctx, identifier.GetValue())
+	if err != nil {
+		return nil, err
+	}
 
 	vmwareClient := library.NewVMWareClient(server.Client, server.Configuration.TemplateFolderPath)
 	virtualMachine, err := vmwareClient.GetVirtualMachineByUUID(ctx, featureContainer.VMID)
@@ -424,7 +425,7 @@ func (server *featurerServer) Delete(ctx context.Context, identifier *common.Ide
 	for i := 0; i < len(featureContainer.FilePaths); i++ {
 
 		targetFile := featureContainer.FilePaths[i]
-		err = fileManager.DeleteFile(ctx, featureContainer.Auth, string(targetFile))
+		err = fileManager.DeleteFile(ctx, &featureContainer.Auth, string(targetFile))
 		if err != nil {
 			return nil, status.Error(codes.Internal, fmt.Sprintf("Error deleting file, %v", err))
 		}
@@ -447,10 +448,17 @@ func RealMain(configuration *library.Configuration) {
 		log.Fatalf("Failed to listen: %v", addressError)
 	}
 
+	redisClient := NewStorage(redis.NewClient(&redis.Options{
+		Addr:     configuration.RedisAddress,
+		Password: configuration.RedisPassword,
+		DB:       0,
+	}))
 	server := grpc.NewServer()
+
 	feature.RegisterFeatureServiceServer(server, &featurerServer{
 		Client:        client,
 		Configuration: configuration,
+		Storage:       &redisClient,
 	})
 
 	capabilityServer := library.NewCapabilityServer([]capability.Capabilities_DeployerTypes{
