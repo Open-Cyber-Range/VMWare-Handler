@@ -108,6 +108,6 @@ ranger-vmware-handlers (2.0.1) stretch; urgency=medium
 
 ranger-vmware-handlers (2.0.0) stretch; urgency=medium
 
-  * Split switcher and machiner logic for handling networks and VMs respecitvly
+  * Split switcher and machiner logic for handling networks and VMs respectively
 
  -- Kaarel Allemann <developers@cr14.ee>  Thu, 2 Jun 2022 16:47:15 +0300
