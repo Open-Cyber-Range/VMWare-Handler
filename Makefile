@@ -77,19 +77,19 @@ build-featurer: compile-protobuf
 test: build test-machiner test-switcher test-templater test-featurer
 
 test-machiner: build-machiner
-	go test -v ./machiner
+	go test -v -count=1 ./machiner
 
 test-switcher: build-switcher
-	go test -v ./switcher
+	go test -v -count=1 ./switcher
 
 test-templater: build-templater
-	go test -v ./templater
+	go test -v -count=1 ./templater
 
 test-featurer: build-featurer
-	go test -v ./featurer
+	go test -v -count=1 ./featurer
 
 test-library:
-	go test -v ./library
+	go test -v -count=1 ./library
 
 run-machiner: build-machiner
 	bin/ranger-vmware-machiner machiner-config.yml
