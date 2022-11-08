@@ -50,6 +50,8 @@ type guestManager struct {
 }
 
 type Feature struct {
+	Type   string     `json:"type"`
+	Action string     `json:"action,omitempty"`
 	Assets [][]string `json:"assets"`
 }
 
@@ -341,12 +343,6 @@ func (server *featurerServer) Create(ctx context.Context, featureDeployment *fea
 			return nil, status.Error(codes.Internal, fmt.Sprintf("Error getting file information, %v", err))
 		}
 
-		vmLogPath, err := guestManager.FileManager.CreateTemporaryFile(ctx, guestManager.Auth, "featurer-", ".log", "")
-		if err != nil {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("Error creating log file on vm, %v", err))
-
-		}
-
 		fileAttributes, err := createFileAttributesByOsFamily(guestOsFamily, filePermissions)
 		if err != nil {
 			return nil, err
@@ -369,36 +365,42 @@ func (server *featurerServer) Create(ctx context.Context, featureDeployment *fea
 			return nil, err
 		}
 
-		if featureDeployment.FeatureType == *feature.FeatureType_service.Enum() {
-			programSpec := &types.GuestProgramSpec{
-				ProgramPath:      normalizedTargetPath,
-				Arguments:        fmt.Sprintf("> %v 2>%%1", vmLogPath),
-				WorkingDirectory: path.Dir(normalizedTargetPath),
-			}
-
-			processID, err := guestManager.ProcessManager.StartProgram(ctx, auth, programSpec)
-			if err != nil {
-				return nil, status.Error(codes.Internal, fmt.Sprintf("%v", err))
-			}
-
-			if processID > 0 {
-				err := guestManager.awaitProcessWithTimeout(ctx, processID, normalizedTargetPath)
-				if err != nil {
-					return nil, status.Error(codes.Internal, fmt.Sprintf("%v", err))
-				}
-			}
-			output, err := guestManager.getVMLogContents(ctx, vmLogPath)
-			if err != nil {
-				return nil, err
-			}
-			log.Infof("PID %v output: %v", processID, output)
-
-		}
 		currentDeplyoment.FilePaths = append(currentDeplyoment.FilePaths, normalizedTargetPath)
 		if err = server.Storage.Update(ctx, featureId, currentDeplyoment); err != nil {
 			return nil, err
 		}
 	}
+
+	if packageFeature.Action != "" && featureDeployment.FeatureType == *feature.FeatureType_service.Enum() {
+		vmLogPath, err := guestManager.FileManager.CreateTemporaryFile(ctx, guestManager.Auth, "featurer-", ".log", "")
+		if err != nil {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Error creating log file on vm, %v", err))
+
+		}
+		programSpec := &types.GuestProgramSpec{
+			ProgramPath:      packageFeature.Action,
+			Arguments:        fmt.Sprintf("> %v 2>%%1", vmLogPath),
+			WorkingDirectory: path.Dir(packageFeature.Action),
+		}
+
+		processID, err := guestManager.ProcessManager.StartProgram(ctx, auth, programSpec)
+		if err != nil {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Error starting program, %v", err))
+		}
+
+		if processID > 0 {
+			err := guestManager.awaitProcessWithTimeout(ctx, processID, packageFeature.Action)
+			if err != nil {
+				return nil, err
+			}
+		}
+		output, err := guestManager.getVMLogContents(ctx, vmLogPath)
+		if err != nil {
+			return nil, err
+		}
+		log.Infof("PID %v output: %v", processID, output)
+	}
+
 	identifier = &common.Identifier{
 		Value: fmt.Sprintf("%v", featureId),
 	}
