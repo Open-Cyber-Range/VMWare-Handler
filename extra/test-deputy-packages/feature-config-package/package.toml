@@ -1,13 +1,14 @@
 [package]
 name = "test-configuration"
 description = "This is a simple configuration feature package"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Rait Rotšan rait.rotsan@cr14.ee"]
 
 [content]
 type = "feature"
 
 [feature]
+type = "Configuration"
 assets = [
      ["src/config", "/tmp/test-folder/", "554"],
 ]

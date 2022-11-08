@@ -1,13 +1,15 @@
 [package]
 name = "test-service"
 description = "This is a simple echo command package"
-version = "0.1.1"
+version = "0.2.0"
 authors = ["Rait Rotšan rait.rotsan@cr14.ee"]
 
 [content]
 type = "feature"
 
 [feature]
+type = "Service"
+action = "/tmp/test-folder/todays_date.sh"
 assets = [
      ["src/echo.sh", "/tmp/test-folder/", "554"],
      ["src/date.sh", "/tmp/test-folder/todays_date.sh", "500"],
