@@ -100,7 +100,7 @@ func sendFileToVM(url string, filePath string) error {
 }
 
 func receiveFileFromVM(url string) (string, error) {
-	out, err := os.CreateTemp("", "featurer.log")
+	out, err := os.CreateTemp("", "executor.log")
 	if err != nil {
 		return "", status.Error(codes.Internal, fmt.Sprintf("Error creating file, %v", err))
 	}
@@ -372,7 +372,7 @@ func (server *featurerServer) Create(ctx context.Context, featureDeployment *fea
 	}
 
 	if packageFeature.Action != "" && featureDeployment.FeatureType == *feature.FeatureType_service.Enum() {
-		vmLogPath, err := guestManager.FileManager.CreateTemporaryFile(ctx, guestManager.Auth, "featurer-", ".log", "")
+		vmLogPath, err := guestManager.FileManager.CreateTemporaryFile(ctx, guestManager.Auth, "executor-", ".log", "")
 		if err != nil {
 			return nil, status.Error(codes.Internal, fmt.Sprintf("Error creating log file on vm, %v", err))
 
@@ -469,7 +469,7 @@ func RealMain(configuration *library.Configuration) {
 
 	capability.RegisterCapabilityServer(server, &capabilityServer)
 
-	log.Printf("Featurer listening at %v", listeningAddress.Addr())
+	log.Printf("Executor listening at %v", listeningAddress.Addr())
 	if bindError := server.Serve(listeningAddress); bindError != nil {
 		log.Fatalf("Failed to serve: %v", bindError)
 	}

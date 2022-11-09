@@ -17,7 +17,7 @@ go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.28
 go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.2
 ```
 
-3. Featurer requires a Redis configuration file containing `requirepass <redis-server-password>`, any additional configuration is up to the user. For file details see `docker-compose.yml`
+3. Executor requires a Redis configuration file containing `requirepass <redis-server-password>`, any additional configuration is up to the user. For file details see `docker-compose.yml`
 
 ### Building
 

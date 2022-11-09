@@ -1,4 +1,4 @@
-.PHONY: all clean install compile-protobuf build build-machiner build-switcher build-templater build-featurer test test-machiner test-switcher test-templater test-featurer run-machiner run-switcher run-featurer test-and-build build-deb generate-nsx-t-openapi
+.PHONY: all clean install compile-protobuf build build-machiner build-switcher build-templater build-executor test test-machiner test-switcher test-templater test-executor run-machiner run-switcher run-executor test-and-build build-deb generate-nsx-t-openapi
 
 all: build
 
@@ -14,29 +14,29 @@ install:
 	mkdir -p ${DESTDIR}/etc/opt/ranger/ranger-vmware-machiner
 	mkdir -p ${DESTDIR}/etc/opt/ranger/ranger-vmware-switcher
 	mkdir -p ${DESTDIR}/etc/opt/ranger/ranger-vmware-templater
-	mkdir -p ${DESTDIR}/etc/opt/ranger/ranger-vmware-featurer
+	mkdir -p ${DESTDIR}/etc/opt/ranger/ranger-vmware-executor
 	mkdir -p ${DESTDIR}/lib/systemd/system/
 	mkdir -p ${DESTDIR}/etc/systemd/system/
 	
 	cp bin/ranger-vmware-machiner $(DESTDIR)/var/opt/ranger/bin/
 	cp bin/ranger-vmware-switcher $(DESTDIR)/var/opt/ranger/bin/
 	cp bin/ranger-vmware-templater $(DESTDIR)/var/opt/ranger/bin/
-	cp bin/ranger-vmware-featurer $(DESTDIR)/var/opt/ranger/bin/
+	cp bin/ranger-vmware-executor $(DESTDIR)/var/opt/ranger/bin/
 
 	cp extra/machiner-example-config.yml $(DESTDIR)/etc/opt/ranger/ranger-vmware-machiner/config.yml
 	cp extra/switcher-example-config.yml $(DESTDIR)/etc/opt/ranger/ranger-vmware-switcher/config.yml
 	cp extra/templater-example-config.yml $(DESTDIR)/etc/opt/ranger/ranger-vmware-switcher/config.yml
-	cp extra/machiner-example-config.yml $(DESTDIR)/etc/opt/ranger/ranger-vmware-featurer/config.yml
+	cp extra/machiner-example-config.yml $(DESTDIR)/etc/opt/ranger/ranger-vmware-executor/config.yml
 	
 	cp extra/ranger-vmware-machiner.service $(DESTDIR)/lib/systemd/system/
 	cp extra/ranger-vmware-switcher.service $(DESTDIR)/lib/systemd/system/
 	cp extra/ranger-vmware-templater.service $(DESTDIR)/lib/systemd/system/
-	cp extra/ranger-vmware-featurer.service $(DESTDIR)/lib/systemd/system/
+	cp extra/ranger-vmware-executor.service $(DESTDIR)/lib/systemd/system/
 
 	ln -sf $(DESTDIR)/lib/systemd/system/ranger-vmware-machiner.service $(DESTDIR)/etc/systemd/system/ranger-vmware-machiner.service
 	ln -sf $(DESTDIR)/lib/systemd/system/ranger-vmware-switcher.service $(DESTDIR)/etc/systemd/system/ranger-vmware-switcher.service
 	ln -sf $(DESTDIR)/lib/systemd/system/ranger-vmware-templater.service $(DESTDIR)/etc/systemd/system/ranger-vmware-templater.service
-	ln -sf $(DESTDIR)/lib/systemd/system/ranger-vmware-featurer.service $(DESTDIR)/etc/systemd/system/ranger-vmware-featurer.service
+	ln -sf $(DESTDIR)/lib/systemd/system/ranger-vmware-executor.service $(DESTDIR)/etc/systemd/system/ranger-vmware-executor.service
 
 compile-protobuf:
 	protoc --go_out=grpc --go-grpc_out=grpc \
@@ -60,7 +60,7 @@ generate-nsx-t-openapi:
 	java -Dapis=Segments,Connectivity -Dmodels -DsupportingFiles -jar /var/opt/swagger/swagger-codegen-cli.jar generate -DpackageName=nsx_t_openapi -DmodelTests=false -DapiTests=false -DapiDocs=false -DmodelDocs=false -D io.swagger.parser.util.RemoteUrl.trustAll=true -i extra/nsx_policy_api.yaml -l go -o nsx_t_openapi &&\
 	find ./nsx_t_openapi -type f ! \( -name '*.go' \) -exec rm -f {} +
 
-build: compile-protobuf build-machiner build-switcher build-templater build-featurer
+build: compile-protobuf build-machiner build-switcher build-templater build-executor
 
 build-machiner: compile-protobuf
 	go build -o bin/ranger-vmware-machiner ./machiner
@@ -71,10 +71,10 @@ build-switcher: compile-protobuf
 build-templater: compile-protobuf
 	go build -o bin/ranger-vmware-templater ./templater
 
-build-featurer: compile-protobuf
-	go build -o bin/ranger-vmware-featurer ./featurer
+build-executor: compile-protobuf
+	go build -o bin/ranger-vmware-executor ./executor
 
-test: build test-machiner test-switcher test-templater test-featurer
+test: build test-machiner test-switcher test-templater test-executor
 
 test-machiner: build-machiner
 	go test -v -count=1 ./machiner
@@ -85,8 +85,8 @@ test-switcher: build-switcher
 test-templater: build-templater
 	go test -v -count=1 ./templater
 
-test-featurer: build-featurer
-	go test -v -count=1 ./featurer
+test-executor: build-executor
+	go test -v -count=1 ./executor
 
 test-library:
 	go test -v -count=1 ./library
@@ -100,8 +100,8 @@ run-switcher: build-switcher
 run-templater: build-templater
 	bin/ranger-vmware-templater
 
-run-featurer: build-featurer
-	bin/ranger-vmware-featurer
+run-executor: build-executor
+	bin/ranger-vmware-executor
 
 test-and-build: test build
 
@@ -109,19 +109,19 @@ uninstall:
 	-rm -f $(DESTDIR)/var/opt/ranger/bin/ranger-vmware-machiner
 	-rm -f $(DESTDIR)/var/opt/ranger/bin/ranger-vmware-switcher
 	-rm -f $(DESTDIR)/var/opt/ranger/bin/ranger-vmware-templater
-	-rm -f $(DESTDIR)/var/opt/ranger/bin/ranger-vmware-featurer
+	-rm -f $(DESTDIR)/var/opt/ranger/bin/ranger-vmware-executor
 	-rm -f $(DESTDIR)/etc/opt/ranger/ranger-vmware-machiner/config.yml
 	-rm -f $(DESTDIR)/etc/opt/ranger/ranger-vmware-switcher/config.yml
 	-rm -f $(DESTDIR)/etc/opt/ranger/ranger-vmware-templater/config.yml
-	-rm -f $(DESTDIR)/etc/opt/ranger/ranger-vmware-featurer/config.yml
+	-rm -f $(DESTDIR)/etc/opt/ranger/ranger-vmware-executor/config.yml
 	-rm -f $(DESTDIR)/etc/systemd/system/ranger-vmware-machiner.service
 	-rm -f $(DESTDIR)/lib/systemd/system/ranger-vmware-machiner.service
 	-rm -f $(DESTDIR)/etc/systemd/system/ranger-vmware-switcher.service
 	-rm -f $(DESTDIR)/lib/systemd/system/ranger-vmware-switcher.service
 	-rm -f $(DESTDIR)/etc/systemd/system/ranger-vmware-templater.service
 	-rm -f $(DESTDIR)/lib/systemd/system/ranger-vmware-templater.service
-	-rm -f $(DESTDIR)/etc/systemd/system/ranger-vmware-featurer.service
-	-rm -f $(DESTDIR)/lib/systemd/system/ranger-vmware-featurer.service
+	-rm -f $(DESTDIR)/etc/systemd/system/ranger-vmware-executor.service
+	-rm -f $(DESTDIR)/lib/systemd/system/ranger-vmware-executor.service
 
 build-deb: clean build
 	env DH_VERBOSE=1 dpkg-buildpackage -b --no-sign
