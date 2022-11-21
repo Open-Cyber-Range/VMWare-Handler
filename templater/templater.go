@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-redis/redis/v8"
 	"github.com/open-cyber-range/vmware-handler/grpc/capability"
 	"github.com/open-cyber-range/vmware-handler/grpc/common"
 	"github.com/open-cyber-range/vmware-handler/grpc/template"
@@ -86,6 +87,7 @@ type templaterServer struct {
 	Client                *govmomi.Client
 	Configuration         library.Configuration
 	currentDeploymentList DeploymentList
+	Storage               *library.Storage
 }
 
 type TemplateDeployment struct {
@@ -94,6 +96,7 @@ type TemplateDeployment struct {
 	Configuration library.Configuration
 	templateName  string
 	metaInfo      string
+	Storage       *library.Storage
 }
 
 type VirtualMachine struct {
@@ -112,11 +115,14 @@ func getVirtualMachineInfo(packegeDataMap *map[string]interface{}) (virtualMachi
 	return
 }
 
-func (templateDeployment *TemplateDeployment) handleTemplateBasedOnType(packageData map[string]interface{}, packagePath string) (err error) {
-	virtualMachine, err := getVirtualMachineInfo(&packageData)
-	if err != nil {
-		return
-	}
+func (templateDeployment *TemplateDeployment) saveTemplateAccounts(ctx context.Context, templateId string, virtualMachine VirtualMachine) (err error) {
+	// the accounts fields in Package.toml is currently unreleased
+	err = library.Create(ctx, templateDeployment.Storage.RedisClient, templateId, virtualMachine.Accounts)
+
+	return
+}
+
+func (templateDeployment *TemplateDeployment) handleTemplateBasedOnType(virtualMachine VirtualMachine, packagePath string) (err error) {
 	switch virtualMachine.Type {
 	case "OVA":
 		_, err = templateDeployment.ImportOVA(path.Join(packagePath, virtualMachine.FilePath), templateDeployment.Client.Client.Client)
@@ -124,12 +130,24 @@ func (templateDeployment *TemplateDeployment) handleTemplateBasedOnType(packageD
 	return
 }
 
-func (templateDeployment *TemplateDeployment) createTemplate(packagePath string) (err error) {
+func (templateDeployment *TemplateDeployment) createTemplate(ctx context.Context, packagePath string) (err error) {
 	packageData, err := library.GetPackageData(packagePath)
 	if err != nil {
 		return
 	}
-	err = templateDeployment.handleTemplateBasedOnType(packageData, packagePath)
+	virtualMachine, err := getVirtualMachineInfo(&packageData)
+	if err != nil {
+		return
+	}
+	if err = templateDeployment.handleTemplateBasedOnType(virtualMachine, packagePath); err != nil {
+		return
+	}
+	deployedTemplate, err := templateDeployment.Client.GetTemplateByName(templateDeployment.templateName)
+	if err != nil {
+		return status.Error(codes.Internal, fmt.Sprintf("Failed to get deployed template (%v)", err))
+	}
+
+	err = templateDeployment.saveTemplateAccounts(ctx, deployedTemplate.UUID(ctx), virtualMachine)
 
 	return
 }
@@ -185,6 +203,7 @@ func (server *templaterServer) Create(ctx context.Context, source *common.Source
 			Configuration: server.Configuration,
 			templateName:  templateName,
 			metaInfo:      fmt.Sprintf("%v-%v", source.Name, normalizedVersion),
+			Storage:       server.Storage,
 		}
 		packagePath, downloadError := library.DownloadPackage(templateDeployment.source.Name, templateDeployment.source.Version)
 		if downloadError != nil {
@@ -192,7 +211,8 @@ func (server *templaterServer) Create(ctx context.Context, source *common.Source
 			return nil, status.Error(codes.NotFound, fmt.Sprintf("Failed to download package (%v)", downloadError))
 		}
 		log.Infof("Downloaded package to: %v", packagePath)
-		deployError := templateDeployment.createTemplate(packagePath)
+
+		deployError := templateDeployment.createTemplate(ctx, packagePath)
 		server.currentDeploymentList.Remove(templateName)
 		if deployError != nil {
 			log.Printf("Failed to deploy template (%v)", deployError)
@@ -249,11 +269,17 @@ func RealMain(configuration library.Configuration) {
 	if addressError != nil {
 		log.Fatalf("Failed to listen: %v", addressError)
 	}
+	redisClient := library.NewStorage(redis.NewClient(&redis.Options{
+		Addr:     configuration.RedisAddress,
+		Password: configuration.RedisPassword,
+		DB:       0,
+	}))
 
 	server := grpc.NewServer()
 	template.RegisterTemplateServiceServer(server, &templaterServer{
 		Client:        client,
 		Configuration: configuration,
+		Storage:       &redisClient,
 	})
 	capabilityServer := library.NewCapabilityServer([]capability.Capabilities_DeployerTypes{
 		*capability.Capabilities_Template.Enum().Enum(),

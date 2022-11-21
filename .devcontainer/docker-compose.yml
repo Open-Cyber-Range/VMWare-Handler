@@ -27,11 +27,10 @@ services:
       - 8081:80
 
   featurer-redis-server:
-    image: redis:7.0-alpine
+    image: nexus.ocr.cr14.net:8003/featurer-redis-server
     restart: always
     command: ["redis-server", "/etc/redis/redis.conf"]
     ports:
-      - 6379:6379
+      - 6380:6380
     volumes:
-      - ./configs/featurer-redis-configuration.conf:/etc/redis/redis.conf
-    container_name: featurer_redis_server
+      - ./configs/redis-configuration.conf:/etc/redis/redis.conf

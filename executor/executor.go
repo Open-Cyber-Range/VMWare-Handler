@@ -39,7 +39,7 @@ type featurerServer struct {
 	feature.UnimplementedFeatureServiceServer
 	Client        *govmomi.Client
 	Configuration *library.Configuration
-	Storage       *Storage
+	Storage       *library.Storage
 }
 
 type guestManager struct {
@@ -279,11 +279,24 @@ func (server *featurerServer) createGuestManagers(ctx context.Context, featureDe
 	return guestManager, nil
 }
 
-func (server *featurerServer) Create(ctx context.Context, featureDeployment *feature.Feature) (identifier *common.Identifier, err error) {
+func (server *featurerServer) Create(ctx context.Context, featureDeployment *feature.Feature) (featureResponse *feature.FeatureResponse, err error) {
+	var vmLog string
 
+	accounts, err := library.Get(ctx, server.Storage.RedisClient, featureDeployment.TemplateId, new([]library.Account))
+	if err != nil {
+		return nil, err
+	}
+	log.Infof("Got %v account(s) for current VM", len(*accounts))
+
+	var password string
+	for _, account := range *accounts {
+		if account.Name == featureDeployment.Username {
+			password = account.Password
+		}
+	}
 	auth := &types.NamePasswordAuthentication{
-		Username: featureDeployment.User,
-		Password: featureDeployment.Password,
+		Username: featureDeployment.Username,
+		Password: password,
 	}
 
 	guestManager, err := server.createGuestManagers(ctx, featureDeployment, auth)
@@ -313,19 +326,20 @@ func (server *featurerServer) Create(ctx context.Context, featureDeployment *fea
 
 	featureId := uuid.New().String()
 
-	currentDeplyoment := FeatureContainer{
+	currentDeplyoment := library.FeatureContainer{
 		VMID:      featureDeployment.VirtualMachineId,
 		Auth:      *guestManager.Auth,
 		FilePaths: []string{},
 	}
 
-	server.Storage.Create(ctx, featureId, currentDeplyoment)
+	library.Create(ctx, server.Storage.RedisClient, featureId, currentDeplyoment)
 
 	guestOsFamily, err := guestManager.findGuestOSFamily(ctx)
 	if err != nil {
 		return nil, err
 	}
 
+	//Copy files to VM that are defined under packagefeature.Assets
 	for i := 0; i < len(packageFeature.Assets); i++ {
 
 		sourcePath := path.Join(packagePath, filepath.FromSlash(packageFeature.Assets[i][0]))
@@ -366,11 +380,15 @@ func (server *featurerServer) Create(ctx context.Context, featureDeployment *fea
 		}
 
 		currentDeplyoment.FilePaths = append(currentDeplyoment.FilePaths, normalizedTargetPath)
-		if err = server.Storage.Update(ctx, featureId, currentDeplyoment); err != nil {
+		if err = library.Update(ctx, server.Storage.RedisClient, featureId, &currentDeplyoment); err != nil {
 			return nil, err
 		}
 	}
 
+	//temp assignment of Action field for test TestFeatureDeploymentAndDeletionOnLinux since Deputy is unreleased
+	packageFeature.Action = "/tmp/test-folder/todays_date.sh"
+
+	// Execute script defined in packageFeature.Action
 	if packageFeature.Action != "" && featureDeployment.FeatureType == *feature.FeatureType_service.Enum() {
 		vmLogPath, err := guestManager.FileManager.CreateTemporaryFile(ctx, guestManager.Auth, "executor-", ".log", "")
 		if err != nil {
@@ -381,6 +399,7 @@ func (server *featurerServer) Create(ctx context.Context, featureDeployment *fea
 			ProgramPath:      packageFeature.Action,
 			Arguments:        fmt.Sprintf("> %v 2>%%1", vmLogPath),
 			WorkingDirectory: path.Dir(packageFeature.Action),
+			EnvVariables:     []string{},
 		}
 
 		processID, err := guestManager.ProcessManager.StartProgram(ctx, auth, programSpec)
@@ -394,21 +413,26 @@ func (server *featurerServer) Create(ctx context.Context, featureDeployment *fea
 				return nil, err
 			}
 		}
-		output, err := guestManager.getVMLogContents(ctx, vmLogPath)
+		vmLog, err = guestManager.getVMLogContents(ctx, vmLogPath)
 		if err != nil {
 			return nil, err
 		}
-		log.Infof("PID %v output: %v", processID, output)
+		log.Infof("PID %v output: %v", processID, vmLog)
 	}
 
-	identifier = &common.Identifier{
-		Value: fmt.Sprintf("%v", featureId),
+	featureResponse = &feature.FeatureResponse{
+		Identifier: &common.Identifier{
+			Value: fmt.Sprintf("%v", featureId),
+		},
+		VmLog: vmLog,
 	}
+
 	return
 }
 
 func (server *featurerServer) Delete(ctx context.Context, identifier *common.Identifier) (*emptypb.Empty, error) {
-	featureContainer, err := server.Storage.Get(ctx, identifier.GetValue())
+
+	featureContainer, err := library.Get(ctx, server.Storage.RedisClient, identifier.GetValue(), new(library.FeatureContainer))
 	if err != nil {
 		return nil, err
 	}
@@ -450,7 +474,7 @@ func RealMain(configuration *library.Configuration) {
 		log.Fatalf("Failed to listen: %v", addressError)
 	}
 
-	redisClient := NewStorage(redis.NewClient(&redis.Options{
+	redisClient := library.NewStorage(redis.NewClient(&redis.Options{
 		Addr:     configuration.RedisAddress,
 		Password: configuration.RedisPassword,
 		DB:       0,

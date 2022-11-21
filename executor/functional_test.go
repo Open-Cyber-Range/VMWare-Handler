@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-redis/redis/v8"
 	"github.com/open-cyber-range/vmware-handler/grpc/common"
 	"github.com/open-cyber-range/vmware-handler/grpc/feature"
 	"github.com/open-cyber-range/vmware-handler/library"
@@ -68,23 +69,37 @@ func creategRPCClient(t *testing.T, serverPath string) feature.FeatureServiceCli
 	return feature.NewFeatureServiceClient(connection)
 }
 
-func createFeatureDeploymentRequest(t *testing.T, feature *feature.Feature, packageName string) {
+func createRedisClient() library.Storage {
+	redisClient := redis.NewClient(&redis.Options{
+		Addr:     testConfiguration.RedisAddress,
+		Password: testConfiguration.RedisPassword,
+		DB:       0,
+	})
+
+	return library.NewStorage(redisClient)
+}
+
+func createFeatureDeploymentRequest(t *testing.T, feature *feature.Feature, packageName string, accounts []library.Account) {
 	configuration := startServer(3 * time.Second)
 	ctx := context.Background()
 	gRPCClient := creategRPCClient(t, configuration.ServerAddress)
+	storage := createRedisClient()
 
-	err := library.PublishTestPackage(packageName)
-	if err != nil {
+	if err := library.PublishTestPackage(packageName); err != nil {
 		t.Fatalf("Failed to upload test feature package: %v", err)
 	}
 
-	identifier, err := gRPCClient.Create(ctx, feature)
+	if err := library.Create(ctx, storage.RedisClient, feature.TemplateId, accounts); err != nil {
+		t.Fatalf("Test Create redis entry error: %v", err)
+	}
+
+	response, err := gRPCClient.Create(ctx, feature)
 	if err != nil {
 		t.Fatalf("Test Create request error: %v", err)
 	}
 
-	log.Infof("Feature create finished, id: %v", identifier.Value)
-	_, err = gRPCClient.Delete(ctx, identifier)
+	log.Infof("Feature Create finished, id: %v", response.Identifier.GetValue())
+	_, err = gRPCClient.Delete(ctx, response.Identifier)
 	if err != nil {
 		t.Fatalf("Test Delete request error: %v", err)
 	}
@@ -95,34 +110,39 @@ func TestFeatureDeploymentAndDeletionOnLinux(t *testing.T) {
 	t.Parallel()
 
 	packageName := "feature-service-package"
+	accounts := []library.Account{{Name: "root", Password: "password"}}
+
 	feature := &feature.Feature{
 		Name:             "test-feature",
 		VirtualMachineId: "42127656-e390-d6a8-0703-c3425dbc8052",
-		User:             "root",
-		Password:         "password",
 		FeatureType:      feature.FeatureType_service,
+		Username:         "root",
 		Source: &common.Source{
 			Name:    "test-service",
 			Version: "*",
 		},
+		TemplateId: "test-template-id-1",
 	}
-	createFeatureDeploymentRequest(t, feature, packageName)
+	createFeatureDeploymentRequest(t, feature, packageName, accounts)
 }
 
 func TestFeatureDeploymentAndDeletionOnWindows(t *testing.T) {
+	t.Skip("Skipped until release of Deputy that contains 'Accounts' and 'Action' field")
 	t.Parallel()
 
 	packageName := "feature-win-service-package"
+	accounts := []library.Account{{Name: "user", Password: "password"}}
+
 	feature := &feature.Feature{
 		Name:             "test-feature",
 		VirtualMachineId: "42122b12-3a17-c0fb-eb3c-7cd935bb595b",
-		User:             "user",
-		Password:         "password",
+		Username:         "user",
 		FeatureType:      feature.FeatureType_service,
 		Source: &common.Source{
 			Name:    "test-windows-service",
 			Version: "*",
 		},
+		TemplateId: "test-template-id-2",
 	}
-	createFeatureDeploymentRequest(t, feature, packageName)
+	createFeatureDeploymentRequest(t, feature, packageName, accounts)
 }
