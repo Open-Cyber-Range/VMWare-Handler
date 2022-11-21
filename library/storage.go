@@ -11,7 +11,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-type FeatureContainer struct {
+type ExecutorContainer struct {
 	VMID      string
 	Auth      types.NamePasswordAuthentication
 	FilePaths []string

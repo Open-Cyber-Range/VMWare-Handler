@@ -39,7 +39,7 @@ func TestRedisCRUD(t *testing.T) {
 	storage := createRedisClient()
 
 	featureID := "123456789"
-	featureHolder := FeatureContainer{
+	featureHolder := ExecutorContainer{
 		VMID: "vmid",
 		Auth: types.NamePasswordAuthentication{
 			Username: "username",
@@ -54,7 +54,7 @@ func TestRedisCRUD(t *testing.T) {
 	}
 	log.Infof("Redis Create success")
 
-	featureContainer, err := Get(ctx, storage.RedisClient, featureID, new(FeatureContainer))
+	featureContainer, err := Get(ctx, storage.RedisClient, featureID, new(ExecutorContainer))
 	if err != nil {
 		panic(err)
 	}
@@ -68,7 +68,7 @@ func TestRedisCRUD(t *testing.T) {
 		panic(err)
 	}
 
-	featureContainer, err = Get(ctx, storage.RedisClient, featureID, new(FeatureContainer))
+	featureContainer, err = Get(ctx, storage.RedisClient, featureID, new(ExecutorContainer))
 
 	if err != nil {
 		panic(err)
@@ -82,7 +82,7 @@ func TestRedisCRUD(t *testing.T) {
 		panic(err)
 	}
 
-	_, err = Get(ctx, storage.RedisClient, featureID, new(FeatureContainer))
+	_, err = Get(ctx, storage.RedisClient, featureID, new(ExecutorContainer))
 	if err == nil {
 		panic("Redis entry was not deleted")
 	}

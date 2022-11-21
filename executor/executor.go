@@ -252,6 +252,38 @@ func (guestManager *guestManager) awaitProcessWithTimeout(ctx context.Context, p
 	return nil
 }
 
+func (guestManager *guestManager) executePackageAction(ctx context.Context, action string) (vmLog string, err error) {
+	vmLogPath, err := guestManager.FileManager.CreateTemporaryFile(ctx, guestManager.Auth, "executor-", ".log", "")
+	if err != nil {
+		return "", status.Error(codes.Internal, fmt.Sprintf("Error creating log file on vm, %v", err))
+
+	}
+	programSpec := &types.GuestProgramSpec{
+		ProgramPath:      action,
+		Arguments:        fmt.Sprintf("> %v 2>%%1", vmLogPath),
+		WorkingDirectory: path.Dir(action),
+		EnvVariables:     []string{},
+	}
+
+	processID, err := guestManager.ProcessManager.StartProgram(ctx, guestManager.Auth, programSpec)
+	if err != nil {
+		return "", status.Error(codes.Internal, fmt.Sprintf("Error starting program, %v", err))
+	}
+
+	if processID > 0 {
+		err = guestManager.awaitProcessWithTimeout(ctx, processID, action)
+		if err != nil {
+			return
+		}
+	}
+	vmLog, err = guestManager.getVMLogContents(ctx, vmLogPath)
+	if err != nil {
+		return
+	}
+	log.Infof("PID %v output: %v", processID, vmLog)
+	return
+}
+
 func (server *featurerServer) createGuestManagers(ctx context.Context, featureDeployment *feature.Feature,
 	auth *types.NamePasswordAuthentication) (*guestManager, error) {
 	vmwareClient := library.NewVMWareClient(server.Client, server.Configuration.TemplateFolderPath)
@@ -279,8 +311,59 @@ func (server *featurerServer) createGuestManagers(ctx context.Context, featureDe
 	return guestManager, nil
 }
 
+func (guestManager *guestManager) copyAssetsToVM(ctx context.Context, assets [][]string, packagePath string, storage *library.Storage, currentDeplyoment library.ExecutorContainer, executorId string) (err error) {
+	for i := 0; i < len(assets); i++ {
+
+		guestOsFamily, err := guestManager.findGuestOSFamily(ctx)
+		if err != nil {
+			return err
+		}
+
+		sourcePath := path.Join(packagePath, filepath.FromSlash(assets[i][0]))
+		targetPath := assets[i][1]
+
+		var filePermissions string
+		if len(assets[i]) < 3 {
+			filePermissions = ""
+		} else {
+			filePermissions = assets[i][2]
+		}
+
+		fileInfo, err := os.Stat(sourcePath)
+		if err != nil {
+			return status.Error(codes.Internal, fmt.Sprintf("Error getting file information, %v", err))
+		}
+
+		fileAttributes, err := createFileAttributesByOsFamily(guestOsFamily, filePermissions)
+		if err != nil {
+			return err
+		}
+
+		normalizedTargetPath := normalizeTargetPathByOS(sourcePath, targetPath, guestOsFamily)
+
+		err = guestManager.FileManager.MakeDirectory(ctx, guestManager.Auth, path.Dir(normalizedTargetPath), true)
+		if err != nil && !strings.HasSuffix(err.Error(), "already exists") {
+			return status.Error(codes.Internal, fmt.Sprintf("Error creating VM directories, %v", err))
+		}
+
+		transferUrl, err := guestManager.FileManager.InitiateFileTransferToGuest(ctx, guestManager.Auth, normalizedTargetPath, fileAttributes, fileInfo.Size(), true)
+		if err != nil {
+			return status.Error(codes.Internal, fmt.Sprintf("Error creating transfer URL, %v", err))
+		}
+
+		if err = sendFileToVM(transferUrl, sourcePath); err != nil {
+			return err
+		}
+
+		currentDeplyoment.FilePaths = append(currentDeplyoment.FilePaths, normalizedTargetPath)
+		if err = library.Update(ctx, storage.RedisClient, executorId, &currentDeplyoment); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (server *featurerServer) Create(ctx context.Context, featureDeployment *feature.Feature) (featureResponse *feature.FeatureResponse, err error) {
-	var vmLog string
 
 	accounts, err := library.Get(ctx, server.Storage.RedisClient, featureDeployment.TemplateId, new([]library.Account))
 	if err != nil {
@@ -326,7 +409,7 @@ func (server *featurerServer) Create(ctx context.Context, featureDeployment *fea
 
 	featureId := uuid.New().String()
 
-	currentDeplyoment := library.FeatureContainer{
+	currentDeplyoment := library.ExecutorContainer{
 		VMID:      featureDeployment.VirtualMachineId,
 		Auth:      *guestManager.Auth,
 		FilePaths: []string{},
@@ -334,90 +417,19 @@ func (server *featurerServer) Create(ctx context.Context, featureDeployment *fea
 
 	library.Create(ctx, server.Storage.RedisClient, featureId, currentDeplyoment)
 
-	guestOsFamily, err := guestManager.findGuestOSFamily(ctx)
-	if err != nil {
+	if err = guestManager.copyAssetsToVM(ctx, packageFeature.Assets, packagePath, server.Storage, currentDeplyoment, featureId); err != nil {
 		return nil, err
-	}
-
-	//Copy files to VM that are defined under packagefeature.Assets
-	for i := 0; i < len(packageFeature.Assets); i++ {
-
-		sourcePath := path.Join(packagePath, filepath.FromSlash(packageFeature.Assets[i][0]))
-		targetPath := packageFeature.Assets[i][1]
-
-		var filePermissions string
-		if len(packageFeature.Assets[i]) < 3 {
-			filePermissions = ""
-		} else {
-			filePermissions = packageFeature.Assets[i][2]
-		}
-
-		fileInfo, err := os.Stat(sourcePath)
-		if err != nil {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("Error getting file information, %v", err))
-		}
-
-		fileAttributes, err := createFileAttributesByOsFamily(guestOsFamily, filePermissions)
-		if err != nil {
-			return nil, err
-		}
-
-		normalizedTargetPath := normalizeTargetPathByOS(sourcePath, targetPath, guestOsFamily)
-
-		err = guestManager.FileManager.MakeDirectory(ctx, auth, path.Dir(normalizedTargetPath), true)
-		if err != nil && !strings.HasSuffix(err.Error(), "already exists") {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("Error creating VM directories, %v", err))
-		}
-
-		transferUrl, err := guestManager.FileManager.InitiateFileTransferToGuest(ctx, auth, normalizedTargetPath, fileAttributes, fileInfo.Size(), true)
-		if err != nil {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("Error creating transfer URL, %v", err))
-		}
-
-		err = sendFileToVM(transferUrl, sourcePath)
-		if err != nil {
-			return nil, err
-		}
-
-		currentDeplyoment.FilePaths = append(currentDeplyoment.FilePaths, normalizedTargetPath)
-		if err = library.Update(ctx, server.Storage.RedisClient, featureId, &currentDeplyoment); err != nil {
-			return nil, err
-		}
 	}
 
 	//temp assignment of Action field for test TestFeatureDeploymentAndDeletionOnLinux since Deputy is unreleased
 	packageFeature.Action = "/tmp/test-folder/todays_date.sh"
 
-	// Execute script defined in packageFeature.Action
+	var vmLog string
 	if packageFeature.Action != "" && featureDeployment.FeatureType == *feature.FeatureType_service.Enum() {
-		vmLogPath, err := guestManager.FileManager.CreateTemporaryFile(ctx, guestManager.Auth, "executor-", ".log", "")
-		if err != nil {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("Error creating log file on vm, %v", err))
-
-		}
-		programSpec := &types.GuestProgramSpec{
-			ProgramPath:      packageFeature.Action,
-			Arguments:        fmt.Sprintf("> %v 2>%%1", vmLogPath),
-			WorkingDirectory: path.Dir(packageFeature.Action),
-			EnvVariables:     []string{},
-		}
-
-		processID, err := guestManager.ProcessManager.StartProgram(ctx, auth, programSpec)
-		if err != nil {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("Error starting program, %v", err))
-		}
-
-		if processID > 0 {
-			err := guestManager.awaitProcessWithTimeout(ctx, processID, packageFeature.Action)
-			if err != nil {
-				return nil, err
-			}
-		}
-		vmLog, err = guestManager.getVMLogContents(ctx, vmLogPath)
+		vmLog, err = guestManager.executePackageAction(ctx, packageFeature.Action)
 		if err != nil {
 			return nil, err
 		}
-		log.Infof("PID %v output: %v", processID, vmLog)
 	}
 
 	featureResponse = &feature.FeatureResponse{
@@ -432,7 +444,7 @@ func (server *featurerServer) Create(ctx context.Context, featureDeployment *fea
 
 func (server *featurerServer) Delete(ctx context.Context, identifier *common.Identifier) (*emptypb.Empty, error) {
 
-	featureContainer, err := library.Get(ctx, server.Storage.RedisClient, identifier.GetValue(), new(library.FeatureContainer))
+	featureContainer, err := library.Get(ctx, server.Storage.RedisClient, identifier.GetValue(), new(library.ExecutorContainer))
 	if err != nil {
 		return nil, err
 	}
