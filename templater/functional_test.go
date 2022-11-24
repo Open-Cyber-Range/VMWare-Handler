@@ -25,6 +25,8 @@ var testConfiguration = library.Configuration{
 	ResourcePoolPath:   os.Getenv("TEST_VMWARE_RESOURCE_POOL_PATH"),
 	DatastorePath:      os.Getenv("TEST_VMWARE_DATASTORE_PATH"),
 	ServerAddress:      "127.0.0.1",
+	RedisAddress:       os.Getenv("TEST_REDIS_ADDRESS"),
+	RedisPassword:      os.Getenv("TEST_REDIS_PASSWORD"),
 }
 
 func startServer(timeout time.Duration) (configuration library.Configuration, err error) {

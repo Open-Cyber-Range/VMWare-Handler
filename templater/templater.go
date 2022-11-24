@@ -99,12 +99,18 @@ type TemplateDeployment struct {
 	Storage       *library.Storage
 }
 
+type Account struct {
+	Name     string `json:"name,omitempty"`
+	Password string `json:"password,omitempty"`
+}
+
 type VirtualMachine struct {
-	OperatingSystem string   `json:"operating_system,omitempty"`
-	Architecture    string   `json:"architecture,omitempty"`
-	Type            string   `json:"type,omitempty"`
-	FilePath        string   `json:"file_path,omitempty"`
-	Links           []string `json:"links,omitempty"`
+	OperatingSystem string    `json:"operating_system,omitempty"`
+	Architecture    string    `json:"architecture,omitempty"`
+	Type            string    `json:"type,omitempty"`
+	FilePath        string    `json:"file_path,omitempty"`
+	Links           []string  `json:"links,omitempty"`
+	Accounts        []Account `json:"accounts,omitempty"`
 }
 
 func getVirtualMachineInfo(packegeDataMap *map[string]interface{}) (virtualMachine VirtualMachine, err error) {
@@ -116,7 +122,6 @@ func getVirtualMachineInfo(packegeDataMap *map[string]interface{}) (virtualMachi
 }
 
 func (templateDeployment *TemplateDeployment) saveTemplateAccounts(ctx context.Context, templateId string, virtualMachine VirtualMachine) (err error) {
-	// the accounts fields in Package.toml is currently unreleased
 	err = library.Create(ctx, templateDeployment.Storage.RedisClient, templateId, virtualMachine.Accounts)
 
 	return
