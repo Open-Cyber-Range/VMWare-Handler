@@ -2,6 +2,7 @@
 machiner-config.yml
 switcher-config.yml
 templater-config.yml
+executor-config.yml
 
 # gRPC generating files
 grpc/

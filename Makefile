@@ -26,7 +26,7 @@ install:
 	cp extra/machiner-example-config.yml $(DESTDIR)/etc/opt/ranger/ranger-vmware-machiner/config.yml
 	cp extra/switcher-example-config.yml $(DESTDIR)/etc/opt/ranger/ranger-vmware-switcher/config.yml
 	cp extra/templater-example-config.yml $(DESTDIR)/etc/opt/ranger/ranger-vmware-switcher/config.yml
-	cp extra/machiner-example-config.yml $(DESTDIR)/etc/opt/ranger/ranger-vmware-executor/config.yml
+	cp extra/executor-example-config.yml $(DESTDIR)/etc/opt/ranger/ranger-vmware-executor/config.yml
 	
 	cp extra/ranger-vmware-machiner.service $(DESTDIR)/lib/systemd/system/
 	cp extra/ranger-vmware-switcher.service $(DESTDIR)/lib/systemd/system/
