@@ -291,6 +291,17 @@ func (server *featurerServer) createGuestManagers(ctx context.Context, featureDe
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Error getting VM by UUID, %v", err))
 	}
+
+	vmToolsRunning, err := library.CheckVMStatus(ctx, virtualMachine)
+	if err != nil {
+		return nil, err
+	} else if !vmToolsRunning {
+		err = vmwareClient.AwaitVMToolsToComeOnline(ctx, featureDeployment.VirtualMachineId)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	operationsManager := guest.NewOperationsManager(virtualMachine.Client(), virtualMachine.Reference())
 	fileManager, err := operationsManager.FileManager(ctx)
 	if err != nil {
@@ -387,7 +398,7 @@ func (server *featurerServer) Create(ctx context.Context, featureDeployment *fea
 		return nil, err
 	}
 
-	err = library.CheckVMStatus(ctx, guestManager.VirtualMachine)
+	_, err = library.CheckVMStatus(ctx, guestManager.VirtualMachine)
 	if err != nil {
 		return nil, err
 	}

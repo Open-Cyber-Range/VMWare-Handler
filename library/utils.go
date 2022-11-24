@@ -14,6 +14,7 @@ import (
 
 	"github.com/iancoleman/strcase"
 	"github.com/open-cyber-range/vmware-handler/grpc/capability"
+	log "github.com/sirupsen/logrus"
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/types"
@@ -22,6 +23,10 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 )
+
+const vmToolsTimeoutSec int = 60
+const vmToolsSleepSec int = 5
+const vmToolsCheckTries int = vmToolsTimeoutSec / vmToolsSleepSec
 
 func CreateRandomString(length int) string {
 	rand.Seed(time.Now().UnixNano())
@@ -154,17 +159,45 @@ func PublishTestPackage(packageFolderName string) (err error) {
 	return
 }
 
-func CheckVMStatus(ctx context.Context, virtualMachine *object.VirtualMachine) error {
+func CheckVMStatus(ctx context.Context, virtualMachine *object.VirtualMachine) (bool, error) {
 	var vmProperties mo.VirtualMachine
 	virtualMachine.Properties(ctx, virtualMachine.Reference(), []string{}, &vmProperties)
 
 	vmPowerState := vmProperties.Runtime.PowerState
 	vmToolsStatus := vmProperties.Guest.ToolsStatus
 
-	if vmPowerState == types.VirtualMachinePowerStatePoweredOn &&
-		vmToolsStatus == types.VirtualMachineToolsStatusToolsOk {
-		return nil
+	if vmPowerState == types.VirtualMachinePowerStatePoweredOn {
+		if vmToolsStatus == types.VirtualMachineToolsStatusToolsOk {
+			return true, nil
+		} else if vmToolsStatus == types.VirtualMachineToolsStatusToolsNotRunning {
+			return false, nil
+		}
 	}
 
-	return status.Error(codes.Internal, fmt.Sprintf("Error: VM Power state: %v, VM Tools status: %v", vmPowerState, vmToolsStatus))
+	return false, status.Error(codes.Internal, fmt.Sprintf("Error: VM Power state: %v, VM Tools status: %v", vmPowerState, vmToolsStatus))
+}
+
+func (vmwareClient VMWareClient) AwaitVMToolsToComeOnline(ctx context.Context, vmId string) error {
+	var tries = int(vmToolsCheckTries)
+
+	for tries > 0 {
+		tries -= 1
+
+		virtualMachine, err := vmwareClient.GetVirtualMachineByUUID(ctx, vmId)
+		if err != nil {
+			return status.Error(codes.Internal, fmt.Sprintf("Error getting VM by UUID, %v", err))
+		}
+
+		var vmProperties mo.VirtualMachine
+		virtualMachine.Properties(ctx, virtualMachine.Reference(), []string{}, &vmProperties)
+
+		if vmProperties.Guest.ToolsStatus == types.VirtualMachineToolsStatusToolsOk {
+			return nil
+		}
+
+		log.Infof("Waiting for VMTools on %v", vmId)
+		time.Sleep(time.Second * time.Duration(vmToolsTimeoutSec))
+	}
+
+	return status.Error(codes.Internal, fmt.Sprintf("Timeout (%v sec) waiting for VMTools to come online on %v", vmToolsTimeoutSec, vmId))
 }
