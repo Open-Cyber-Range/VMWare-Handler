@@ -260,7 +260,7 @@ func (guestManager *guestManager) executePackageAction(ctx context.Context, acti
 	}
 	programSpec := &types.GuestProgramSpec{
 		ProgramPath:      action,
-		Arguments:        fmt.Sprintf("> %v 2>%%1", vmLogPath),
+		Arguments:        fmt.Sprintf("> %v 2>&1", vmLogPath),
 		WorkingDirectory: path.Dir(action),
 		EnvVariables:     []string{},
 	}
