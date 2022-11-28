@@ -215,7 +215,6 @@ func (server *templaterServer) Create(ctx context.Context, source *common.Source
 			log.Errorf("Failed to download package (%v)", downloadError)
 			return nil, status.Error(codes.NotFound, fmt.Sprintf("Failed to download package (%v)", downloadError))
 		}
-		log.Infof("Downloaded package to: %v", packagePath)
 
 		deployError := templateDeployment.createTemplate(ctx, packagePath)
 		server.currentDeploymentList.Remove(templateName)

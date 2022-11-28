@@ -93,6 +93,7 @@ func DownloadPackage(name string, version string) (packagePath string, err error
 		return
 	}
 
+	log.Infof("Fetching package: %v, version: %v to %v", name, version, packagePath)
 	downloadCommand := exec.Command("deputy", "fetch", name, "-v", version, "-s", packagePath)
 	downloadCommand.Dir = packageBasePath
 	output, err := downloadCommand.CombinedOutput()
@@ -109,7 +110,10 @@ func DownloadPackage(name string, version string) (packagePath string, err error
 		return
 	}
 
-	return path.Join(packageBasePath, directories[0]), nil
+	packageDirectory := path.Join(packageBasePath, directories[0])
+	log.Infof("Downloaded package to: %v", packageDirectory)
+
+	return packageDirectory, nil
 }
 
 func GetPackageChecksum(name string, version string) (checksum string, err error) {
@@ -150,11 +154,17 @@ func PublishTestPackage(packageFolderName string) (err error) {
 		return
 	}
 	uploadCommand.Dir = path.Join(workingDirectory, "..", "extra", "test-deputy-packages", packageFolderName)
+
+	log.Infof("Publishing test package: %v", uploadCommand.Dir)
+
 	output, err := uploadCommand.CombinedOutput()
-	if strings.Contains(string(output), "Package version on the server is either same or later") {
+	outputString := string(output)
+
+	log.Infof("Publish output: `%v` ", outputString)
+	if strings.Contains(outputString, "Package version on the server is either same or later") {
 		return nil
 	} else if err != nil {
-		return fmt.Errorf("%v (%v)", string(output), err)
+		return fmt.Errorf("%v (%v)", outputString, err)
 	}
 	return
 }
