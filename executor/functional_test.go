@@ -119,7 +119,7 @@ func TestFeatureDeploymentAndDeletionOnLinux(t *testing.T) {
 		Username:         "root",
 		Source: &common.Source{
 			Name:    "test-service",
-			Version: "0.2.0",
+			Version: "0.3.0",
 		},
 		TemplateId: "test-template-id-1",
 	}
