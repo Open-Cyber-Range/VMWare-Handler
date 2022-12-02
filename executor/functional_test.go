@@ -107,6 +107,7 @@ func createFeatureDeploymentRequest(t *testing.T, feature *feature.Feature, pack
 }
 
 func TestFeatureDeploymentAndDeletionOnLinux(t *testing.T) {
+	t.Skip("Skipped until release of Deputy that can parse-toml the latest Feature fields")
 	t.Parallel()
 
 	packageName := "feature-service-package"
@@ -119,7 +120,7 @@ func TestFeatureDeploymentAndDeletionOnLinux(t *testing.T) {
 		Username:         "root",
 		Source: &common.Source{
 			Name:    "test-service",
-			Version: "0.3.0",
+			Version: "*",
 		},
 		TemplateId: "test-template-id-1",
 	}
@@ -127,7 +128,7 @@ func TestFeatureDeploymentAndDeletionOnLinux(t *testing.T) {
 }
 
 func TestFeatureDeploymentAndDeletionOnWindows(t *testing.T) {
-	t.Skip("Skipped until release of Deputy that contains 'Accounts' and 'Action' field")
+	t.Skip("Skipped until release of Deputy that can parse-toml the latest Feature fields")
 	t.Parallel()
 
 	packageName := "feature-win-service-package"
