@@ -1,8 +1,9 @@
 [package]
 name = "test-configuration"
 description = "This is a simple configuration feature package"
-version = "0.2.0"
+version = "0.3.2"
 authors = ["Rait Rotšan rait.rotsan@cr14.ee"]
+license = "MIT"
 
 [content]
 type = "feature"
@@ -10,5 +11,5 @@ type = "feature"
 [feature]
 type = "Configuration"
 assets = [
-     ["src/config", "/tmp/test-folder/", "554"],
+     ["src/config.yml", "/tmp/test-folder/", "554"],
 ]

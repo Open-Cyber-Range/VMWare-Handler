@@ -1,8 +1,9 @@
 [package]
 name = "dsl-image"
 description = "This is an image for Damn Small Linux VM"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Kaarel Allemann kaarel.allemann@cr14.ee"]
+license = "MIT"
 
 [content]
 type = "vm"

@@ -106,7 +106,7 @@ func createFeatureDeploymentRequest(t *testing.T, feature *feature.Feature, pack
 	log.Infof("Feature delete finished")
 }
 
-func TestFeatureDeploymentAndDeletionOnLinux(t *testing.T) {
+func TestFeatureServiceDeploymentAndDeletionOnLinux(t *testing.T) {
 	t.Skip("Skipped until release of Deputy that can parse-toml the latest Feature fields")
 	t.Parallel()
 
@@ -127,7 +127,27 @@ func TestFeatureDeploymentAndDeletionOnLinux(t *testing.T) {
 	createFeatureDeploymentRequest(t, feature, packageName, accounts)
 }
 
-func TestFeatureDeploymentAndDeletionOnWindows(t *testing.T) {
+func TestFeatureConfigurationDeploymentAndDeletionOnLinux(t *testing.T) {
+	t.Parallel()
+
+	packageName := "feature-config-package"
+	accounts := []library.Account{{Name: "root", Password: "password"}}
+
+	feature := &feature.Feature{
+		Name:             "test-feature",
+		VirtualMachineId: "42127656-e390-d6a8-0703-c3425dbc8052",
+		FeatureType:      feature.FeatureType_service,
+		Username:         "root",
+		Source: &common.Source{
+			Name:    "test-configuration",
+			Version: "*",
+		},
+		TemplateId: "test-template-id-1",
+	}
+	createFeatureDeploymentRequest(t, feature, packageName, accounts)
+}
+
+func TestFeatureServiceDeploymentAndDeletionOnWindows(t *testing.T) {
 	t.Skip("Skipped until release of Deputy that can parse-toml the latest Feature fields")
 	t.Parallel()
 
