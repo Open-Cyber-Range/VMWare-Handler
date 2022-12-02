@@ -314,21 +314,21 @@ func (server *featurerServer) createGuestManagers(ctx context.Context, featureDe
 }
 
 func (guestManager *guestManager) copyAssetsToVM(ctx context.Context, assets [][]string, packagePath string, storage *library.Storage, currentDeplyoment library.ExecutorContainer, executorId string) (err error) {
-	for i := 0; i < len(assets); i++ {
+	for _, asset := range assets {
 
 		guestOsFamily, err := guestManager.findGuestOSFamily(ctx)
 		if err != nil {
 			return err
 		}
 
-		sourcePath := path.Join(packagePath, filepath.FromSlash(assets[i][0]))
-		targetPath := assets[i][1]
+		sourcePath := path.Join(packagePath, filepath.FromSlash(asset[0]))
+		targetPath := asset[1]
 
 		var filePermissions string
-		if len(assets[i]) < 3 {
+		if len(asset) < 3 {
 			filePermissions = ""
 		} else {
-			filePermissions = assets[i][2]
+			filePermissions = asset[2]
 		}
 
 		fileInfo, err := os.Stat(sourcePath)
