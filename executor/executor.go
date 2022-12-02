@@ -123,22 +123,13 @@ func receiveFileFromVM(url string) (string, error) {
 	return logPath, nil
 }
 
-func normalizeTargetPathByOS(sourcePath string, destinationPath string, osFamily GuestOSFamily) string {
+func normalizeTargetPath(sourcePath string, destinationPath string) string {
 
-	var vmOsSeperator string
+	const unixPathSeperator = "/"
+	const windowsPathSeperator = "\\"
 
-	switch osFamily {
-	case Linux:
-		vmOsSeperator = "/"
-		sourcePath = strings.ReplaceAll(sourcePath, "\\", vmOsSeperator)
-		destinationPath = strings.ReplaceAll(destinationPath, "\\", vmOsSeperator)
-
-	case Windows:
-		vmOsSeperator = string("\\")
-		destinationPath = strings.ReplaceAll(destinationPath, "/", vmOsSeperator)
-	}
-
-	if strings.HasSuffix(destinationPath, vmOsSeperator) {
+	if strings.HasSuffix(destinationPath, unixPathSeperator) ||
+		strings.HasSuffix(destinationPath, windowsPathSeperator) {
 		destinationPath = strings.Join([]string{destinationPath, filepath.Base(sourcePath)}, "")
 	}
 
@@ -350,7 +341,7 @@ func (guestManager *guestManager) copyAssetsToVM(ctx context.Context, assets [][
 			return err
 		}
 
-		normalizedTargetPath := normalizeTargetPathByOS(sourcePath, targetPath, guestOsFamily)
+		normalizedTargetPath := normalizeTargetPath(sourcePath, targetPath)
 
 		err = guestManager.FileManager.MakeDirectory(ctx, guestManager.Auth, path.Dir(normalizedTargetPath), true)
 		if err != nil && !strings.HasSuffix(err.Error(), "already exists") {
