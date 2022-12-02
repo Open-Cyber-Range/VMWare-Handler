@@ -66,7 +66,7 @@ func createTemplate(t *testing.T, client template.TemplateServiceClient) string 
 	}
 	templateSource := &common.Source{
 		Name:    "dsl-image",
-		Version: "0.1.0",
+		Version: "*",
 	}
 
 	creationResult, err := client.Create(context.Background(), templateSource)
