@@ -47,7 +47,7 @@ func (server *featurerServer) Create(ctx context.Context, featureDeployment *fea
 
 	accounts, err := library.Get(ctx, server.Storage.RedisClient, featureDeployment.TemplateId, new([]library.Account))
 	if err != nil {
-		return nil, err
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to Get Feature entry: %v", err))
 	}
 	log.Infof("Got %v account(s) for current VM", len(*accounts))
 
@@ -76,7 +76,7 @@ func (server *featurerServer) Create(ctx context.Context, featureDeployment *fea
 
 	packagePath, err := library.DownloadPackage(featureDeployment.GetSource().GetName(), featureDeployment.GetSource().GetVersion())
 	if err != nil {
-		return nil, status.Error(codes.NotFound, fmt.Sprintf("Failed to download package (%v)", err))
+		return nil, status.Error(codes.NotFound, fmt.Sprintf("Failed to download package: %v", err))
 	}
 
 	packageTomlContent, err := library.GetPackageData(packagePath)
@@ -86,7 +86,7 @@ func (server *featurerServer) Create(ctx context.Context, featureDeployment *fea
 
 	packageFeature, err := getFeatureInfo(&packageTomlContent)
 	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Error getting package info, %v", err))
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Error getting package info: %v", err))
 	}
 
 	featureId := uuid.New().String()
@@ -102,7 +102,6 @@ func (server *featurerServer) Create(ctx context.Context, featureDeployment *fea
 	if err = guestManager.CopyAssetsToVM(ctx, packageFeature.Assets, packagePath, server.Storage, currentDeplyoment, featureId); err != nil {
 		return nil, err
 	}
-
 
 	var vmLog string
 	if packageFeature.Action != "" && featureDeployment.FeatureType == *feature.FeatureType_service.Enum() {
@@ -122,6 +121,33 @@ func (server *featurerServer) Create(ctx context.Context, featureDeployment *fea
 	return
 }
 
+func (server *featurerServer) deleteDeployedFeature(ctx context.Context, featureContainer *library.ExecutorContainer) error {
+
+	vmwareClient := library.NewVMWareClient(server.Client, server.Configuration.TemplateFolderPath)
+	virtualMachine, err := vmwareClient.GetVirtualMachineByUUID(ctx, featureContainer.VMID)
+	if err != nil {
+		return status.Error(codes.Internal, fmt.Sprintf("Error getting VM by UUID: %v", err))
+	}
+	operationsManager := guest.NewOperationsManager(virtualMachine.Client(), virtualMachine.Reference())
+
+	fileManager, err := operationsManager.FileManager(ctx)
+	if err != nil {
+		return status.Error(codes.Internal, fmt.Sprintf("Error creating FileManager: %v", err))
+	}
+
+	for i := 0; i < len(featureContainer.FilePaths); i++ {
+
+		targetFile := featureContainer.FilePaths[i]
+		if err = fileManager.DeleteFile(ctx, &featureContainer.Auth, string(targetFile)); err != nil {
+			return status.Error(codes.Internal, fmt.Sprintf("Error deleting file: %v", err))
+		}
+		log.Infof("Deleted %v", targetFile)
+
+		time.Sleep(200 * time.Millisecond)
+	}
+	return nil
+}
+
 func (server *featurerServer) Delete(ctx context.Context, identifier *common.Identifier) (*emptypb.Empty, error) {
 
 	featureContainer, err := library.Get(ctx, server.Storage.RedisClient, identifier.GetValue(), new(library.ExecutorContainer))
@@ -129,28 +155,10 @@ func (server *featurerServer) Delete(ctx context.Context, identifier *common.Ide
 		return nil, err
 	}
 
-	vmwareClient := library.NewVMWareClient(server.Client, server.Configuration.TemplateFolderPath)
-	virtualMachine, err := vmwareClient.GetVirtualMachineByUUID(ctx, featureContainer.VMID)
-	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Error getting VM by UUID, %v", err))
+	if err = server.deleteDeployedFeature(ctx, featureContainer); err != nil {
+		return nil, err
 	}
-	operationsManager := guest.NewOperationsManager(virtualMachine.Client(), virtualMachine.Reference())
 
-	fileManager, err := operationsManager.FileManager(ctx)
-	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Error creating FileManager, %v", err))
-	}
-	for i := 0; i < len(featureContainer.FilePaths); i++ {
-
-		targetFile := featureContainer.FilePaths[i]
-		err = fileManager.DeleteFile(ctx, &featureContainer.Auth, string(targetFile))
-		if err != nil {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("Error deleting file, %v", err))
-		}
-		log.Infof("Deleted %v", targetFile)
-
-		time.Sleep(200 * time.Millisecond)
-	}
 	return new(emptypb.Empty), nil
 }
 
