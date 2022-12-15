@@ -135,7 +135,7 @@ func TestFeatureConfigurationDeploymentAndDeletionOnLinux(t *testing.T) {
 
 	feature := &feature.Feature{
 		Name:             "test-feature",
-		VirtualMachineId: "42127656-e390-d6a8-0703-c3425dbc8052",
+		VirtualMachineId: "4212b4a9-dd30-45cc-3667-b72c8dd97558",
 		FeatureType:      feature.FeatureType_service,
 		Username:         "root",
 		Source: &common.Source{
