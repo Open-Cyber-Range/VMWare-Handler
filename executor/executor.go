@@ -42,30 +42,6 @@ func getFeatureInfo(packegeDataMap *map[string]interface{}) (feature Feature, er
 	return
 }
 
-func (server *featurerServer) getVMAuthentication(ctx context.Context, username string, templateId string) (*types.NamePasswordAuthentication, error) {
-	accountStorage := library.Storage[[]library.Account]{
-		RedisClient: server.Storage.RedisClient,
-		Container:   *new([]library.Account),
-	}
-	accounts, err := accountStorage.Get(ctx, templateId)
-	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to Get Feature entry: %v", err))
-	}
-	log.Infof("Got %v account(s) for current VM", len(accounts))
-
-	var password string
-	for _, account := range accounts {
-		if account.Name == username {
-			password = account.Password
-		}
-	}
-	auth := &types.NamePasswordAuthentication{
-		Username: username,
-		Password: password,
-	}
-	return auth, nil
-}
-
 func (server *featurerServer) getFeaturePackageInfo(featureDeployment *feature.Feature) (packagePath string, feature Feature, err error) {
 	packageName := featureDeployment.GetSource().GetName()
 	packageVersion := featureDeployment.GetSource().GetVersion()
@@ -90,11 +66,10 @@ func (server *featurerServer) getFeaturePackageInfo(featureDeployment *feature.F
 
 func (server *featurerServer) Create(ctx context.Context, featureDeployment *feature.Feature) (*feature.FeatureResponse, error) {
 
-	auth, err := server.getVMAuthentication(ctx, featureDeployment.GetUsername(), featureDeployment.GetTemplateId())
-	if err != nil {
-		return nil, err
+	auth := &types.NamePasswordAuthentication{
+		Username: featureDeployment.GetAccount().GetUsername(),
+		Password: featureDeployment.GetAccount().GetPassword(),
 	}
-
 	vmwareClient := library.NewVMWareClient(server.Client, server.Configuration.TemplateFolderPath)
 
 	guestManager, err := vmwareClient.CreateGuestManagers(ctx, featureDeployment.GetVirtualMachineId(), auth)

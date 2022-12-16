@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-redis/redis/v8"
 	"github.com/open-cyber-range/vmware-handler/grpc/common"
 	"github.com/open-cyber-range/vmware-handler/grpc/feature"
 	"github.com/open-cyber-range/vmware-handler/library"
@@ -69,30 +68,13 @@ func creategRPCClient(t *testing.T, serverPath string) feature.FeatureServiceCli
 	return feature.NewFeatureServiceClient(connection)
 }
 
-func createStorageClient[T any](accounts T) library.Storage[T] {
-
-	return library.Storage[T]{
-		RedisClient: redis.NewClient(&redis.Options{
-			Addr:     testConfiguration.RedisAddress,
-			Password: testConfiguration.RedisPassword,
-			DB:       0,
-		}),
-		Container: accounts,
-	}
-}
-
-func createFeatureDeploymentRequest(t *testing.T, deployment *feature.Feature, packageName string, accounts []library.Account) {
+func createFeatureDeploymentRequest(t *testing.T, deployment *feature.Feature, packageName string) {
 	configuration := startServer(3 * time.Second)
 	ctx := context.Background()
 	gRPCClient := creategRPCClient(t, configuration.ServerAddress)
-	accountStorage := createStorageClient(accounts)
 
 	if err := library.PublishTestPackage(packageName); err != nil {
 		t.Fatalf("Failed to upload test feature package: %v", err)
-	}
-
-	if err := accountStorage.Create(ctx, deployment.TemplateId); err != nil {
-		t.Fatalf("Test Create redis entry error: %v", err)
 	}
 
 	response, err := gRPCClient.Create(ctx, deployment)
@@ -118,58 +100,52 @@ func TestFeatureServiceDeploymentAndDeletionOnLinux(t *testing.T) {
 	t.Parallel()
 
 	packageName := "feature-service-package"
-	accounts := []library.Account{{Name: "root", Password: "password"}}
 
 	feature := &feature.Feature{
 		Name:             "test-feature",
 		VirtualMachineId: "42127656-e390-d6a8-0703-c3425dbc8052",
 		FeatureType:      feature.FeatureType_service,
-		Username:         "root",
 		Source: &common.Source{
 			Name:    "test-service",
 			Version: "*",
 		},
-		TemplateId: "test-template-id-1",
+		Account: &common.Account{Username: "root", Password: "password"},
 	}
-	createFeatureDeploymentRequest(t, feature, packageName, accounts)
+	createFeatureDeploymentRequest(t, feature, packageName)
 }
 
 func TestFeatureConfigurationDeploymentAndDeletionOnLinux(t *testing.T) {
 	t.Parallel()
 
 	packageName := "feature-config-package"
-	accounts := []library.Account{{Name: "root", Password: "password"}}
 
 	feature := &feature.Feature{
 		Name:             "test-feature",
 		VirtualMachineId: "4212b4a9-dd30-45cc-3667-b72c8dd97558",
 		FeatureType:      feature.FeatureType_configuration,
-		Username:         "root",
 		Source: &common.Source{
 			Name:    "test-configuration",
 			Version: "*",
 		},
-		TemplateId: "test-template-id-1",
+		Account: &common.Account{Username: "root", Password: "password"},
 	}
-	createFeatureDeploymentRequest(t, feature, packageName, accounts)
+	createFeatureDeploymentRequest(t, feature, packageName)
 }
 
 func TestFeatureServiceDeploymentAndDeletionOnWindows(t *testing.T) {
 	t.Parallel()
 
 	packageName := "feature-win-service-package"
-	accounts := []library.Account{{Name: "user", Password: "password"}}
 
 	feature := &feature.Feature{
 		Name:             "test-feature",
 		VirtualMachineId: "42122b12-3a17-c0fb-eb3c-7cd935bb595b",
-		Username:         "user",
 		FeatureType:      feature.FeatureType_service,
 		Source: &common.Source{
 			Name:    "test-windows-service",
 			Version: "*",
 		},
-		TemplateId: "test-template-id-2",
+		Account: &common.Account{Username: "user", Password: "password"},
 	}
-	createFeatureDeploymentRequest(t, feature, packageName, accounts)
+	createFeatureDeploymentRequest(t, feature, packageName)
 }
