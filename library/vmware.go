@@ -491,30 +491,39 @@ func (guestManager *GuestManager) ExecutePackageAction(ctx context.Context, acti
 	return
 }
 
+func (guestManager *GuestManager) getAssetSizeAndAttributes(ctx context.Context, sourcePath string, asset []string) (int64, types.BaseGuestFileAttributes, error) {
+
+	guestOsFamily, err := guestManager.FindGuestOSFamily(ctx)
+	if err != nil {
+		return 0, nil, err
+	}
+
+	var filePermissions string
+	if len(asset) < 3 {
+		filePermissions = ""
+	} else {
+		filePermissions = asset[2]
+	}
+
+	fileInfo, err := os.Stat(sourcePath)
+	if err != nil {
+		return 0, nil, err
+	}
+
+	fileAttributes, err := createFileAttributesByOsFamily(guestOsFamily, filePermissions)
+	if err != nil {
+		return 0, nil, err
+	}
+	return fileInfo.Size(), fileAttributes, nil
+}
+
 func (guestManager *GuestManager) CopyAssetsToVM(ctx context.Context, assets [][]string, packagePath string, storage Storage[ExecutorContainer], executorId string) (err error) {
 	for _, asset := range assets {
-
-		guestOsFamily, err := guestManager.FindGuestOSFamily(ctx)
-		if err != nil {
-			return err
-		}
 
 		sourcePath := path.Join(packagePath, filepath.FromSlash(asset[0]))
 		targetPath := asset[1]
 
-		var filePermissions string
-		if len(asset) < 3 {
-			filePermissions = ""
-		} else {
-			filePermissions = asset[2]
-		}
-
-		fileInfo, err := os.Stat(sourcePath)
-		if err != nil {
-			return status.Error(codes.Internal, fmt.Sprintf("Error getting file information, %v", err))
-		}
-
-		fileAttributes, err := createFileAttributesByOsFamily(guestOsFamily, filePermissions)
+		fileSize, fileAttributes, err := guestManager.getAssetSizeAndAttributes(ctx, sourcePath, asset)
 		if err != nil {
 			return err
 		}
@@ -526,7 +535,7 @@ func (guestManager *GuestManager) CopyAssetsToVM(ctx context.Context, assets [][
 			return status.Error(codes.Internal, fmt.Sprintf("Error creating VM directories, %v", err))
 		}
 
-		transferUrl, err := guestManager.FileManager.InitiateFileTransferToGuest(ctx, guestManager.Auth, normalizedTargetPath, fileAttributes, fileInfo.Size(), true)
+		transferUrl, err := guestManager.FileManager.InitiateFileTransferToGuest(ctx, guestManager.Auth, normalizedTargetPath, fileAttributes, fileSize, true)
 		if err != nil {
 			return status.Error(codes.Internal, fmt.Sprintf("Error creating transfer URL, %v", err))
 		}

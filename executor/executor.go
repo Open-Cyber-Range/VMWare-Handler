@@ -42,13 +42,12 @@ func getFeatureInfo(packegeDataMap *map[string]interface{}) (feature Feature, er
 	return
 }
 
-func (server *featurerServer) Create(ctx context.Context, featureDeployment *feature.Feature) (featureResponse *feature.FeatureResponse, err error) {
-
+func (server *featurerServer) getVMAuthentication(ctx context.Context, username string, templateId string) (*types.NamePasswordAuthentication, error) {
 	accountStorage := library.Storage[[]library.Account]{
 		RedisClient: server.Storage.RedisClient,
 		Container:   *new([]library.Account),
 	}
-	accounts, err := accountStorage.Get(ctx, featureDeployment.TemplateId)
+	accounts, err := accountStorage.Get(ctx, templateId)
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to Get Feature entry: %v", err))
 	}
@@ -56,30 +55,24 @@ func (server *featurerServer) Create(ctx context.Context, featureDeployment *fea
 
 	var password string
 	for _, account := range accounts {
-		if account.Name == featureDeployment.Username {
+		if account.Name == username {
 			password = account.Password
 		}
 	}
 	auth := &types.NamePasswordAuthentication{
-		Username: featureDeployment.Username,
+		Username: username,
 		Password: password,
 	}
+	return auth, nil
+}
 
-	vmwareClient := library.NewVMWareClient(server.Client, server.Configuration.TemplateFolderPath)
+func (server *featurerServer) getFeaturePackageInfo(featureDeployment *feature.Feature) (packagePath string, feature Feature, err error) {
+	packageName := featureDeployment.GetSource().GetName()
+	packageVersion := featureDeployment.GetSource().GetVersion()
 
-	guestManager, err := vmwareClient.CreateGuestManagers(ctx, featureDeployment.VirtualMachineId, auth)
+	packagePath, err = library.DownloadPackage(packageName, packageVersion)
 	if err != nil {
-		return nil, err
-	}
-
-	_, err = library.CheckVMStatus(ctx, guestManager.VirtualMachine)
-	if err != nil {
-		return nil, err
-	}
-
-	packagePath, err := library.DownloadPackage(featureDeployment.GetSource().GetName(), featureDeployment.GetSource().GetVersion())
-	if err != nil {
-		return nil, status.Error(codes.NotFound, fmt.Sprintf("Failed to download package: %v", err))
+		return "", Feature{}, status.Error(codes.NotFound, fmt.Sprintf("Failed to download package: %v", err))
 	}
 
 	packageTomlContent, err := library.GetPackageData(packagePath)
@@ -87,15 +80,41 @@ func (server *featurerServer) Create(ctx context.Context, featureDeployment *fea
 		log.Errorf("Failed to get package data, %v", err)
 	}
 
-	packageFeature, err := getFeatureInfo(&packageTomlContent)
+	feature, err = getFeatureInfo(&packageTomlContent)
 	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Error getting package info: %v", err))
+		return "", Feature{}, status.Error(codes.Internal, fmt.Sprintf("Error getting package info: %v", err))
+	}
+
+	return
+}
+
+func (server *featurerServer) Create(ctx context.Context, featureDeployment *feature.Feature) (*feature.FeatureResponse, error) {
+
+	auth, err := server.getVMAuthentication(ctx, featureDeployment.GetUsername(), featureDeployment.GetTemplateId())
+	if err != nil {
+		return nil, err
+	}
+
+	vmwareClient := library.NewVMWareClient(server.Client, server.Configuration.TemplateFolderPath)
+
+	guestManager, err := vmwareClient.CreateGuestManagers(ctx, featureDeployment.GetVirtualMachineId(), auth)
+	if err != nil {
+		return nil, err
+	}
+
+	if _, err = library.CheckVMStatus(ctx, guestManager.VirtualMachine); err != nil {
+		return nil, err
+	}
+
+	packagePath, packageFeature, err := server.getFeaturePackageInfo(featureDeployment)
+	if err != nil {
+		return nil, err
 	}
 
 	featureId := uuid.New().String()
 
 	currentDeplyoment := library.ExecutorContainer{
-		VMID:      featureDeployment.VirtualMachineId,
+		VMID:      featureDeployment.GetVirtualMachineId(),
 		Auth:      *guestManager.Auth,
 		FilePaths: []string{},
 	}
@@ -108,21 +127,19 @@ func (server *featurerServer) Create(ctx context.Context, featureDeployment *fea
 	}
 
 	var vmLog string
-	if packageFeature.Action != "" && featureDeployment.FeatureType == *feature.FeatureType_service.Enum() {
+	if packageFeature.Action != "" && featureDeployment.GetFeatureType() == *feature.FeatureType_service.Enum() {
 		vmLog, err = guestManager.ExecutePackageAction(ctx, packageFeature.Action)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	featureResponse = &feature.FeatureResponse{
+	return &feature.FeatureResponse{
 		Identifier: &common.Identifier{
 			Value: fmt.Sprintf("%v", featureId),
 		},
 		VmLog: vmLog,
-	}
-
-	return
+	}, nil
 }
 
 func (server *featurerServer) deleteDeployedFeature(ctx context.Context, featureContainer *library.ExecutorContainer) error {
