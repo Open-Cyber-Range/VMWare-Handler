@@ -69,31 +69,33 @@ func creategRPCClient(t *testing.T, serverPath string) feature.FeatureServiceCli
 	return feature.NewFeatureServiceClient(connection)
 }
 
-func createRedisClient() library.Storage {
-	redisClient := redis.NewClient(&redis.Options{
-		Addr:     testConfiguration.RedisAddress,
-		Password: testConfiguration.RedisPassword,
-		DB:       0,
-	})
+func createStorageClient[T any](accounts T) library.Storage[T] {
 
-	return library.NewStorage(redisClient)
+	return library.Storage[T]{
+		RedisClient: redis.NewClient(&redis.Options{
+			Addr:     testConfiguration.RedisAddress,
+			Password: testConfiguration.RedisPassword,
+			DB:       0,
+		}),
+		Container: accounts,
+	}
 }
 
-func createFeatureDeploymentRequest(t *testing.T, feature *feature.Feature, packageName string, accounts []library.Account) {
+func createFeatureDeploymentRequest(t *testing.T, deployment *feature.Feature, packageName string, accounts []library.Account) {
 	configuration := startServer(3 * time.Second)
 	ctx := context.Background()
 	gRPCClient := creategRPCClient(t, configuration.ServerAddress)
-	storage := createRedisClient()
+	accountStorage := createStorageClient(accounts)
 
 	if err := library.PublishTestPackage(packageName); err != nil {
 		t.Fatalf("Failed to upload test feature package: %v", err)
 	}
 
-	if err := library.Create(ctx, storage.RedisClient, feature.TemplateId, accounts); err != nil {
+	if err := accountStorage.Create(ctx, deployment.TemplateId); err != nil {
 		t.Fatalf("Test Create redis entry error: %v", err)
 	}
 
-	response, err := gRPCClient.Create(ctx, feature)
+	response, err := gRPCClient.Create(ctx, deployment)
 	if err != nil {
 		t.Fatalf("Test Create request error: %v", err)
 	}
@@ -104,10 +106,15 @@ func createFeatureDeploymentRequest(t *testing.T, feature *feature.Feature, pack
 		t.Fatalf("Test Delete request error: %v", err)
 	}
 	log.Infof("Feature delete finished")
+
+	if deployment.FeatureType == feature.FeatureType_service {
+		if response.VmLog == "" {
+			t.Fatalf("Test Feature Service produced no logs and was likely not executed")
+		}
+	}
 }
 
 func TestFeatureServiceDeploymentAndDeletionOnLinux(t *testing.T) {
-	t.Skip("Skipped until release of Deputy that can parse-toml the latest Feature fields")
 	t.Parallel()
 
 	packageName := "feature-service-package"
@@ -148,7 +155,6 @@ func TestFeatureConfigurationDeploymentAndDeletionOnLinux(t *testing.T) {
 }
 
 func TestFeatureServiceDeploymentAndDeletionOnWindows(t *testing.T) {
-	t.Skip("Skipped until release of Deputy that can parse-toml the latest Feature fields")
 	t.Parallel()
 
 	packageName := "feature-win-service-package"

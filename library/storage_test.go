@@ -23,38 +23,42 @@ var testConfiguration = Configuration{
 	RedisPassword:      os.Getenv("TEST_REDIS_PASSWORD"),
 }
 
-func createRedisClient() Storage {
+func createRedisClient() *redis.Client {
 	redisClient := redis.NewClient(&redis.Options{
 		Addr:     testConfiguration.RedisAddress,
 		Password: testConfiguration.RedisPassword,
 		DB:       0,
 	})
 
-	return NewStorage(redisClient)
+	return redisClient
 }
 
 func TestRedisCRUD(t *testing.T) {
 
 	ctx := context.Background()
-	storage := createRedisClient()
+	redisClient := createRedisClient()
 
 	featureID := "123456789"
-	featureHolder := ExecutorContainer{
-		VMID: "vmid",
-		Auth: types.NamePasswordAuthentication{
-			Username: "username",
-			Password: "password",
+
+	storage := Storage[ExecutorContainer]{
+		RedisClient: redisClient,
+		Container: ExecutorContainer{
+			VMID: "vmid",
+			Auth: types.NamePasswordAuthentication{
+				Username: "username",
+				Password: "password",
+			},
+			FilePaths: []string{"im a path", "im a path two"},
 		},
-		FilePaths: []string{"im a path", "im a string two"},
 	}
 
-	err := Create(ctx, storage.RedisClient, featureID, featureHolder)
+	err := storage.Create(ctx, featureID)
 	if err != nil {
 		panic(err)
 	}
 	log.Infof("Redis Create success")
 
-	featureContainer, err := Get(ctx, storage.RedisClient, featureID, new(ExecutorContainer))
+	featureContainer, err := storage.Get(ctx, featureID)
 	if err != nil {
 		panic(err)
 	}
@@ -63,13 +67,13 @@ func TestRedisCRUD(t *testing.T) {
 	updatedPath := "im updated!"
 	featureContainer.FilePaths = []string{updatedPath}
 
-	err = Update(ctx, storage.RedisClient, featureID, featureContainer)
+	storage.Container = featureContainer
+	err = storage.Update(ctx, featureID)
 	if err != nil {
 		panic(err)
 	}
 
-	featureContainer, err = Get(ctx, storage.RedisClient, featureID, new(ExecutorContainer))
-
+	featureContainer, err = storage.Get(ctx, featureID)
 	if err != nil {
 		panic(err)
 	} else if featureContainer.FilePaths[0] != updatedPath {
@@ -77,12 +81,12 @@ func TestRedisCRUD(t *testing.T) {
 	}
 	log.Infof("Redis Update success")
 
-	err = Delete(ctx, storage.RedisClient, featureID)
+	err = storage.Delete(ctx, featureID)
 	if err != nil {
 		panic(err)
 	}
 
-	_, err = Get(ctx, storage.RedisClient, featureID, new(ExecutorContainer))
+	_, err = storage.Get(ctx, featureID)
 	if err == nil {
 		panic("Redis entry was not deleted")
 	}

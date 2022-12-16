@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-redis/redis/v8"
 	"github.com/open-cyber-range/vmware-handler/grpc/capability"
 	"github.com/open-cyber-range/vmware-handler/grpc/common"
 	"github.com/open-cyber-range/vmware-handler/grpc/template"
@@ -87,7 +86,7 @@ type templaterServer struct {
 	Client                *govmomi.Client
 	Configuration         library.Configuration
 	currentDeploymentList DeploymentList
-	Storage               *library.Storage
+	Storage               *library.Storage[[]library.Account]
 }
 
 type TemplateDeployment struct {
@@ -96,21 +95,16 @@ type TemplateDeployment struct {
 	Configuration library.Configuration
 	templateName  string
 	metaInfo      string
-	Storage       *library.Storage
-}
-
-type Account struct {
-	Name     string `json:"name,omitempty"`
-	Password string `json:"password,omitempty"`
+	Storage       *library.Storage[[]library.Account]
 }
 
 type VirtualMachine struct {
-	OperatingSystem string    `json:"operating_system,omitempty"`
-	Architecture    string    `json:"architecture,omitempty"`
-	Type            string    `json:"type,omitempty"`
-	FilePath        string    `json:"file_path,omitempty"`
-	Links           []string  `json:"links,omitempty"`
-	Accounts        []Account `json:"accounts,omitempty"`
+	OperatingSystem string            `json:"operating_system,omitempty"`
+	Architecture    string            `json:"architecture,omitempty"`
+	Type            string            `json:"type,omitempty"`
+	FilePath        string            `json:"file_path,omitempty"`
+	Links           []string          `json:"links,omitempty"`
+	Accounts        []library.Account `json:"accounts,omitempty"`
 }
 
 func getVirtualMachineInfo(packegeDataMap *map[string]interface{}) (virtualMachine VirtualMachine, err error) {
@@ -121,8 +115,8 @@ func getVirtualMachineInfo(packegeDataMap *map[string]interface{}) (virtualMachi
 	return
 }
 
-func (templateDeployment *TemplateDeployment) saveTemplateAccounts(ctx context.Context, templateId string, virtualMachine VirtualMachine) (err error) {
-	err = library.Create(ctx, templateDeployment.Storage.RedisClient, templateId, virtualMachine.Accounts)
+func (templateDeployment *TemplateDeployment) saveTemplateAccounts(ctx context.Context, templateId string) (err error) {
+	err = templateDeployment.Storage.Create(ctx, templateId)
 
 	return
 }
@@ -152,7 +146,9 @@ func (templateDeployment *TemplateDeployment) createTemplate(ctx context.Context
 		return status.Error(codes.Internal, fmt.Sprintf("Failed to get deployed template (%v)", err))
 	}
 
-	err = templateDeployment.saveTemplateAccounts(ctx, deployedTemplate.UUID(ctx), virtualMachine)
+	templateDeployment.Storage.Container = virtualMachine.Accounts
+
+	err = templateDeployment.saveTemplateAccounts(ctx, deployedTemplate.UUID(ctx))
 
 	return
 }
@@ -273,17 +269,14 @@ func RealMain(configuration library.Configuration) {
 	if addressError != nil {
 		log.Fatalf("Failed to listen: %v", addressError)
 	}
-	redisClient := library.NewStorage(redis.NewClient(&redis.Options{
-		Addr:     configuration.RedisAddress,
-		Password: configuration.RedisPassword,
-		DB:       0,
-	}))
+
+	storage := library.NewStorage[[]library.Account](configuration.RedisAddress, configuration.RedisPassword)
 
 	server := grpc.NewServer()
 	template.RegisterTemplateServiceServer(server, &templaterServer{
 		Client:        client,
 		Configuration: configuration,
-		Storage:       &redisClient,
+		Storage:       &storage,
 	})
 	capabilityServer := library.NewCapabilityServer([]capability.Capabilities_DeployerTypes{
 		*capability.Capabilities_Template.Enum().Enum(),

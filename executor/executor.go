@@ -7,7 +7,6 @@ import (
 	"net"
 	"time"
 
-	"github.com/go-redis/redis/v8"
 	"github.com/google/uuid"
 	"github.com/open-cyber-range/vmware-handler/grpc/capability"
 	"github.com/open-cyber-range/vmware-handler/grpc/common"
@@ -27,7 +26,7 @@ type featurerServer struct {
 	feature.UnimplementedFeatureServiceServer
 	Client        *govmomi.Client
 	Configuration *library.Configuration
-	Storage       *library.Storage
+	Storage       *library.Storage[library.ExecutorContainer]
 }
 
 type Feature struct {
@@ -45,14 +44,18 @@ func getFeatureInfo(packegeDataMap *map[string]interface{}) (feature Feature, er
 
 func (server *featurerServer) Create(ctx context.Context, featureDeployment *feature.Feature) (featureResponse *feature.FeatureResponse, err error) {
 
-	accounts, err := library.Get(ctx, server.Storage.RedisClient, featureDeployment.TemplateId, new([]library.Account))
+	accountStorage := library.Storage[[]library.Account]{
+		RedisClient: server.Storage.RedisClient,
+		Container:   *new([]library.Account),
+	}
+	accounts, err := accountStorage.Get(ctx, featureDeployment.TemplateId)
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to Get Feature entry: %v", err))
 	}
-	log.Infof("Got %v account(s) for current VM", len(*accounts))
+	log.Infof("Got %v account(s) for current VM", len(accounts))
 
 	var password string
-	for _, account := range *accounts {
+	for _, account := range accounts {
 		if account.Name == featureDeployment.Username {
 			password = account.Password
 		}
@@ -97,9 +100,10 @@ func (server *featurerServer) Create(ctx context.Context, featureDeployment *fea
 		FilePaths: []string{},
 	}
 
-	library.Create(ctx, server.Storage.RedisClient, featureId, currentDeplyoment)
+	server.Storage.Container = currentDeplyoment
+	server.Storage.Create(ctx, featureId)
 
-	if err = guestManager.CopyAssetsToVM(ctx, packageFeature.Assets, packagePath, server.Storage, currentDeplyoment, featureId); err != nil {
+	if err = guestManager.CopyAssetsToVM(ctx, packageFeature.Assets, packagePath, *server.Storage, featureId); err != nil {
 		return nil, err
 	}
 
@@ -150,12 +154,12 @@ func (server *featurerServer) deleteDeployedFeature(ctx context.Context, feature
 
 func (server *featurerServer) Delete(ctx context.Context, identifier *common.Identifier) (*emptypb.Empty, error) {
 
-	featureContainer, err := library.Get(ctx, server.Storage.RedisClient, identifier.GetValue(), new(library.ExecutorContainer))
+	featureContainer, err := server.Storage.Get(ctx, identifier.GetValue())
 	if err != nil {
 		return nil, err
 	}
 
-	if err = server.deleteDeployedFeature(ctx, featureContainer); err != nil {
+	if err = server.deleteDeployedFeature(ctx, &featureContainer); err != nil {
 		return nil, err
 	}
 
@@ -174,17 +178,14 @@ func RealMain(configuration *library.Configuration) {
 		log.Fatalf("Failed to listen: %v", addressError)
 	}
 
-	redisClient := library.NewStorage(redis.NewClient(&redis.Options{
-		Addr:     configuration.RedisAddress,
-		Password: configuration.RedisPassword,
-		DB:       0,
-	}))
+	storage := library.NewStorage[library.ExecutorContainer](configuration.RedisAddress, configuration.RedisPassword)
+
 	server := grpc.NewServer()
 
 	feature.RegisterFeatureServiceServer(server, &featurerServer{
 		Client:        govmomiClient,
 		Configuration: configuration,
-		Storage:       &redisClient,
+		Storage:       &storage,
 	})
 
 	capabilityServer := library.NewCapabilityServer([]capability.Capabilities_DeployerTypes{

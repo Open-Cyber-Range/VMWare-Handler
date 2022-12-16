@@ -18,16 +18,24 @@ type ExecutorContainer struct {
 }
 
 type Account struct {
-	Name     string
-	Password string
+	Name     string `json:"name,omitempty"`
+	Password string `json:"password,omitempty"`
 }
 
-type Storage struct {
+type Storage[T any] struct {
 	RedisClient *redis.Client
+	Container   T
 }
 
-func NewStorage(redisClient *redis.Client) Storage {
-	return Storage{RedisClient: redisClient}
+func NewStorage[T any](redisAddress string, redisPassword string) Storage[T] {
+	return Storage[T]{
+		RedisClient: redis.NewClient(&redis.Options{
+			Addr:     redisAddress,
+			Password: redisPassword,
+			DB:       0,
+		}),
+		Container: *new(T),
+	}
 }
 
 func hashField() string {
@@ -50,14 +58,14 @@ func UnmarshalBinary[T any](data []byte, output T) error {
 	return nil
 }
 
-func Create[T any](ctx context.Context, redisClient *redis.Client, itemKey string, item T) error {
+func (storage *Storage[T]) Create(ctx context.Context, itemKey string) error {
 
-	marshaledFeature, err := MarshalBinary(item)
+	marshaledFeature, err := MarshalBinary(storage.Container)
 	if err != nil {
 		return err
 	}
 
-	_, err = redisClient.HSetNX(ctx, itemKey, hashField(), marshaledFeature).Result()
+	_, err = storage.RedisClient.HSetNX(ctx, itemKey, hashField(), marshaledFeature).Result()
 	if err != nil {
 		return status.Error(codes.Internal, fmt.Sprintf("Error creating Redis entry, %v", err))
 
@@ -65,37 +73,37 @@ func Create[T any](ctx context.Context, redisClient *redis.Client, itemKey strin
 	return nil
 }
 
-func Get[T any](ctx context.Context, redisClient *redis.Client, itemKey string, resultType *T) (*T, error) {
+func (storage *Storage[T]) Get(ctx context.Context, itemKey string) (T, error) {
 
-	result, err := redisClient.HGet(ctx, itemKey, hashField()).Result()
+	result, err := storage.RedisClient.HGet(ctx, itemKey, hashField()).Result()
 	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Error getting Redis entry, %v", err))
+		return *new(T), status.Error(codes.Internal, fmt.Sprintf("Error getting Redis entry, %v", err))
 	} else if result == "" {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Redis entry not found, %v", err))
+		return *new(T), status.Error(codes.Internal, fmt.Sprintf("Redis entry not found, %v", err))
 	}
 
-	if err = UnmarshalBinary([]byte(result), resultType); err != nil {
-		return nil, err
+	if err = UnmarshalBinary([]byte(result), &storage.Container); err != nil {
+		return *new(T), err
 	}
-	return resultType, nil
+	return storage.Container, nil
 }
 
-func Update[T any](ctx context.Context, redisClient *redis.Client, featureID string, newEntry *T) error {
+func (storage *Storage[T]) Update(ctx context.Context, featureID string) error {
 
-	marshalledEntry, err := MarshalBinary(newEntry)
+	marshalledEntry, err := MarshalBinary(storage.Container)
 	if err != nil {
 		return err
 	}
-	_, err = redisClient.HSet(ctx, featureID, hashField(), marshalledEntry).Result()
+	_, err = storage.RedisClient.HSet(ctx, featureID, hashField(), marshalledEntry).Result()
 	if err != nil {
 		return status.Error(codes.Internal, fmt.Sprintf("Error updating Redis entry, %v", err))
 	}
 	return nil
 }
 
-func Delete(ctx context.Context, redisClient *redis.Client, featureID string) error {
+func (storage *Storage[_]) Delete(ctx context.Context, featureID string) error {
 
-	_, err := redisClient.Del(ctx, featureID).Result()
+	_, err := storage.RedisClient.Del(ctx, featureID).Result()
 	if err != nil {
 		return status.Error(codes.Internal, fmt.Sprintf("Error deleting Redis entry, %v", err))
 	}

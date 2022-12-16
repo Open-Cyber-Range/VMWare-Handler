@@ -491,7 +491,7 @@ func (guestManager *GuestManager) ExecutePackageAction(ctx context.Context, acti
 	return
 }
 
-func (guestManager *GuestManager) CopyAssetsToVM(ctx context.Context, assets [][]string, packagePath string, storage *Storage, currentDeplyoment ExecutorContainer, executorId string) (err error) {
+func (guestManager *GuestManager) CopyAssetsToVM(ctx context.Context, assets [][]string, packagePath string, storage Storage[ExecutorContainer], executorId string) (err error) {
 	for _, asset := range assets {
 
 		guestOsFamily, err := guestManager.FindGuestOSFamily(ctx)
@@ -535,8 +535,8 @@ func (guestManager *GuestManager) CopyAssetsToVM(ctx context.Context, assets [][
 			return err
 		}
 
-		currentDeplyoment.FilePaths = append(currentDeplyoment.FilePaths, normalizedTargetPath)
-		if err = Update(ctx, storage.RedisClient, executorId, &currentDeplyoment); err != nil {
+		storage.Container.FilePaths = append(storage.Container.FilePaths, normalizedTargetPath)
+		if err = storage.Update(ctx, executorId); err != nil {
 			return err
 		}
 	}
