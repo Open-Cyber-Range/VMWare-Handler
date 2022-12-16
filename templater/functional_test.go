@@ -73,7 +73,7 @@ func createTemplate(t *testing.T, client template.TemplateServiceClient) string 
 	if err != nil {
 		t.Fatalf("Failed to send request: %v", err)
 	}
-	id := creationResult.GetValue()
+	id := creationResult.GetIdentifier().GetValue()
 	if id == "" {
 		t.Logf("Failed to retrieve UUID")
 	}

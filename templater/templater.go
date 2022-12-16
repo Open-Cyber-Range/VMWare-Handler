@@ -86,7 +86,6 @@ type templaterServer struct {
 	Client                *govmomi.Client
 	Configuration         library.Configuration
 	currentDeploymentList DeploymentList
-	Storage               *library.Storage[[]library.Account]
 }
 
 type TemplateDeployment struct {
@@ -95,7 +94,6 @@ type TemplateDeployment struct {
 	Configuration library.Configuration
 	templateName  string
 	metaInfo      string
-	Storage       *library.Storage[[]library.Account]
 }
 
 type VirtualMachine struct {
@@ -111,12 +109,6 @@ func getVirtualMachineInfo(packegeDataMap *map[string]interface{}) (virtualMachi
 	virtualMachineInfo := (*packegeDataMap)["virtual-machine"]
 	infoJson, _ := json.Marshal(virtualMachineInfo)
 	json.Unmarshal(infoJson, &virtualMachine)
-
-	return
-}
-
-func (templateDeployment *TemplateDeployment) saveTemplateAccounts(ctx context.Context, templateId string) (err error) {
-	err = templateDeployment.Storage.Create(ctx, templateId)
 
 	return
 }
@@ -141,14 +133,10 @@ func (templateDeployment *TemplateDeployment) createTemplate(ctx context.Context
 	if err = templateDeployment.handleTemplateBasedOnType(virtualMachine, packagePath); err != nil {
 		return
 	}
-	deployedTemplate, err := templateDeployment.Client.GetTemplateByName(templateDeployment.templateName)
+	_, err = templateDeployment.Client.GetTemplateByName(templateDeployment.templateName)
 	if err != nil {
 		return status.Error(codes.Internal, fmt.Sprintf("Failed to get deployed template (%v)", err))
 	}
-
-	templateDeployment.Storage.Container = virtualMachine.Accounts
-
-	err = templateDeployment.saveTemplateAccounts(ctx, deployedTemplate.UUID(ctx))
 
 	return
 }
@@ -169,7 +157,29 @@ func tryRemoveNetworks(ctx context.Context, deployedTemplate *object.VirtualMach
 	}
 }
 
-func (server *templaterServer) Create(ctx context.Context, source *common.Source) (*common.Identifier, error) {
+func getVMAccounts(packagePath string) ([]*common.Account, error) {
+	packageData, err := library.GetPackageData(packagePath)
+	if err != nil {
+		return nil, err
+	}
+	virtualMachine, err := getVirtualMachineInfo(&packageData)
+	if err != nil {
+		return nil, err
+	}
+
+	var grpcAccounts []*common.Account
+
+	for _, account := range virtualMachine.Accounts {
+		grpcAccounts = append(grpcAccounts, &common.Account{
+			Username: account.Name,
+			Password: account.Password,
+		})
+	}
+
+	return grpcAccounts, nil
+}
+
+func (server *templaterServer) Create(ctx context.Context, source *common.Source) (*template.TemplateResponse, error) {
 	log.Infof("Received template package: %v, version: %v", source.Name, source.Version)
 
 	vmwareClient := library.NewVMWareClient(server.Client, server.Configuration.TemplateFolderPath)
@@ -186,6 +196,9 @@ func (server *templaterServer) Create(ctx context.Context, source *common.Source
 
 	templateName := checksum
 	templateExists, templateExistsError := vmwareClient.DoesTemplateExist(templateName)
+
+	var accounts []*common.Account
+
 	if templateExistsError != nil {
 		log.Errorf("Failed to check if template exists (%v)", templateExistsError)
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to get information about template from VSphere(%v)", templateExistsError))
@@ -204,7 +217,6 @@ func (server *templaterServer) Create(ctx context.Context, source *common.Source
 			Configuration: server.Configuration,
 			templateName:  templateName,
 			metaInfo:      fmt.Sprintf("%v-%v", source.Name, normalizedVersion),
-			Storage:       server.Storage,
 		}
 		packagePath, downloadError := library.DownloadPackage(templateDeployment.source.Name, templateDeployment.source.Version)
 		if downloadError != nil {
@@ -219,16 +231,26 @@ func (server *templaterServer) Create(ctx context.Context, source *common.Source
 			return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to deploy template (%v)", deployError))
 		}
 		log.Infof("Deployed template: %v, version: %v", source.Name, source.Version)
+
+		var err error
+		accounts, err = getVMAccounts(packagePath)
+		if err != nil {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to get VM accounts(%v)", err))
+		}
 	}
 
 	deployedTemplate, deloyedTemplateError := vmwareClient.GetTemplateByName(templateName)
 	if deloyedTemplateError != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to get deployed template (%v)", deloyedTemplateError))
 	}
+
 	tryRemoveNetworks(ctx, deployedTemplate)
 
-	return &common.Identifier{
-		Value: deployedTemplate.UUID(ctx),
+	return &template.TemplateResponse{
+		Identifier: &common.Identifier{
+			Value: deployedTemplate.UUID(ctx),
+		},
+		Accounts: accounts,
 	}, nil
 }
 
@@ -270,13 +292,10 @@ func RealMain(configuration library.Configuration) {
 		log.Fatalf("Failed to listen: %v", addressError)
 	}
 
-	storage := library.NewStorage[[]library.Account](configuration.RedisAddress, configuration.RedisPassword)
-
 	server := grpc.NewServer()
 	template.RegisterTemplateServiceServer(server, &templaterServer{
 		Client:        client,
 		Configuration: configuration,
-		Storage:       &storage,
 	})
 	capabilityServer := library.NewCapabilityServer([]capability.Capabilities_DeployerTypes{
 		*capability.Capabilities_Template.Enum().Enum(),
