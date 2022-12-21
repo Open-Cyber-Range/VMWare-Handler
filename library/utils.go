@@ -206,7 +206,7 @@ func (vmwareClient VMWareClient) AwaitVMToolsToComeOnline(ctx context.Context, v
 		}
 
 		log.Infof("Waiting for VMTools on %v", vmId)
-		time.Sleep(time.Second * time.Duration(vmToolsTimeoutSec))
+		time.Sleep(time.Second * time.Duration(vmToolsSleepSec))
 	}
 
 	return status.Error(codes.Internal, fmt.Sprintf("Timeout (%v sec) waiting for VMTools to come online on %v", vmToolsTimeoutSec, vmId))
