@@ -239,9 +239,9 @@ func (server *templaterServer) Create(ctx context.Context, source *common.Source
 		}
 	}
 
-	deployedTemplate, deloyedTemplateError := vmwareClient.GetTemplateByName(templateName)
-	if deloyedTemplateError != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to get deployed template (%v)", deloyedTemplateError))
+	deployedTemplate, deployedTemplateError := vmwareClient.GetTemplateByName(templateName)
+	if deployedTemplateError != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to get deployed template (%v)", deployedTemplateError))
 	}
 
 	tryRemoveNetworks(ctx, deployedTemplate)

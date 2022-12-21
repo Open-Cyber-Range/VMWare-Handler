@@ -88,13 +88,13 @@ func (server *featurerServer) Create(ctx context.Context, featureDeployment *fea
 
 	featureId := uuid.New().String()
 
-	currentDeplyoment := library.ExecutorContainer{
+	currentDeployment := library.ExecutorContainer{
 		VMID:      featureDeployment.GetVirtualMachineId(),
 		Auth:      *guestManager.Auth,
 		FilePaths: []string{},
 	}
 
-	server.Storage.Container = currentDeplyoment
+	server.Storage.Container = currentDeployment
 	server.Storage.Create(ctx, featureId)
 
 	if err = guestManager.CopyAssetsToVM(ctx, packageFeature.Assets, packagePath, *server.Storage, featureId); err != nil {

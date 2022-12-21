@@ -297,11 +297,11 @@ func (client *VMWareClient) CheckVMLinks(ctx context.Context, vmNetworks []types
 
 func normalizePackageTargetPath(sourcePath string, destinationPath string) string {
 
-	const unixPathSeperator = "/"
-	const windowsPathSeperator = "\\"
+	const unixPathSeparator = "/"
+	const windowsPathSeparator = "\\"
 
-	if strings.HasSuffix(destinationPath, unixPathSeperator) ||
-		strings.HasSuffix(destinationPath, windowsPathSeperator) {
+	if strings.HasSuffix(destinationPath, unixPathSeparator) ||
+		strings.HasSuffix(destinationPath, windowsPathSeparator) {
 		destinationPath = strings.Join([]string{destinationPath, filepath.Base(sourcePath)}, "")
 	}
 
