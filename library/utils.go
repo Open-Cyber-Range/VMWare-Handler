@@ -24,7 +24,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-const vmToolsTimeoutSec int = 60
+const vmToolsTimeoutSec int = 120
 const vmToolsSleepSec int = 5
 const vmToolsCheckTries int = vmToolsTimeoutSec / vmToolsSleepSec
 
@@ -187,25 +187,26 @@ func CheckVMStatus(ctx context.Context, virtualMachine *object.VirtualMachine) (
 	return false, status.Error(codes.Internal, fmt.Sprintf("Error: VM Power state: %v, VM Tools status: %v", vmPowerState, vmToolsStatus))
 }
 
-func (vmwareClient VMWareClient) AwaitVMToolsToComeOnline(ctx context.Context, vmId string) error {
+func AwaitVMToolsToComeOnline(ctx context.Context, virtualMachine *object.VirtualMachine) error {
 	var tries = int(vmToolsCheckTries)
+	vmId := virtualMachine.UUID(ctx)
 
 	for tries > 0 {
 		tries -= 1
 
-		virtualMachine, err := vmwareClient.GetVirtualMachineByUUID(ctx, vmId)
-		if err != nil {
-			return status.Error(codes.Internal, fmt.Sprintf("Error getting VM by UUID, %v", err))
-		}
-
 		var vmProperties mo.VirtualMachine
 		virtualMachine.Properties(ctx, virtualMachine.Reference(), []string{}, &vmProperties)
 
-		if vmProperties.Guest.ToolsStatus == types.VirtualMachineToolsStatusToolsOk {
+		toolsStatus := vmProperties.Guest.ToolsStatus
+		guestHeartBeatStatus := vmProperties.GuestHeartbeatStatus
+
+		log.Infof("Awaiting VMTools on %v. VmTools: %v, GuestHeartBeat: %v", vmId, toolsStatus, guestHeartBeatStatus)
+
+		if toolsStatus == types.VirtualMachineToolsStatusToolsOk &&
+			guestHeartBeatStatus == types.ManagedEntityStatusGreen {
 			return nil
 		}
 
-		log.Infof("Waiting for VMTools on %v", vmId)
 		time.Sleep(time.Second * time.Duration(vmToolsSleepSec))
 	}
 

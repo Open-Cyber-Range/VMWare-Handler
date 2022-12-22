@@ -75,7 +75,7 @@ func (vmwareClient *VMWareClient) CreateGuestManagers(ctx context.Context, vmId 
 	if err != nil {
 		return nil, err
 	} else if !vmToolsRunning {
-		err = vmwareClient.AwaitVMToolsToComeOnline(ctx, vmId)
+		err = AwaitVMToolsToComeOnline(ctx, virtualMachine)
 		if err != nil {
 			return nil, err
 		}
