@@ -1,9 +1,10 @@
 [package]
 name = "test-configuration"
 description = "This is a simple configuration feature package"
-version = "0.3.2"
+version = "0.4.0"
 authors = ["Rait Rotšan rait.rotsan@cr14.ee"]
 license = "MIT"
+readme = "src/readme.md"
 
 [content]
 type = "feature"

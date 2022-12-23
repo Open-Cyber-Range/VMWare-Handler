@@ -1,9 +1,10 @@
 [package]
 name = "dsl-image"
 description = "This is an image for Damn Small Linux VM"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Kaarel Allemann kaarel.allemann@cr14.ee"]
 license = "MIT"
+readme = "src/readme.md"
 
 [content]
 type = "vm"
@@ -14,4 +15,4 @@ architecture = "amd64"
 type = "OVA"
 file_path = "src/dsl-test.ova"
 default_account = "username"
-accounts = [{ name = "username", password = "password" }, { name = "username2", password = "password2" }]
+accounts = [{ name = "root", password = "Password123!@#" }, { name = "dsl", password = "Password123!@#" }]
