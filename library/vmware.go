@@ -118,7 +118,17 @@ func (client *VMWareClient) findTemplates() ([]*object.VirtualMachine, error) {
 		return nil, datacenterError
 	}
 	ctx := context.Background()
-	return finder.VirtualMachineList(ctx, client.templatePath)
+
+	managedObjectList, err := finder.ManagedObjectList(ctx, client.templatePath)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(managedObjectList) == 0 {
+		return []*object.VirtualMachine{}, nil
+	} else {
+		return finder.VirtualMachineList(ctx, client.templatePath)
+	}
 }
 
 func (client *VMWareClient) DoesTemplateExist(name string) (value bool, err error) {
