@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 
+	"github.com/antihax/optional"
 	"github.com/open-cyber-range/vmware-handler/grpc/capability"
 	common "github.com/open-cyber-range/vmware-handler/grpc/common"
 	switch_grpc "github.com/open-cyber-range/vmware-handler/grpc/switch"
@@ -80,7 +81,7 @@ func (deploySwitch *DeploySwitch) createNetworkSegment(ctx context.Context) (*sw
 
 func (switchServer *switchServer) deleteInfraSegment(ctx context.Context, virtualSwitchUuid string) (bool, error) {
 	segmentApiService := switchServer.APIClient.SegmentsApi
-	httpResponse, err := segmentApiService.DeleteInfraSegment(ctx, virtualSwitchUuid)
+	httpResponse, err := segmentApiService.ForceDeleteInfraSegment(ctx, virtualSwitchUuid, &swagger.SegmentsApiForceDeleteInfraSegmentOpts{Cascade: optional.NewBool(false)})
 	if err != nil && httpResponse.StatusCode != http.StatusNotFound {
 		return false, err
 	}

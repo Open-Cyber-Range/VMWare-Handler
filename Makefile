@@ -67,7 +67,7 @@ test-machiner: build-machiner
 	go test -v ./machiner
 
 test-switcher: build-switcher
-	go test -v ./switcher
+	go test -v -count=1 ./switcher
 
 test-templater: build-templater
 	go test -v ./templater
