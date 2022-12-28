@@ -79,6 +79,7 @@ func TestSwitcherCapability(t *testing.T) {
 }
 
 func TestSegmentCreationAndDeletion(t *testing.T) {
+	t.Skip()
 	ctx := context.Background()
 	switchDeployment := createNodeDeploymentOfTypeSwitch()
 	serverConfiguration := startServer(time.Second * 3)
