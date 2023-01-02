@@ -355,7 +355,6 @@ func TestMachinerCapability(t *testing.T) {
 }
 
 func TestLinkCreationAndDeletion(t *testing.T) {
-	t.Skip()
 	t.Parallel()
 	ctx := context.Background()
 	exerciseName := library.CreateRandomString(10)
@@ -375,7 +374,6 @@ func TestLinkCreationAndDeletion(t *testing.T) {
 }
 
 func TestLinkAddition(t *testing.T) {
-	t.Skip()
 	t.Parallel()
 	configuration := startServer(3 * time.Second)
 
