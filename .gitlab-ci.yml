@@ -7,8 +7,9 @@ image: $DOCKER_REGISTRY_PULL/vmware-handler-builder
 
 services:
   - name: $DOCKER_REGISTRY_PULL/mariadb:10.7 
-  - name: $DOCKER_REGISTRY_PULL/deputy-package-server
   - name: $DOCKER_REGISTRY_PULL/deputy-repository-server
+    alias: index-repository
+  - name: $DOCKER_REGISTRY_PULL/deputy-package-server
   - name: $DOCKER_REGISTRY_PULL/featurer-redis-server
     alias: featurer-redis-server
 
