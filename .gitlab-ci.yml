@@ -29,7 +29,8 @@ before_script:
 test:
   stage: test
   script:
-    - curl -X GET http://deputy-package-server-combo:8080/api/version
+    - deputy -V
+    - deputy checksum qwerty
     - curl -X GET http://deputy-package-server-combo:8080/api/status
     - TEST_VMWARE_USER=$OCR_TEST_VMWARE_USER 
       TEST_VMWARE_PASSWORD=$OCR_TEST_VMWARE_PASSWORD 
