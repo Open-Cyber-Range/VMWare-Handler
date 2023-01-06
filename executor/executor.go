@@ -4,10 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"net"
 	"strconv"
+	"strings"
 	"time"
 
+	goredislib "github.com/go-redis/redis/v8"
+	"github.com/go-redsync/redsync/v4"
+	"github.com/go-redsync/redsync/v4/redis/goredis/v8"
 	"github.com/google/uuid"
 	"github.com/open-cyber-range/vmware-handler/grpc/capability"
 	"github.com/open-cyber-range/vmware-handler/grpc/common"
@@ -23,11 +28,15 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
+type mutexWrapper struct {
+	Mutex *redsync.Mutex
+}
 type featurerServer struct {
 	feature.UnimplementedFeatureServiceServer
 	Client        *govmomi.Client
 	Configuration *library.Configuration
 	Storage       *library.Storage[library.ExecutorContainer]
+	Mutex         *mutexWrapper
 }
 
 type conditionerServer struct {
@@ -35,6 +44,7 @@ type conditionerServer struct {
 	Client        *govmomi.Client
 	Configuration *library.Configuration
 	Storage       *library.Storage[library.ExecutorContainer]
+	Mutex         *mutexWrapper
 }
 
 type Feature struct {
@@ -47,6 +57,53 @@ type Condition struct {
 	Interval uint32     `json:"interval,omitempty"`
 	Action   string     `json:"action,omitempty"`
 	Assets   [][]string `json:"assets"`
+}
+
+func (mutex *mutexWrapper) lock() (err error) {
+
+	successChannel := make(chan bool)
+	errorChannel := make(chan error)
+
+	timeout := 360 * time.Second
+
+	go func() {
+		err = mutex.Mutex.Lock()
+		if err != nil {
+			if strings.HasPrefix(err.Error(), "lock already taken") {
+				time.Sleep(time.Millisecond * (time.Duration(rand.Intn(100))))
+				log.Trace("Mutex lock taken, trying again")
+				mutex.lock()
+
+			} else {
+				successChannel <- false
+				errorChannel <- err
+			}
+		}
+		successChannel <- true
+		errorChannel <- nil
+	}()
+	select {
+
+	case isSuccess := <-successChannel:
+		if !isSuccess {
+			err := <-errorChannel
+			if err != nil {
+				return err
+			}
+		}
+
+	case <-time.After(timeout):
+		return status.Error(codes.Internal, fmt.Sprintf("Mutex lock timed out after %v seconds: %v", timeout, err))
+	}
+
+	return nil
+}
+
+func (mutex *mutexWrapper) unlock() (err error) {
+	if isUnlocked, err := mutex.Mutex.Unlock(); !isUnlocked || err != nil {
+		return status.Error(codes.Internal, fmt.Sprintf("Mutex unlock failed: %v", err))
+	}
+	return
 }
 
 func unmarshalFeature(packegeDataMap *map[string]interface{}) (feature Feature, err error) {
@@ -150,8 +207,16 @@ func (server *conditionerServer) Create(ctx context.Context, conditionDeployment
 		commandAction = packageCondition.Action
 		interval = int32(packageCondition.Interval)
 
+		if err = server.Mutex.lock(); err != nil {
+			return nil, err
+		}
+
 		assetFilePaths, err = guestManager.CopyAssetsToVM(ctx, packageCondition.Assets, packagePath, conditionId)
 		if err != nil {
+			return nil, err
+		}
+
+		if err := server.Mutex.unlock(); err != nil {
 			return nil, err
 		}
 
@@ -195,8 +260,16 @@ func (server *conditionerServer) Stream(identifier *common.Identifier, stream co
 	}
 
 	for {
+
+		if err = server.Mutex.lock(); err != nil {
+			return err
+		}
 		commandReturnValue, err := guestManager.ExecutePackageAction(ctx, container.Command)
 		if err != nil {
+			return err
+		}
+
+		if err := server.Mutex.unlock(); err != nil {
 			return err
 		}
 
@@ -230,8 +303,15 @@ func (server *conditionerServer) Delete(ctx context.Context, identifier *common.
 
 	vmwareClient := library.NewVMWareClient(server.Client, server.Configuration.TemplateFolderPath)
 
+	if err = server.Mutex.lock(); err != nil {
+		return new(emptypb.Empty), err
+	}
+
 	if err = vmwareClient.DeleteDeployedFiles(ctx, &executorContainer); err != nil {
 		return nil, err
+	}
+	if err := server.Mutex.unlock(); err != nil {
+		return new(emptypb.Empty), err
 	}
 
 	return new(emptypb.Empty), nil
@@ -275,12 +355,20 @@ func (server *featurerServer) Create(ctx context.Context, featureDeployment *fea
 	server.Storage.Container = currentDeployment
 	server.Storage.Create(ctx, featureId)
 
+	if err = server.Mutex.lock(); err != nil {
+		return nil, err
+	}
+
 	var vmLog string
 	if packageFeature.Action != "" && featureDeployment.GetFeatureType() == *feature.FeatureType_service.Enum() {
 		vmLog, err = guestManager.ExecutePackageAction(ctx, packageFeature.Action)
 		if err != nil {
 			return nil, err
 		}
+	}
+
+	if err := server.Mutex.unlock(); err != nil {
+		return nil, err
 	}
 
 	return &feature.FeatureResponse{
@@ -300,8 +388,16 @@ func (server *featurerServer) Delete(ctx context.Context, identifier *common.Ide
 
 	vmwareClient := library.NewVMWareClient(server.Client, server.Configuration.TemplateFolderPath)
 
+	if err = server.Mutex.lock(); err != nil {
+		return new(emptypb.Empty), err
+	}
+
 	if err = vmwareClient.DeleteDeployedFiles(ctx, &executorContainer); err != nil {
 		return nil, err
+	}
+
+	if err := server.Mutex.unlock(); err != nil {
+		return new(emptypb.Empty), err
 	}
 
 	return new(emptypb.Empty), nil
@@ -321,18 +417,28 @@ func RealMain(configuration *library.Configuration) {
 
 	storage := library.NewStorage[library.ExecutorContainer](configuration.RedisAddress, configuration.RedisPassword)
 
-	server := grpc.NewServer()
+	grpcServer := grpc.NewServer()
 
-	feature.RegisterFeatureServiceServer(server, &featurerServer{
+	redisClient := goredislib.NewClient(&goredislib.Options{
+		Addr:     configuration.RedisAddress,
+		Password: configuration.RedisPassword,
+	})
+	redisPool := goredis.NewPool(redisClient)
+	mutexname := "my-cool-mutex"
+	mutex := redsync.New(redisPool).NewMutex(mutexname)
+
+	feature.RegisterFeatureServiceServer(grpcServer, &featurerServer{
 		Client:        govmomiClient,
 		Configuration: configuration,
 		Storage:       &storage,
+		Mutex:         &mutexWrapper{Mutex: mutex},
 	})
 
-	condition.RegisterConditionServiceServer(server, &conditionerServer{
+	condition.RegisterConditionServiceServer(grpcServer, &conditionerServer{
 		Client:        govmomiClient,
 		Configuration: configuration,
 		Storage:       &storage,
+		Mutex:         &mutexWrapper{Mutex: mutex},
 	})
 
 	capabilityServer := library.NewCapabilityServer([]capability.Capabilities_DeployerTypes{
@@ -340,10 +446,10 @@ func RealMain(configuration *library.Configuration) {
 		*capability.Capabilities_Condition.Enum(),
 	})
 
-	capability.RegisterCapabilityServer(server, &capabilityServer)
+	capability.RegisterCapabilityServer(grpcServer, &capabilityServer)
 
 	log.Printf("Executor listening at %v", listeningAddress.Addr())
-	if bindError := server.Serve(listeningAddress); bindError != nil {
+	if bindError := grpcServer.Serve(listeningAddress); bindError != nil {
 		log.Fatalf("Failed to serve: %v", bindError)
 	}
 }

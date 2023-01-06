@@ -153,6 +153,8 @@ func createConditionerDeploymentRequest(t *testing.T, deployment *condition.Cond
 }
 
 func TestConditionerWithCommand(t *testing.T) {
+	t.Parallel()
+
 	deployment := &condition.Condition{
 		Name:             "command-condition",
 		VirtualMachineId: "4212b4a9-dd30-45cc-3667-b72c8dd97558",
@@ -165,6 +167,8 @@ func TestConditionerWithCommand(t *testing.T) {
 }
 
 func TestConditionerWithSourcePackage(t *testing.T) {
+	t.Parallel()
+
 	packageName := "condition-package"
 
 	if err := library.PublishTestPackage(packageName); err != nil {
@@ -185,6 +189,7 @@ func TestConditionerWithSourcePackage(t *testing.T) {
 }
 
 func TestFeatureServiceDeploymentAndDeletionOnLinux(t *testing.T) {
+	t.Parallel()
 
 	packageName := "feature-service-package"
 
@@ -208,6 +213,8 @@ func TestFeatureServiceDeploymentAndDeletionOnLinux(t *testing.T) {
 }
 
 func TestFeatureConfigurationDeploymentAndDeletionOnLinux(t *testing.T) {
+	t.Parallel()
+
 	packageName := "feature-config-package"
 
 	feature := &feature.Feature{
@@ -227,6 +234,8 @@ func TestFeatureConfigurationDeploymentAndDeletionOnLinux(t *testing.T) {
 }
 
 func TestFeatureServiceDeploymentAndDeletionOnWindows(t *testing.T) {
+	t.Parallel()
+	
 	packageName := "feature-win-service-package"
 
 	feature := &feature.Feature{
