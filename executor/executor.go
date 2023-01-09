@@ -125,12 +125,10 @@ func getPackageContents(packageName string, packageVersion string) (packagePath 
 	if err != nil {
 		return "", nil, status.Error(codes.NotFound, fmt.Sprintf("Failed to download package: %v", err))
 	}
-
 	packageTomlContent, err = library.GetPackageData(packagePath)
 	if err != nil {
 		log.Errorf("Failed to get package data, %v", err)
 	}
-
 	return
 }
 
@@ -142,12 +140,10 @@ func getFeaturePackageInfo(featureDeployment *feature.Feature) (packagePath stri
 	if err != nil {
 		return "", Feature{}, status.Error(codes.NotFound, fmt.Sprintf("Failed to download package: %v", err))
 	}
-
 	feature, err = unmarshalFeature(&packageTomlContent)
 	if err != nil {
 		return "", Feature{}, status.Error(codes.Internal, fmt.Sprintf("Error getting package info: %v", err))
 	}
-
 	return
 }
 
@@ -159,12 +155,10 @@ func getConditionPackageInfo(conditionDeployment *condition.Condition) (packageP
 	if err != nil {
 		return "", Condition{}, status.Error(codes.NotFound, fmt.Sprintf("Failed to download package: %v", err))
 	}
-
 	condition, err = unmarshalCondition(&packageTomlContent)
 	if err != nil {
 		return "", Condition{}, status.Error(codes.Internal, fmt.Sprintf("Error getting package info: %v", err))
 	}
-
 	return
 }
 
@@ -187,7 +181,6 @@ func (server *conditionerServer) Create(ctx context.Context, conditionDeployment
 	if err != nil {
 		return nil, err
 	}
-
 	if _, err = library.CheckVMStatus(ctx, guestManager.VirtualMachine); err != nil {
 		return nil, err
 	}
@@ -210,16 +203,13 @@ func (server *conditionerServer) Create(ctx context.Context, conditionDeployment
 		if err = server.Mutex.lock(); err != nil {
 			return nil, err
 		}
-
 		assetFilePaths, err = guestManager.CopyAssetsToVM(ctx, packageCondition.Assets, packagePath, conditionId)
 		if err != nil {
 			return nil, err
 		}
-
 		if err := server.Mutex.unlock(); err != nil {
 			return nil, err
 		}
-
 	} else {
 		commandAction = conditionDeployment.GetCommand()
 		interval = conditionDeployment.GetInterval()
@@ -234,7 +224,6 @@ func (server *conditionerServer) Create(ctx context.Context, conditionDeployment
 		Command:   commandAction,
 		Interval:  interval,
 	}
-
 	server.Storage.Create(ctx, conditionId)
 
 	return &common.Identifier{Value: conditionId}, nil
@@ -249,18 +238,14 @@ func (server *conditionerServer) Stream(identifier *common.Identifier, stream co
 	}
 
 	vmwareClient := library.NewVMWareClient(server.Client, server.Configuration.TemplateFolderPath)
-
 	guestManager, err := vmwareClient.CreateGuestManagers(ctx, container.VMID, &container.Auth)
 	if err != nil {
 		return err
 	}
-
 	if _, err = library.CheckVMStatus(ctx, guestManager.VirtualMachine); err != nil {
 		return err
 	}
-
 	for {
-
 		if err = server.Mutex.lock(); err != nil {
 			return err
 		}
@@ -268,7 +253,6 @@ func (server *conditionerServer) Stream(identifier *common.Identifier, stream co
 		if err != nil {
 			return err
 		}
-
 		if err := server.Mutex.unlock(); err != nil {
 			return err
 		}
@@ -306,7 +290,6 @@ func (server *conditionerServer) Delete(ctx context.Context, identifier *common.
 	if err = server.Mutex.lock(); err != nil {
 		return new(emptypb.Empty), err
 	}
-
 	if err = vmwareClient.DeleteDeployedFiles(ctx, &executorContainer); err != nil {
 		return nil, err
 	}
@@ -329,7 +312,6 @@ func (server *featurerServer) Create(ctx context.Context, featureDeployment *fea
 	if err != nil {
 		return nil, err
 	}
-
 	if _, err = library.CheckVMStatus(ctx, guestManager.VirtualMachine); err != nil {
 		return nil, err
 	}
@@ -358,7 +340,6 @@ func (server *featurerServer) Create(ctx context.Context, featureDeployment *fea
 	if err = server.Mutex.lock(); err != nil {
 		return nil, err
 	}
-
 	var vmLog string
 	if packageFeature.Action != "" && featureDeployment.GetFeatureType() == *feature.FeatureType_service.Enum() {
 		vmLog, err = guestManager.ExecutePackageAction(ctx, packageFeature.Action)
@@ -366,7 +347,6 @@ func (server *featurerServer) Create(ctx context.Context, featureDeployment *fea
 			return nil, err
 		}
 	}
-
 	if err := server.Mutex.unlock(); err != nil {
 		return nil, err
 	}
@@ -391,11 +371,9 @@ func (server *featurerServer) Delete(ctx context.Context, identifier *common.Ide
 	if err = server.Mutex.lock(); err != nil {
 		return new(emptypb.Empty), err
 	}
-
 	if err = vmwareClient.DeleteDeployedFiles(ctx, &executorContainer); err != nil {
 		return nil, err
 	}
-
 	if err := server.Mutex.unlock(); err != nil {
 		return new(emptypb.Empty), err
 	}
