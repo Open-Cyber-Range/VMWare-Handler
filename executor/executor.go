@@ -264,7 +264,7 @@ func (server *conditionerServer) Stream(identifier *common.Identifier, stream co
 				return status.Error(codes.Internal, fmt.Sprintf("Error converting PackageActionValue: %v", err))
 			}
 		}
-		log.Infof("Condition return value '%v'", commandReturnValue)
+		log.Tracef("Condition ID '%v' returned '%v'", identifier.GetValue(), commandReturnValue)
 
 		err = stream.Send(&condition.ConditionStreamResponse{
 			Response:           identifier.GetValue(),

@@ -363,8 +363,6 @@ func sendFileToVM(url string, filePath string) (err error) {
 	}
 	if response.StatusCode != 200 {
 		return status.Error(codes.Internal, fmt.Sprintf("Error while uploading file: %v", response.Status))
-	} else {
-		log.Printf("Successfully uploaded file to vm")
 	}
 	return err
 }
@@ -459,10 +457,11 @@ func (guestManager *GuestManager) AwaitProcessCompletion(ctx context.Context, pr
 
 		time.Sleep(200 * time.Millisecond)
 
+		vmUUID := guestManager.VirtualMachine.UUID(ctx)
 		exitCode := active_process[0].ExitCode
 		regexFail, _ := regexp.Compile("[1-9]+")
 		if regexFail.MatchString(string(exitCode)) {
-			return false, status.Error(codes.Internal, fmt.Sprintf("Program encountered an error, code: %v", exitCode))
+			return false, status.Error(codes.Internal, fmt.Sprintf("Error: VM UUID: `%v` PID: `%v` exit code: %v", vmUUID, processID, exitCode))
 
 		}
 
@@ -470,7 +469,7 @@ func (guestManager *GuestManager) AwaitProcessCompletion(ctx context.Context, pr
 		regexSuccess, _ := regexp.Compile("[^0-9]+")
 		successCheck := regexSuccess.MatchString(string(exitCode))
 		if successCheck && processEndTime != nil {
-			log.Infof("Program %v completed with success", processID)
+			log.Tracef("VM UUID: `%v` PID: `%v` exit code: %v", vmUUID, processID, exitCode)
 			break
 		}
 	}
@@ -586,6 +585,14 @@ func (guestManager *GuestManager) CopyAssetsToVM(ctx context.Context, assets [][
 		if err = sendFileToVM(transferUrl, sourcePath); err != nil {
 			return nil, err
 		}
+
+		splitFilepath := strings.Split(normalizedTargetPath, "/")
+		if len(splitFilepath) < 2 {
+			splitFilepath = strings.Split(normalizedTargetPath, "\\")
+		}
+		filename := splitFilepath[len(splitFilepath)-1]
+
+		log.Infof("Successfully uploaded '%v' to VM UUID '%v'", filename, guestManager.VirtualMachine.UUID(ctx))
 
 		assetFilePaths = append(assetFilePaths, normalizedTargetPath)
 	}

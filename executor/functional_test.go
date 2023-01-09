@@ -122,7 +122,7 @@ func createConditionerDeploymentRequest(t *testing.T, deployment *condition.Cond
 	go func() {
 		var responses int8
 		for {
-			_, err := stream.Recv()
+			result, err := stream.Recv()
 			if err == io.EOF {
 				finished <- true
 				return
@@ -132,7 +132,7 @@ func createConditionerDeploymentRequest(t *testing.T, deployment *condition.Cond
 			}
 
 			responses += 1
-
+			log.Infof("Condition stream: %v received: %v\n", deployment.Name, result.CommandReturnValue)
 			if responses == 3 {
 				log.Printf("Received enough successful Condition responses, exiting")
 				finished <- true
@@ -235,7 +235,7 @@ func TestFeatureConfigurationDeploymentAndDeletionOnLinux(t *testing.T) {
 
 func TestFeatureServiceDeploymentAndDeletionOnWindows(t *testing.T) {
 	t.Parallel()
-	
+
 	packageName := "feature-win-service-package"
 
 	feature := &feature.Feature{
