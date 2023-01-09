@@ -522,7 +522,11 @@ func (guestManager *GuestManager) ExecutePackageAction(ctx context.Context, acti
 	if processID > 0 {
 		err = guestManager.AwaitProcessWithTimeout(ctx, processID, action)
 		if err != nil {
-			return
+			vmLog, logErr := guestManager.GetVMLogContents(ctx, vmLogPath)
+			if logErr != nil {
+				return vmLog, logErr
+			}
+			return vmLog, err
 		}
 	}
 	vmLog, err = guestManager.GetVMLogContents(ctx, vmLogPath)
