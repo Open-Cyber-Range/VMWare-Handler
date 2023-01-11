@@ -6,14 +6,20 @@ stages:
 image: $DOCKER_REGISTRY_PULL/vmware-handler-builder
 
 services:
-  - name: $DOCKER_REGISTRY_PULL/deputy-package-server-repository-combo
-    alias: deputy-package-server-combo
+  - name: $DOCKER_REGISTRY_PULL/mariadb:10.7 
+  - name: $DOCKER_REGISTRY_PULL/deputy-repository-server
+    alias: index-repository
+  - name: $DOCKER_REGISTRY_PULL/deputy-package-server
   - name: $DOCKER_REGISTRY_PULL/featurer-redis-server
     alias: featurer-redis-server
 
 variables:
   REPO_NAME: code.ocr.cr14.net/open-cyber-range/public/vmware-node-deployer
   GIT_SUBMODULE_STRATEGY: normal
+  MYSQL_ROOT_PASSWORD: mysql_root
+  MYSQL_USER: mysql_user
+  MYSQL_PASSWORD: mysql_pass
+  MYSQL_DATABASE: handlers
 
 before_script:
   - mkdir -p "$GOPATH/src/$(dirname $REPO_NAME)"
@@ -23,6 +29,9 @@ before_script:
 test:
   stage: test
   script:
+    # - deputy -V
+    # - deputy checksum qwerty
+    # - curl -X GET http://deputy-package-server:8080/api/version
     # - TEST_VMWARE_USER=$OCR_TEST_VMWARE_USER 
     #   TEST_VMWARE_PASSWORD=$OCR_TEST_VMWARE_PASSWORD 
     #   TEST_VMWARE_HOSTNAME=$OCR_TEST_VMWARE_HOSTNAME 
