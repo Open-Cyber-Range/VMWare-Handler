@@ -558,7 +558,7 @@ func (guestManager *GuestManager) getAssetSizeAndAttributes(ctx context.Context,
 	return fileInfo.Size(), fileAttributes, nil
 }
 
-func (guestManager *GuestManager) CopyAssetsToVM(ctx context.Context, assets [][]string, packagePath string, executorId string) (assetFilePaths []string, err error) {
+func (guestManager *GuestManager) CopyAssetsToVM(ctx context.Context, assets [][]string, packagePath string) (assetFilePaths []string, err error) {
 	for _, asset := range assets {
 
 		sourcePath := path.Join(packagePath, filepath.FromSlash(asset[0]))
