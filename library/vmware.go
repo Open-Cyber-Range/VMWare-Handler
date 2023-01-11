@@ -317,16 +317,11 @@ func (vmwareClient *VMWareClient) DeleteDeployedFiles(ctx context.Context, execu
 		return status.Error(codes.Internal, fmt.Sprintf("Error creating FileManager: %v", err))
 	}
 
-	for i := 0; i < len(executorContainer.FilePaths); i++ {
-
-		targetFile := executorContainer.FilePaths[i]
-
+	for _, targetFile := range executorContainer.FilePaths {
 		if err = fileManager.DeleteFile(ctx, &executorContainer.Auth, string(targetFile)); err != nil {
 			return status.Error(codes.Internal, fmt.Sprintf("Error deleting file: %v", err))
 		}
 		log.Infof("Deleted %v", targetFile)
-
-		time.Sleep(200 * time.Millisecond)
 	}
 	return nil
 }
