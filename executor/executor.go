@@ -70,10 +70,13 @@ func (mutex *mutexWrapper) lock() (err error) {
 		err = mutex.Mutex.Lock()
 		if err != nil {
 			if strings.HasPrefix(err.Error(), "lock already taken") {
+				log.Tracef("Mutex lock taken, trying again")
 				time.Sleep(time.Millisecond * (time.Duration(rand.Intn(100))))
-				log.Trace("Mutex lock taken, trying again")
-				mutex.lock()
 
+				if err = mutex.lock(); err != nil {
+					successChannel <- false
+					errorChannel <- err
+				}
 			} else {
 				successChannel <- false
 				errorChannel <- err
@@ -109,14 +112,24 @@ func (mutex *mutexWrapper) unlock() (err error) {
 func unmarshalFeature(packegeDataMap *map[string]interface{}) (feature Feature, err error) {
 	featureInfo := (*packegeDataMap)["feature"]
 	infoJson, err := json.Marshal(featureInfo)
-	json.Unmarshal(infoJson, &feature)
+	if err != nil {
+		return Feature{}, err
+	}
+	if err = json.Unmarshal(infoJson, &feature); err != nil {
+		return Feature{}, err
+	}
 	return
 }
 
 func unmarshalCondition(packegeDataMap *map[string]interface{}) (condition Condition, err error) {
 	conditionInfo := (*packegeDataMap)["condition"]
 	infoJson, err := json.Marshal(conditionInfo)
-	json.Unmarshal(infoJson, &condition)
+	if err != nil {
+		return Condition{}, err
+	}
+	if err = json.Unmarshal(infoJson, &condition); err != nil {
+		return Condition{}, err
+	}
 	return
 }
 
@@ -224,7 +237,9 @@ func (server *conditionerServer) Create(ctx context.Context, conditionDeployment
 		Command:   commandAction,
 		Interval:  interval,
 	}
-	server.Storage.Create(ctx, conditionId)
+	if err = server.Storage.Create(ctx, conditionId); err != nil {
+		return nil, err
+	}
 
 	return &common.Identifier{Value: conditionId}, nil
 }
@@ -335,7 +350,9 @@ func (server *featurerServer) Create(ctx context.Context, featureDeployment *fea
 	}
 
 	server.Storage.Container = currentDeployment
-	server.Storage.Create(ctx, featureId)
+	if err = server.Storage.Create(ctx, featureId); err != nil {
+		return nil, err
+	}
 
 	if err = server.Mutex.lock(); err != nil {
 		return nil, err
