@@ -193,7 +193,7 @@ func TestFeatureServiceDeploymentAndDeletionOnLinux(t *testing.T) {
 
 	packageName := "feature-service-package"
 
-	feature := &feature.Feature{
+	deployment := &feature.Feature{
 		Name:             "test-feature",
 		VirtualMachineId: "42127656-e390-d6a8-0703-c3425dbc8052",
 		FeatureType:      feature.FeatureType_service,
@@ -203,7 +203,7 @@ func TestFeatureServiceDeploymentAndDeletionOnLinux(t *testing.T) {
 		},
 		Account: &common.Account{Username: "root", Password: "password"},
 	}
-	response, err := createFeatureDeploymentRequest(t, feature, packageName)
+	response, err := createFeatureDeploymentRequest(t, deployment, packageName)
 	if err != nil {
 		t.Fatalf("Error creating Test Feature Deployment: %v", err)
 	}
@@ -217,7 +217,7 @@ func TestFeatureConfigurationDeploymentAndDeletionOnLinux(t *testing.T) {
 
 	packageName := "feature-config-package"
 
-	feature := &feature.Feature{
+	deployment := &feature.Feature{
 		Name:             "test-feature",
 		VirtualMachineId: "42127656-e390-d6a8-0703-c3425dbc8052",
 		FeatureType:      feature.FeatureType_configuration,
@@ -227,7 +227,7 @@ func TestFeatureConfigurationDeploymentAndDeletionOnLinux(t *testing.T) {
 		},
 		Account: &common.Account{Username: "root", Password: "password"},
 	}
-	_, err := createFeatureDeploymentRequest(t, feature, packageName)
+	_, err := createFeatureDeploymentRequest(t, deployment, packageName)
 	if err != nil {
 		t.Fatalf("Error creating Test Feature Deployment: %v", err)
 	}
@@ -238,7 +238,7 @@ func TestFeatureServiceDeploymentAndDeletionOnWindows(t *testing.T) {
 
 	packageName := "feature-win-service-package"
 
-	feature := &feature.Feature{
+	deployment := &feature.Feature{
 		Name:             "test-feature",
 		VirtualMachineId: "42122b12-3a17-c0fb-eb3c-7cd935bb595b",
 		FeatureType:      feature.FeatureType_service,
@@ -248,7 +248,7 @@ func TestFeatureServiceDeploymentAndDeletionOnWindows(t *testing.T) {
 		},
 		Account: &common.Account{Username: "user", Password: "password"},
 	}
-	response, err := createFeatureDeploymentRequest(t, feature, packageName)
+	response, err := createFeatureDeploymentRequest(t, deployment, packageName)
 	if err != nil {
 		t.Fatalf("Error creating Test Feature Deployment: %v", err)
 	}
