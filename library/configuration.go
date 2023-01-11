@@ -70,6 +70,8 @@ type Configuration struct {
 	ResourcePoolPath   string `yaml:"resource_pool_path,omitempty"`
 	ExerciseRootPath   string `yaml:"exercise_root_path,omitempty"`
 	DatastorePath      string `yaml:"datastore_path,omitempty"`
+	RedisAddress       string `yaml:"redis_address,omitempty"`
+	RedisPassword      string `yaml:"redis_password,omitempty"`
 }
 
 func (configuration *Configuration) Validate(validator *Validator) error {
@@ -93,6 +95,12 @@ func (configuration *Configuration) Validate(validator *Validator) error {
 	}
 	if validator.requireDatastorePath && configuration.DatastorePath == "" {
 		return status.Error(codes.InvalidArgument, "Vsphere datastore path not provided")
+	}
+	if configuration.RedisAddress == "" {
+		return status.Error(codes.InvalidArgument, "Redis server address not provided")
+	}
+	if configuration.RedisPassword == "" {
+		return status.Error(codes.InvalidArgument, "Redis server password not provided")
 	}
 	return nil
 }

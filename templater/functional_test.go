@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
-	"os/exec"
-	"path"
 	"testing"
 	"time"
 
@@ -27,6 +25,8 @@ var testConfiguration = library.Configuration{
 	ResourcePoolPath:   os.Getenv("TEST_VMWARE_RESOURCE_POOL_PATH"),
 	DatastorePath:      os.Getenv("TEST_VMWARE_DATASTORE_PATH"),
 	ServerAddress:      "127.0.0.1",
+	RedisAddress:       os.Getenv("TEST_REDIS_ADDRESS"),
+	RedisPassword:      os.Getenv("TEST_REDIS_PASSWORD"),
 }
 
 func startServer(timeout time.Duration) (configuration library.Configuration, err error) {
@@ -58,34 +58,22 @@ func creategRPCClient(t *testing.T, serverPath string) template.TemplateServiceC
 	return template.NewTemplateServiceClient(connection)
 }
 
-func uploadTestDeputyPackage() (err error) {
-	uploadCommand := exec.Command("deputy", "publish")
-	workingDirectory, err := os.Getwd()
-	if err != nil {
-		return
-	}
-	uploadCommand.Dir = path.Join(workingDirectory, "..", "extra", "test-deputy-packages", "small-ova-package")
-	uploadCommand.Run()
-
-	return
-}
-
 func createTemplate(t *testing.T, client template.TemplateServiceClient) string {
 
-	uploadError := uploadTestDeputyPackage()
+	uploadError := library.PublishTestPackage("small-ova-package")
 	if uploadError != nil {
 		t.Fatalf("Failed to upload deputy package: %v", uploadError)
 	}
 	templateSource := &common.Source{
 		Name:    "dsl-image",
-		Version: "0.1.0",
+		Version: "*",
 	}
 
 	creationResult, err := client.Create(context.Background(), templateSource)
 	if err != nil {
 		t.Fatalf("Failed to send request: %v", err)
 	}
-	id := creationResult.GetValue()
+	id := creationResult.GetIdentifier().GetValue()
 	if id == "" {
 		t.Logf("Failed to retrieve UUID")
 	}

@@ -1,4 +1,4 @@
-version: '3'
+version: "3"
 
 services:
   go-development:
@@ -6,7 +6,7 @@ services:
     command: /bin/sh -c "while sleep 1000; do :; done"
     volumes:
       - ..:/workspace:cached
-      - ./deputy-cli-configuration.toml:/home/vscode/.deputy/configuration.toml
+      - ./development-configs/deputy-cli-configuration.toml:/home/vscode/.deputy/configuration.toml
     user: vscode
     ports:
       - 8080:8080
@@ -16,6 +16,8 @@ services:
     volumes:
       - ./deputy-packages:/var/opt/deputy/deputy-package-server/package
       - ./deputy-repository:/var/opt/deputy/deputy-package-server/repository
+      - ./development-configs/deputy-package-server-configuration.yml:/etc/opt/deputy/deputy-package-server/config.yml
+
     environment:
       - RUST_LOG=debug
 
@@ -25,3 +27,26 @@ services:
       - ./deputy-repository/.git:/srv/git/index.git
     ports:
       - 8081:80
+
+  vmware-handler-mariadb:
+    image: nexus.ocr.cr14.net:8003/mariadb:10.7
+    ports:
+      - "3308:3308"
+    volumes:
+      - ~/apps/handlers-mariadb:/var/lib/mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: mysql_root
+      MYSQL_USER: mysql_user
+      MYSQL_PASSWORD: mysql_pass
+      MYSQL_DATABASE: handlers
+      MYSQL_TCP_PORT: 3308
+
+
+  featurer-redis-server:
+    image: nexus.ocr.cr14.net:8003/featurer-redis-server
+    restart: always
+    command: ["redis-server", "/etc/redis/redis.conf"]
+    ports:
+      - 6380:6380
+    volumes:
+      - ./development-configs/redis-configuration.conf:/etc/redis/redis.conf

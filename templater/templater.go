@@ -4,11 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net"
-	"os/exec"
 	"path"
-	"strings"
 	"sync"
 	"time"
 
@@ -99,73 +96,13 @@ type TemplateDeployment struct {
 	metaInfo      string
 }
 
-func createRandomPackagePath() (string, error) {
-	return ioutil.TempDir("/tmp", "deputy-package")
-}
-
-func (templateDeployment *TemplateDeployment) downloadPackage() (packagePath string, err error) {
-	packageBasePath, err := createRandomPackagePath()
-	if err != nil {
-		return
-	}
-	log.Infof("Created package base path: %v", packageBasePath)
-
-	downloadCommand := exec.Command("deputy", "fetch", templateDeployment.source.Name, "-v", templateDeployment.source.Version, "-s", packagePath)
-	downloadCommand.Dir = packageBasePath
-	_, err = downloadCommand.Output()
-	if err != nil {
-		return
-	}
-	directories, err := library.IOReadDir(packageBasePath)
-	if err != nil {
-		return
-	}
-
-	if len(directories) != 1 {
-		err = fmt.Errorf("expected one directory in package base path, got %v", len(directories))
-		return
-	}
-
-	return path.Join(packageBasePath, directories[0]), nil
-}
-
-func getPackageChecksum(name string, version string) (checksum string, err error) {
-	checksumCommand := exec.Command("deputy", "checksum", name, "-v", version)
-	output, err := checksumCommand.Output()
-	if err != nil {
-		return
-	}
-	checksum = strings.TrimSpace(string(output))
-	return
-}
-
-func normalizePackageVersion(packageName string, versionRequirement string) (normalizedVersion string, err error) {
-	versionCommand := exec.Command("deputy", "normalize-version", packageName, "-v", versionRequirement)
-	output, err := versionCommand.Output()
-	if err != nil {
-		return
-	}
-	normalizedVersion = strings.TrimSpace(string(output))
-	return
-}
-
-func (templateDeployment *TemplateDeployment) getPackageData(packagePath string) (packageData map[string]interface{}, err error) {
-	packageTomlPath := path.Join(packagePath, "package.toml")
-	checksumCommand := exec.Command("deputy", "parse-toml", packageTomlPath)
-	output, err := checksumCommand.Output()
-	if err != nil {
-		return
-	}
-	json.Unmarshal(output, &packageData)
-	return
-}
-
 type VirtualMachine struct {
-	OperatingSystem string   `json:"operating_system,omitempty"`
-	Architecture    string   `json:"architecture,omitempty"`
-	Type            string   `json:"type,omitempty"`
-	FilePath        string   `json:"file_path,omitempty"`
-	Links           []string `json:"links,omitempty"`
+	OperatingSystem string            `json:"operating_system,omitempty"`
+	Architecture    string            `json:"architecture,omitempty"`
+	Type            string            `json:"type,omitempty"`
+	FilePath        string            `json:"file_path,omitempty"`
+	Links           []string          `json:"links,omitempty"`
+	Accounts        []library.Account `json:"accounts,omitempty"`
 }
 
 func getVirtualMachineInfo(packegeDataMap *map[string]interface{}) (virtualMachine VirtualMachine, err error) {
@@ -176,11 +113,7 @@ func getVirtualMachineInfo(packegeDataMap *map[string]interface{}) (virtualMachi
 	return
 }
 
-func (templateDeployment *TemplateDeployment) handleTemplateBasedOnType(packageData map[string]interface{}, packagePath string) (err error) {
-	virtualMachine, err := getVirtualMachineInfo(&packageData)
-	if err != nil {
-		return
-	}
+func (templateDeployment *TemplateDeployment) handleTemplateBasedOnType(virtualMachine VirtualMachine, packagePath string) (err error) {
 	switch virtualMachine.Type {
 	case "OVA":
 		_, err = templateDeployment.ImportOVA(path.Join(packagePath, virtualMachine.FilePath), templateDeployment.Client.Client.Client)
@@ -188,12 +121,22 @@ func (templateDeployment *TemplateDeployment) handleTemplateBasedOnType(packageD
 	return
 }
 
-func (templateDeployment *TemplateDeployment) createTemplate(packagePath string) (err error) {
-	packageData, err := templateDeployment.getPackageData(packagePath)
+func (templateDeployment *TemplateDeployment) createTemplate(ctx context.Context, packagePath string) (err error) {
+	packageData, err := library.GetPackageData(packagePath)
 	if err != nil {
 		return
 	}
-	err = templateDeployment.handleTemplateBasedOnType(packageData, packagePath)
+	virtualMachine, err := getVirtualMachineInfo(&packageData)
+	if err != nil {
+		return
+	}
+	if err = templateDeployment.handleTemplateBasedOnType(virtualMachine, packagePath); err != nil {
+		return
+	}
+	_, err = templateDeployment.Client.GetTemplateByName(templateDeployment.templateName)
+	if err != nil {
+		return status.Error(codes.Internal, fmt.Sprintf("Failed to get deployed template (%v)", err))
+	}
 
 	return
 }
@@ -214,16 +157,38 @@ func tryRemoveNetworks(ctx context.Context, deployedTemplate *object.VirtualMach
 	}
 }
 
-func (server *templaterServer) Create(ctx context.Context, source *common.Source) (*common.Identifier, error) {
+func getVMAccounts(packagePath string) ([]*common.Account, error) {
+	packageData, err := library.GetPackageData(packagePath)
+	if err != nil {
+		return nil, err
+	}
+	virtualMachine, err := getVirtualMachineInfo(&packageData)
+	if err != nil {
+		return nil, err
+	}
+
+	var grpcAccounts []*common.Account
+
+	for _, account := range virtualMachine.Accounts {
+		grpcAccounts = append(grpcAccounts, &common.Account{
+			Username: account.Name,
+			Password: account.Password,
+		})
+	}
+
+	return grpcAccounts, nil
+}
+
+func (server *templaterServer) Create(ctx context.Context, source *common.Source) (*template.TemplateResponse, error) {
 	log.Infof("Received template package: %v, version: %v", source.Name, source.Version)
 
 	vmwareClient := library.NewVMWareClient(server.Client, server.Configuration.TemplateFolderPath)
-	checksum, checksumError := getPackageChecksum(source.Name, source.Version)
+	checksum, checksumError := library.GetPackageChecksum(source.Name, source.Version)
 	if checksumError != nil {
 		log.Errorf("Error getting package checksum: %v", checksumError)
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to get package checksum (%v)", checksumError))
 	}
-	normalizedVersion, normalizedVersionError := normalizePackageVersion(source.Name, source.Version)
+	normalizedVersion, normalizedVersionError := library.NormalizePackageVersion(source.Name, source.Version)
 	if normalizedVersionError != nil {
 		log.Errorf("Failed to normalize package version (%v)", normalizedVersionError)
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to normalize package version (%v)", normalizedVersionError))
@@ -231,6 +196,9 @@ func (server *templaterServer) Create(ctx context.Context, source *common.Source
 
 	templateName := checksum
 	templateExists, templateExistsError := vmwareClient.DoesTemplateExist(templateName)
+
+	var accounts []*common.Account
+
 	if templateExistsError != nil {
 		log.Errorf("Failed to check if template exists (%v)", templateExistsError)
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to get information about template from VSphere(%v)", templateExistsError))
@@ -250,29 +218,39 @@ func (server *templaterServer) Create(ctx context.Context, source *common.Source
 			templateName:  templateName,
 			metaInfo:      fmt.Sprintf("%v-%v", source.Name, normalizedVersion),
 		}
-		packagePath, downloadError := templateDeployment.downloadPackage()
+		packagePath, downloadError := library.DownloadPackage(templateDeployment.source.Name, templateDeployment.source.Version)
 		if downloadError != nil {
 			log.Errorf("Failed to download package (%v)", downloadError)
 			return nil, status.Error(codes.NotFound, fmt.Sprintf("Failed to download package (%v)", downloadError))
 		}
-		log.Infof("Downloaded package to: %v", packagePath)
-		deployError := templateDeployment.createTemplate(packagePath)
+
+		deployError := templateDeployment.createTemplate(ctx, packagePath)
 		server.currentDeploymentList.Remove(templateName)
 		if deployError != nil {
 			log.Printf("Failed to deploy template (%v)", deployError)
 			return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to deploy template (%v)", deployError))
 		}
 		log.Infof("Deployed template: %v, version: %v", source.Name, source.Version)
+
+		var err error
+		accounts, err = getVMAccounts(packagePath)
+		if err != nil {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to get VM accounts(%v)", err))
+		}
 	}
 
-	deployedTemplate, deloyedTemplateError := vmwareClient.GetTemplateByName(templateName)
-	if deloyedTemplateError != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to get deployed template (%v)", deloyedTemplateError))
+	deployedTemplate, deployedTemplateError := vmwareClient.GetTemplateByName(templateName)
+	if deployedTemplateError != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to get deployed template (%v)", deployedTemplateError))
 	}
+
 	tryRemoveNetworks(ctx, deployedTemplate)
 
-	return &common.Identifier{
-		Value: deployedTemplate.UUID(ctx),
+	return &template.TemplateResponse{
+		Identifier: &common.Identifier{
+			Value: deployedTemplate.UUID(ctx),
+		},
+		Accounts: accounts,
 	}, nil
 }
 

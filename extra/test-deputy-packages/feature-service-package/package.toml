@@ -1,0 +1,18 @@
+[package]
+name = "test-service"
+description = "This is a simple echo command package"
+version = "0.5.0"
+authors = ["Rait Rotšan rait.rotsan@cr14.ee"]
+license = "MIT"
+readme = "src/readme.md"
+
+
+[content]
+type = "feature"
+
+[feature]
+type = "Service"
+action = "/tmp/test-folder/echo.sh"
+assets = [
+     ["src/echo.sh", "/tmp/test-folder/", "554"],
+]
