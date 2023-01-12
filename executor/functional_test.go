@@ -45,12 +45,12 @@ func startServer(timeout time.Duration) (configuration library.Configuration) {
 func createFeatureClient(t *testing.T, serverPath string) feature.FeatureServiceClient {
 	connection, connectionError := grpc.Dial(serverPath, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if connectionError != nil {
-		t.Fatalf("did not connect: %v", connectionError)
+		t.Fatalf("Failed to connect to grpc server: %v", connectionError)
 	}
 	t.Cleanup(func() {
 		connectionError := connection.Close()
 		if connectionError != nil {
-			t.Fatalf("Failed to close connection: %v", connectionError)
+			t.Fatalf("Failed to close grpc connection: %v", connectionError)
 		}
 	})
 	return feature.NewFeatureServiceClient(connection)
@@ -59,14 +59,13 @@ func createFeatureClient(t *testing.T, serverPath string) feature.FeatureService
 func createConditionClient(t *testing.T, serverPath string) condition.ConditionServiceClient {
 	connection, connectionError := grpc.Dial(serverPath, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if connectionError != nil {
-		t.Fatalf("did not connect: %v", connectionError)
+		t.Fatalf("Failed to connect to grpc server: %v", connectionError)
 	}
 
 	t.Cleanup(func() {
-		fmt.Println("Conditioner Cleanup")
 		connectionError := connection.Close()
 		if connectionError != nil {
-			t.Fatalf("Failed to close connection: %v", connectionError)
+			t.Fatalf("Failed to close grpc connection: %v", connectionError)
 		}
 	})
 
