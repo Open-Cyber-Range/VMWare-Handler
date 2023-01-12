@@ -272,14 +272,11 @@ func (server *conditionerServer) Stream(identifier *common.Identifier, stream co
 			return err
 		}
 
-		var conditionValue float64
-		if commandReturnValue != "" {
-			conditionValue, err = strconv.ParseFloat(commandReturnValue, 32)
-			if err != nil {
-				return status.Error(codes.Internal, fmt.Sprintf("Error converting PackageActionValue: %v", err))
-			}
+		conditionValue, err := strconv.ParseFloat(commandReturnValue, 32)
+		if err != nil {
+			return status.Error(codes.Internal, fmt.Sprintf("Error converting Condition return value to float: %v", err))
 		}
-		log.Tracef("Condition ID '%v' returned '%v'", identifier.GetValue(), commandReturnValue)
+		log.Tracef("Condition ID '%v' returned '%v'", identifier.GetValue(), conditionValue)
 
 		err = stream.Send(&condition.ConditionStreamResponse{
 			Response:           identifier.GetValue(),
