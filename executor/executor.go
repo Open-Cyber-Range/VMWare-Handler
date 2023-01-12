@@ -305,7 +305,7 @@ func (server *conditionerServer) Delete(ctx context.Context, identifier *common.
 	if err = server.Mutex.lock(); err != nil {
 		return new(emptypb.Empty), err
 	}
-	if err = vmwareClient.DeleteDeployedFiles(ctx, &executorContainer); err != nil {
+	if err = vmwareClient.DeleteUploadedFiles(ctx, &executorContainer); err != nil {
 		return nil, err
 	}
 	if err := server.Mutex.unlock(); err != nil {
@@ -338,8 +338,14 @@ func (server *featurerServer) Create(ctx context.Context, featureDeployment *fea
 
 	featureId := uuid.New().String()
 
+	if err = server.Mutex.lock(); err != nil {
+		return nil, err
+	}
 	assetFilePaths, err := guestManager.CopyAssetsToVM(ctx, packageFeature.Assets, packagePath)
 	if err != nil {
+		return nil, err
+	}
+	if err := server.Mutex.unlock(); err != nil {
 		return nil, err
 	}
 
@@ -388,7 +394,7 @@ func (server *featurerServer) Delete(ctx context.Context, identifier *common.Ide
 	if err = server.Mutex.lock(); err != nil {
 		return new(emptypb.Empty), err
 	}
-	if err = vmwareClient.DeleteDeployedFiles(ctx, &executorContainer); err != nil {
+	if err = vmwareClient.DeleteUploadedFiles(ctx, &executorContainer); err != nil {
 		return nil, err
 	}
 	if err := server.Mutex.unlock(); err != nil {

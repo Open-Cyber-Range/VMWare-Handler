@@ -305,7 +305,7 @@ func (client *VMWareClient) CheckVMLinks(ctx context.Context, vmNetworks []types
 	return nil
 }
 
-func (vmwareClient *VMWareClient) DeleteDeployedFiles(ctx context.Context, executorContainer *ExecutorContainer) error {
+func (vmwareClient *VMWareClient) DeleteUploadedFiles(ctx context.Context, executorContainer *ExecutorContainer) error {
 	virtualMachine, err := vmwareClient.GetVirtualMachineByUUID(ctx, executorContainer.VMID)
 	if err != nil {
 		return status.Error(codes.Internal, fmt.Sprintf("Error getting VM by UUID: %v", err))
