@@ -212,6 +212,27 @@ func TestFeatureServiceDeploymentAndDeletionOnLinux(t *testing.T) {
 
 }
 
+func TestFeaturePackageWithALotOfFiles(t *testing.T) {
+	t.Parallel()
+
+	packageName := "feature-plethora"
+
+	deployment := &feature.Feature{
+		Name:             "test-feature",
+		VirtualMachineId: "42127656-e390-d6a8-0703-c3425dbc8052",
+		FeatureType:      feature.FeatureType_configuration,
+		Source: &common.Source{
+			Name:    "feature-plethora",
+			Version: "*",
+		},
+		Account: &common.Account{Username: "root", Password: "password"},
+	}
+	_, err := createFeatureDeploymentRequest(t, deployment, packageName)
+	if err != nil {
+		t.Fatalf("Error creating Test Feature Deployment: %v", err)
+	}
+}
+
 func TestFeatureConfigurationDeploymentAndDeletionOnLinux(t *testing.T) {
 	t.Parallel()
 
