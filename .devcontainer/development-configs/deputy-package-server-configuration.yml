@@ -1,0 +1,7 @@
+host: 0.0.0.0
+port: 8080
+storage_folders:
+  package_folder: /var/opt/deputy/deputy-package-server/package
+  toml_folder: /var/opt/deputy/deputy-package-server/tomls
+  readme_folder: /var/opt/deputy/deputy-package-server/readme
+database_url: mysql://mysql_user:mysql_pass@vmware-handler-mariadb:3308/handlers

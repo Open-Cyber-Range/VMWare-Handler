@@ -339,7 +339,7 @@ func TestNodeCreation(t *testing.T) {
 	}
 }
 
-func TestSwitcherCapability(t *testing.T) {
+func TestMachinerCapability(t *testing.T) {
 	t.Parallel()
 	serverConfiguration := startServer(time.Second * 3)
 	ctx := context.Background()

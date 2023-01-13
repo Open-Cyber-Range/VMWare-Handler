@@ -8,6 +8,8 @@ image: $DOCKER_REGISTRY_PULL/vmware-handler-builder
 services:
   - name: $DOCKER_REGISTRY_PULL/deputy-package-server-repository-combo
     alias: deputy-package-server-combo
+  - name: $DOCKER_REGISTRY_PULL/featurer-redis-server
+    alias: featurer-redis-server
 
 variables:
   REPO_NAME: code.ocr.cr14.net/open-cyber-range/public/vmware-node-deployer
@@ -31,6 +33,8 @@ test:
       TEST_NSXT_AUTH=$OCR_TEST_NSXT_AUTH
       TEST_NSXT_TRANSPORT_ZONE_NAME=$OCR_TEST_NSXT_TRANSPORT_ZONE_NAME
       TEST_VMWARE_DATASTORE_PATH=$OCR_TEST_VMWARE_DATASTORE_PATH
+      TEST_REDIS_ADDRESS=$OCR_TEST_REDIS_ADDRESS
+      TEST_REDIS_PASSWORD=$OCR_TEST_REDIS_PASSWORD
       make test
   only:
     - develop

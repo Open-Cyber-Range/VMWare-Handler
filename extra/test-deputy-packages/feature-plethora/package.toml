@@ -1,0 +1,30 @@
+[package]
+name = "feature-plethora"
+description = "This is a test package with a lot of files"
+version = "0.2.2"
+authors = ["Rait Rotšan rait.rotsan@cr14.ee"]
+license = "MIT"
+readme = "src/readme.md"
+
+[content]
+type = "feature"
+
+[feature]
+type = "Configuration"
+assets = [
+     ["src/config copy 01.yml", "/tmp/test-folder/", "554"],
+     ["src/config copy 02.yml", "/tmp/test-folder/", "554"],
+     ["src/config copy 03.yml", "/tmp/test-folder/", "554"],
+     ["src/config copy 04.yml", "/tmp/test-folder/", "554"],
+     ["src/config copy 05.yml", "/tmp/test-folder/", "554"],
+     ["src/config copy 06.yml", "/tmp/test-folder/sub-test-folder1/", "554"],
+     ["src/config copy 07.yml", "/tmp/test-folder/sub-test-folder1/", "554"],
+     ["src/config copy 08.yml", "/tmp/test-folder/sub-test-folder1/", "554"],
+     ["src/config copy 09.yml", "/tmp/test-folder/sub-test-folder1/", "554"],
+     ["src/config copy 10.yml", "/tmp/test-folder/sub-test-folder1/", "554"],
+     ["src/config copy 11.yml", "/tmp/test-folder/sub-test-folder2/", "554"],
+     ["src/config copy 12.yml", "/tmp/test-folder/sub-test-folder2/", "554"],
+     ["src/config copy 13.yml", "/tmp/test-folder/sub-test-folder2/", "554"],
+     ["src/config copy 14.yml", "/tmp/test-folder/sub-test-folder2/", "554"],
+     ["src/config copy 15.yml", "/tmp/test-folder/sub-test-folder2/", "554"],
+]

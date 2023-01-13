@@ -1,2 +1,3 @@
 deputy-packages
 deputy-repository
+/development-configs/redis-configuration.conf

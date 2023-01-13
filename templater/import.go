@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"path"
 
 	"github.com/vmware/govmomi/govc/importx"
@@ -25,7 +25,7 @@ func (templateDeployment *TemplateDeployment) readOvf(ovaArchive *Archive) (ovfB
 	}
 	defer reader.Close()
 
-	ovfBytes, err = ioutil.ReadAll(reader)
+	ovfBytes, err = io.ReadAll(reader)
 	return
 }
 
