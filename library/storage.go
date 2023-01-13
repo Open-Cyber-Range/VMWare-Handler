@@ -15,6 +15,8 @@ type ExecutorContainer struct {
 	VMID      string
 	Auth      types.NamePasswordAuthentication
 	FilePaths []string
+	Command   string
+	Interval  int32
 }
 
 type Account struct {

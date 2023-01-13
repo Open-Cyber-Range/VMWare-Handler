@@ -71,10 +71,10 @@ func (vmwareClient *VMWareClient) CreateGuestManagers(ctx context.Context, vmId 
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Error getting VM by UUID, %v", err))
 	}
 
-	vmToolsRunning, err := CheckVMStatus(ctx, virtualMachine)
+	isVmToolsRunning, err := CheckVMStatus(ctx, virtualMachine)
 	if err != nil {
 		return nil, err
-	} else if !vmToolsRunning {
+	} else if !isVmToolsRunning {
 		err = AwaitVMToolsToComeOnline(ctx, virtualMachine)
 		if err != nil {
 			return nil, err
@@ -305,6 +305,27 @@ func (client *VMWareClient) CheckVMLinks(ctx context.Context, vmNetworks []types
 	return nil
 }
 
+func (vmwareClient *VMWareClient) DeleteUploadedFiles(ctx context.Context, executorContainer *ExecutorContainer) error {
+	virtualMachine, err := vmwareClient.GetVirtualMachineByUUID(ctx, executorContainer.VMID)
+	if err != nil {
+		return status.Error(codes.Internal, fmt.Sprintf("Error getting VM by UUID: %v", err))
+	}
+	operationsManager := guest.NewOperationsManager(virtualMachine.Client(), virtualMachine.Reference())
+
+	fileManager, err := operationsManager.FileManager(ctx)
+	if err != nil {
+		return status.Error(codes.Internal, fmt.Sprintf("Error creating FileManager: %v", err))
+	}
+
+	for _, targetFile := range executorContainer.FilePaths {
+		if err = fileManager.DeleteFile(ctx, &executorContainer.Auth, string(targetFile)); err != nil {
+			return status.Error(codes.Internal, fmt.Sprintf("Error deleting file: %v", err))
+		}
+		log.Infof("Deleted %v", targetFile)
+	}
+	return nil
+}
+
 func normalizePackageTargetPath(sourcePath string, destinationPath string) string {
 
 	const unixPathSeparator = "/"
@@ -337,8 +358,6 @@ func sendFileToVM(url string, filePath string) (err error) {
 	}
 	if response.StatusCode != 200 {
 		return status.Error(codes.Internal, fmt.Sprintf("Error while uploading file: %v", response.Status))
-	} else {
-		log.Printf("Successfully uploaded file to vm")
 	}
 	return err
 }
@@ -388,6 +407,7 @@ func createFileAttributesByOsFamily(guestOsFamily GuestOSFamily, filePermissions
 
 func (guestManager *GuestManager) FindGuestOSFamily(ctx context.Context) (GuestOSFamily, error) {
 	var vmProperties mo.VirtualMachine
+
 	guestManager.VirtualMachine.Properties(ctx, guestManager.VirtualMachine.Reference(), []string{}, &vmProperties)
 
 	matchedFamily, successful_match := parseOsFamily(vmProperties.Guest.GuestFamily)
@@ -413,24 +433,30 @@ func (guestManager *GuestManager) GetVMLogContents(ctx context.Context, vmLogPat
 	if err != nil {
 		return "", status.Error(codes.Internal, fmt.Sprintf("Error opening log file, %v", err))
 	}
+	trimmedLog := strings.TrimSuffix(string(logContent), "\n")
 
-	return string(logContent), nil
+	if err = guestManager.FileManager.DeleteFile(ctx, guestManager.Auth, vmLogPath); err != nil {
+		return "", status.Error(codes.Internal, fmt.Sprintf("Error deleting log file: %v", err))
+	}
+	return trimmedLog, nil
 }
 
 func (guestManager *GuestManager) AwaitProcessCompletion(ctx context.Context, processID int64) (bool, error) {
 	for {
-		log.Infof("Program running. PID: %v", processID)
+		log.Tracef("Program running. PID: %v", processID)
+
 		active_process, err := guestManager.ProcessManager.ListProcesses(ctx, guestManager.Auth, []int64{processID})
 		if err != nil {
 			return false, status.Error(codes.Internal, fmt.Sprintf("Error listing VM process' %v", err))
 		}
 
-		time.Sleep(2000 * time.Millisecond)
+		time.Sleep(200 * time.Millisecond)
 
+		vmUUID := guestManager.VirtualMachine.UUID(ctx)
 		exitCode := active_process[0].ExitCode
 		regexFail, _ := regexp.Compile("[1-9]+")
 		if regexFail.MatchString(string(exitCode)) {
-			return false, status.Error(codes.Internal, fmt.Sprintf("Program encountered an error, code: %v", exitCode))
+			return false, status.Error(codes.Internal, fmt.Sprintf("Error: VM UUID: `%v` PID: `%v` exit code: %v", vmUUID, processID, exitCode))
 
 		}
 
@@ -438,7 +464,7 @@ func (guestManager *GuestManager) AwaitProcessCompletion(ctx context.Context, pr
 		regexSuccess, _ := regexp.Compile("[^0-9]+")
 		successCheck := regexSuccess.MatchString(string(exitCode))
 		if successCheck && processEndTime != nil {
-			log.Infof("Program %v completed with success", processID)
+			log.Tracef("VM UUID: `%v` PID: `%v` exit code: %v", vmUUID, processID, exitCode)
 			break
 		}
 	}
@@ -482,6 +508,7 @@ func (guestManager *GuestManager) ExecutePackageAction(ctx context.Context, acti
 		EnvVariables:     []string{},
 	}
 
+	log.Tracef("Starting program: %v", action)
 	processID, err := guestManager.ProcessManager.StartProgram(ctx, guestManager.Auth, programSpec)
 	if err != nil {
 		return "", status.Error(codes.Internal, fmt.Sprintf("Error starting program, %v", err))
@@ -490,14 +517,18 @@ func (guestManager *GuestManager) ExecutePackageAction(ctx context.Context, acti
 	if processID > 0 {
 		err = guestManager.AwaitProcessWithTimeout(ctx, processID, action)
 		if err != nil {
-			return
+			vmLog, logErr := guestManager.GetVMLogContents(ctx, vmLogPath)
+			if logErr != nil {
+				return vmLog, logErr
+			}
+			return vmLog, err
 		}
 	}
 	vmLog, err = guestManager.GetVMLogContents(ctx, vmLogPath)
 	if err != nil {
 		return
 	}
-	log.Infof("PID %v output: %v", processID, vmLog)
+	log.Tracef("PID %v output: %v", processID, vmLog)
 	return
 }
 
@@ -527,7 +558,7 @@ func (guestManager *GuestManager) getAssetSizeAndAttributes(ctx context.Context,
 	return fileInfo.Size(), fileAttributes, nil
 }
 
-func (guestManager *GuestManager) CopyAssetsToVM(ctx context.Context, assets [][]string, packagePath string, storage Storage[ExecutorContainer], executorId string) (err error) {
+func (guestManager *GuestManager) CopyAssetsToVM(ctx context.Context, assets [][]string, packagePath string) (assetFilePaths []string, err error) {
 	for _, asset := range assets {
 
 		sourcePath := path.Join(packagePath, filepath.FromSlash(asset[0]))
@@ -535,29 +566,34 @@ func (guestManager *GuestManager) CopyAssetsToVM(ctx context.Context, assets [][
 
 		fileSize, fileAttributes, err := guestManager.getAssetSizeAndAttributes(ctx, sourcePath, asset)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		normalizedTargetPath := normalizePackageTargetPath(sourcePath, targetPath)
 
 		err = guestManager.FileManager.MakeDirectory(ctx, guestManager.Auth, path.Dir(normalizedTargetPath), true)
 		if err != nil && !strings.HasSuffix(err.Error(), "already exists") {
-			return status.Error(codes.Internal, fmt.Sprintf("Error creating VM directories, %v", err))
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Error creating VM directories, %v", err))
 		}
 
 		transferUrl, err := guestManager.FileManager.InitiateFileTransferToGuest(ctx, guestManager.Auth, normalizedTargetPath, fileAttributes, fileSize, true)
 		if err != nil {
-			return status.Error(codes.Internal, fmt.Sprintf("Error creating transfer URL, %v", err))
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Error creating transfer URL, %v", err))
 		}
 
 		if err = sendFileToVM(transferUrl, sourcePath); err != nil {
-			return err
+			return nil, err
 		}
 
-		storage.Container.FilePaths = append(storage.Container.FilePaths, normalizedTargetPath)
-		if err = storage.Update(ctx, executorId); err != nil {
-			return err
+		splitFilepath := strings.Split(normalizedTargetPath, "/")
+		if len(splitFilepath) < 2 {
+			splitFilepath = strings.Split(normalizedTargetPath, "\\")
 		}
+		filename := splitFilepath[len(splitFilepath)-1]
+
+		log.Infof("Successfully uploaded '%v' to VM UUID '%v'", filename, guestManager.VirtualMachine.UUID(ctx))
+
+		assetFilePaths = append(assetFilePaths, normalizedTargetPath)
 	}
-	return nil
+	return assetFilePaths, nil
 }
