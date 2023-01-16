@@ -1,3 +1,21 @@
+ranger-vmware-handlers (4.0.1) stretch; urgency=medium
+
+  * Fix erroneous changelog entry
+
+ -- Rait Rotšan <developers@cr14.ee>  Fri, 13 Jan 2023 08:11:22 +0300
+
+ranger-vmware-handlers (4.0.0) stretch; urgency=medium
+
+  * Add Executor handler that will handle VMware Guest file and process related packages
+  * Add Feature and Condition type package support for Executor
+  * Add Redis server for storing deployed Executor packages
+  * Add Redis based Mutex lock for VMware Guest API requests
+  * Add VM Account information to Templater Create return message
+  * InfraSegments are now deleted with the Force flag
+  * Remove index-repository from devcontainer and its config references
+
+ -- Rait Rotšan <developers@cr14.ee>  Fri, 13 Jan 2023 07:28:23 +0300
+ 
 ranger-vmware-handlers (3.0.2) stretch; urgency=medium
 
   * Use only checksum as template name in vshpere
