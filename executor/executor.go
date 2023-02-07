@@ -205,6 +205,9 @@ func (server *conditionerServer) Create(ctx context.Context, conditionDeployment
 	var assetFilePaths []string
 
 	if isSourceDeployment {
+		if err = server.Mutex.lock(); err != nil {
+			return nil, err
+		}
 		packagePath, packageCondition, err := getConditionPackageInfo(conditionDeployment)
 		if err != nil {
 			return nil, err
@@ -213,9 +216,6 @@ func (server *conditionerServer) Create(ctx context.Context, conditionDeployment
 		commandAction = packageCondition.Action
 		interval = int32(packageCondition.Interval)
 
-		if err = server.Mutex.lock(); err != nil {
-			return nil, err
-		}
 		assetFilePaths, err = guestManager.CopyAssetsToVM(ctx, packageCondition.Assets, packagePath)
 		if err != nil {
 			return nil, err
@@ -328,6 +328,10 @@ func (server *featurerServer) Create(ctx context.Context, featureDeployment *fea
 		return nil, err
 	}
 
+	if err = server.Mutex.lock(); err != nil {
+		return nil, err
+	}
+
 	packagePath, packageFeature, err := getFeaturePackageInfo(featureDeployment)
 	if err != nil {
 		return nil, err
@@ -335,9 +339,6 @@ func (server *featurerServer) Create(ctx context.Context, featureDeployment *fea
 
 	featureId := uuid.New().String()
 
-	if err = server.Mutex.lock(); err != nil {
-		return nil, err
-	}
 	assetFilePaths, err := guestManager.CopyAssetsToVM(ctx, packageFeature.Assets, packagePath)
 	if err != nil {
 		return nil, err
