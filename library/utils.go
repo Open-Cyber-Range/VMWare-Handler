@@ -90,6 +90,7 @@ func DownloadPackage(name string, version string) (packagePath string, err error
 	packageBasePath, err := createRandomPackagePath()
 
 	if err != nil {
+		err = fmt.Errorf("error creating tempDir for DownloadPackage: %v", err)
 		return
 	}
 
