@@ -237,6 +237,9 @@ func (server *templaterServer) Create(ctx context.Context, source *common.Source
 		if err != nil {
 			return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to get VM accounts(%v)", err))
 		}
+		if err = library.CleanupTempPackage(packagePath); err != nil {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to cleanup tmp Templater package(%v)", err))
+		}
 	}
 
 	deployedTemplate, deployedTemplateError := vmwareClient.GetTemplateByName(templateName)
