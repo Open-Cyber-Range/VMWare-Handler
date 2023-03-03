@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -27,6 +28,7 @@ import (
 const vmToolsTimeoutSec int = 120
 const vmToolsSleepSec int = 5
 const vmToolsCheckTries int = vmToolsTimeoutSec / vmToolsSleepSec
+const tmpPackagePrefix string = "deputy-package"
 
 func CreateRandomString(length int) string {
 	rand.Seed(time.Now().UnixNano())
@@ -83,7 +85,7 @@ func SanitizeToCompatibleName(input string) string {
 }
 
 func createRandomPackagePath() (string, error) {
-	return os.MkdirTemp("/tmp", "deputy-package")
+	return os.MkdirTemp("/tmp", tmpPackagePrefix)
 }
 
 func DownloadPackage(name string, version string) (packagePath string, err error) {
@@ -115,6 +117,20 @@ func DownloadPackage(name string, version string) (packagePath string, err error
 	log.Infof("Downloaded package to: %v", packageDirectory)
 
 	return packageDirectory, nil
+}
+
+func CleanupTempPackage(packagePath string) (err error) {
+	packageBasePath := filepath.Clean(filepath.Join(packagePath, ".."))
+	if !strings.Contains(packageBasePath, tmpPackagePrefix) {
+		log.Warnf("Temp Package folder %v was not cleaned up, folder did not contain prefix %v", packageBasePath, tmpPackagePrefix)
+		return nil
+	}
+	if err := os.RemoveAll(packageBasePath); err != nil {
+		return fmt.Errorf("error deleting temp package folder %v", err)
+	}
+
+	log.Infof("Deleted temp folder %v", packageBasePath)
+	return nil
 }
 
 func GetPackageChecksum(name string, version string) (checksum string, err error) {
