@@ -31,6 +31,9 @@ var testConfiguration = library.Configuration{
 	RedisPassword:      os.Getenv("TEST_REDIS_PASSWORD"),
 }
 
+const LinuxTestVirtualMachineUUID = "4212b4a9-dd30-45cc-3667-b72c8dd97558"
+const WindowsTestVirtualMachineUUID = "42122b12-3a17-c0fb-eb3c-7cd935bb595b"
+
 func startServer(timeout time.Duration) (configuration library.Configuration) {
 	configuration = testConfiguration
 	rand.Seed(time.Now().UnixNano())
@@ -156,7 +159,7 @@ func TestConditionerWithCommand(t *testing.T) {
 
 	deployment := &condition.Condition{
 		Name:             "command-condition",
-		VirtualMachineId: "4212b4a9-dd30-45cc-3667-b72c8dd97558",
+		VirtualMachineId: LinuxTestVirtualMachineUUID,
 		Account:          &common.Account{Username: "root", Password: "password"},
 		Command:          "/prebaked-conditions/divider.sh",
 		Interval:         1,
@@ -176,7 +179,7 @@ func TestConditionerWithSourcePackage(t *testing.T) {
 
 	deployment := &condition.Condition{
 		Name:             "source-condition",
-		VirtualMachineId: "4212b4a9-dd30-45cc-3667-b72c8dd97558",
+		VirtualMachineId: LinuxTestVirtualMachineUUID,
 		Account:          &common.Account{Username: "root", Password: "password"},
 		Source: &common.Source{
 			Name:    "test-condition",
@@ -194,7 +197,7 @@ func TestFeatureServiceDeploymentAndDeletionOnLinux(t *testing.T) {
 
 	deployment := &feature.Feature{
 		Name:             "test-feature",
-		VirtualMachineId: "42127656-e390-d6a8-0703-c3425dbc8052",
+		VirtualMachineId: LinuxTestVirtualMachineUUID,
 		FeatureType:      feature.FeatureType_service,
 		Source: &common.Source{
 			Name:    "test-service",
@@ -218,7 +221,7 @@ func TestFeaturePackageWithALotOfFiles(t *testing.T) {
 
 	deployment := &feature.Feature{
 		Name:             "test-feature",
-		VirtualMachineId: "42127656-e390-d6a8-0703-c3425dbc8052",
+		VirtualMachineId: LinuxTestVirtualMachineUUID,
 		FeatureType:      feature.FeatureType_configuration,
 		Source: &common.Source{
 			Name:    "feature-plethora",
@@ -239,7 +242,7 @@ func TestFeatureConfigurationDeploymentAndDeletionOnLinux(t *testing.T) {
 
 	deployment := &feature.Feature{
 		Name:             "test-feature",
-		VirtualMachineId: "42127656-e390-d6a8-0703-c3425dbc8052",
+		VirtualMachineId: LinuxTestVirtualMachineUUID,
 		FeatureType:      feature.FeatureType_configuration,
 		Source: &common.Source{
 			Name:    "test-configuration",
@@ -260,7 +263,7 @@ func TestFeatureServiceDeploymentAndDeletionOnWindows(t *testing.T) {
 
 	deployment := &feature.Feature{
 		Name:             "test-feature",
-		VirtualMachineId: "42122b12-3a17-c0fb-eb3c-7cd935bb595b",
+		VirtualMachineId: WindowsTestVirtualMachineUUID,
 		FeatureType:      feature.FeatureType_service,
 		Source: &common.Source{
 			Name:    "test-windows-service",
