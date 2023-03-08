@@ -109,8 +109,8 @@ func (mutex *mutexWrapper) unlock() (err error) {
 	return
 }
 
-func unmarshalFeature(packegeDataMap *map[string]interface{}) (feature Feature, err error) {
-	featureInfo := (*packegeDataMap)["feature"]
+func unmarshalFeature(packageDataMap *map[string]interface{}) (feature Feature, err error) {
+	featureInfo := (*packageDataMap)["feature"]
 	infoJson, err := json.Marshal(featureInfo)
 	if err != nil {
 		return Feature{}, err
@@ -121,8 +121,8 @@ func unmarshalFeature(packegeDataMap *map[string]interface{}) (feature Feature, 
 	return
 }
 
-func unmarshalCondition(packegeDataMap *map[string]interface{}) (condition Condition, err error) {
-	conditionInfo := (*packegeDataMap)["condition"]
+func unmarshalCondition(packageDataMap *map[string]interface{}) (condition Condition, err error) {
+	conditionInfo := (*packageDataMap)["condition"]
 	infoJson, err := json.Marshal(conditionInfo)
 	if err != nil {
 		return Condition{}, err
@@ -219,6 +219,9 @@ func (server *conditionerServer) Create(ctx context.Context, conditionDeployment
 		assetFilePaths, err = guestManager.CopyAssetsToVM(ctx, packageCondition.Assets, packagePath)
 		if err != nil {
 			return nil, err
+		}
+		if err = library.CleanupTempPackage(packagePath); err != nil {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Error during temp Condition package cleanup (%v)", err))
 		}
 		if err := server.Mutex.unlock(); err != nil {
 			return nil, err
@@ -343,6 +346,9 @@ func (server *featurerServer) Create(ctx context.Context, featureDeployment *fea
 	if err != nil {
 		return nil, err
 	}
+	if err = library.CleanupTempPackage(packagePath); err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Error during temp Feature package cleanup (%v)", err))
+	}
 	if err := server.Mutex.unlock(); err != nil {
 		return nil, err
 	}
@@ -423,8 +429,8 @@ func RealMain(configuration *library.Configuration) {
 		Password: configuration.RedisPassword,
 	})
 	redisPool := goredis.NewPool(redisClient)
-	mutexname := "my-cool-mutex"
-	mutex := redsync.New(redisPool).NewMutex(mutexname)
+	mutexName := "my-cool-mutex"
+	mutex := redsync.New(redisPool).NewMutex(mutexName)
 
 	feature.RegisterFeatureServiceServer(grpcServer, &featurerServer{
 		Client:        govmomiClient,
