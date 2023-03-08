@@ -1,3 +1,9 @@
+ranger-vmware-handlers (4.0.2) stretch; urgency=medium
+
+  * Fix temp folder creation bug for Executor
+
+ -- Rait Rotšan <developers@cr14.ee>  Wed, 13 Feb 2023 09:50:01 +0300
+
 ranger-vmware-handlers (4.0.1) stretch; urgency=medium
 
   * Fix erroneous changelog entry
