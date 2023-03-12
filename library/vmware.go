@@ -450,8 +450,6 @@ func (guestManager *GuestManager) AwaitProcessCompletion(ctx context.Context, pr
 			return false, status.Error(codes.Internal, fmt.Sprintf("Error listing VM process' %v", err))
 		}
 
-		time.Sleep(200 * time.Millisecond)
-
 		vmUUID := guestManager.VirtualMachine.UUID(ctx)
 		exitCode := active_process[0].ExitCode
 		regexFail, _ := regexp.Compile("[1-9]+")
