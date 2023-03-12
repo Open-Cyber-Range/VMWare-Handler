@@ -64,7 +64,7 @@ func (mutex *mutexWrapper) lock() (err error) {
 	successChannel := make(chan bool)
 	errorChannel := make(chan error)
 
-	timeout := 360 * time.Second
+	timeout := 30 * 60 * time.Second
 
 	go func() {
 		err = mutex.Mutex.Lock()
