@@ -12,6 +12,7 @@ import (
 	"github.com/open-cyber-range/vmware-handler/grpc/common"
 	"github.com/open-cyber-range/vmware-handler/grpc/condition"
 	"github.com/open-cyber-range/vmware-handler/grpc/feature"
+	"github.com/open-cyber-range/vmware-handler/grpc/inject"
 	"github.com/open-cyber-range/vmware-handler/library"
 	log "github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
@@ -75,6 +76,20 @@ func createConditionClient(t *testing.T, serverPath string) condition.ConditionS
 	return condition.NewConditionServiceClient(connection)
 }
 
+func createInjectClient(t *testing.T, serverPath string) inject.InjectServiceClient {
+	connection, connectionError := grpc.Dial(serverPath, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if connectionError != nil {
+		t.Fatalf("Failed to connect to grpc server: %v", connectionError)
+	}
+	t.Cleanup(func() {
+		connectionError := connection.Close()
+		if connectionError != nil {
+			t.Fatalf("Failed to close grpc connection: %v", connectionError)
+		}
+	})
+	return inject.NewInjectServiceClient(connection)
+}
+
 func createFeatureDeploymentRequest(t *testing.T, deployment *feature.Feature, packageName string) (response *feature.FeatureResponse, err error) {
 	configuration := startServer(3 * time.Second)
 	ctx := context.Background()
@@ -101,6 +116,30 @@ func createFeatureDeploymentRequest(t *testing.T, deployment *feature.Feature, p
 			t.Fatalf("Test Feature Service produced no logs and was likely not executed")
 		}
 	}
+	return
+}
+
+func createInjectDeploymentRequest(t *testing.T, deployment *inject.Inject, packageName string) (identifier *common.Identifier, err error) {
+	configuration := startServer(3 * time.Second)
+	ctx := context.Background()
+	gRPCClient := createInjectClient(t, configuration.ServerAddress)
+
+	if err := library.PublishTestPackage(packageName); err != nil {
+		t.Fatalf("Failed to upload test inject package: %v", err)
+	}
+
+	identifier, err = gRPCClient.Create(ctx, deployment)
+	if err != nil {
+		t.Fatalf("Test Create request error: %v", err)
+	}
+
+	log.Infof("Inject Create finished, id: %v", identifier.GetValue())
+	_, err = gRPCClient.Delete(ctx, identifier)
+	if err != nil {
+		t.Fatalf("Test Delete request error: %v", err)
+	}
+	log.Infof("Inject delete finished")
+
 	return
 }
 
@@ -171,9 +210,9 @@ func TestConditionerWithCommand(t *testing.T) {
 func TestConditionerWithSourcePackage(t *testing.T) {
 	t.Parallel()
 
-	packageName := "condition-package"
+	packageFolderName := "condition-package"
 
-	if err := library.PublishTestPackage(packageName); err != nil {
+	if err := library.PublishTestPackage(packageFolderName); err != nil {
 		t.Fatalf("Test publish failed: %v", err)
 	}
 
@@ -193,7 +232,7 @@ func TestConditionerWithSourcePackage(t *testing.T) {
 func TestFeatureServiceDeploymentAndDeletionOnLinux(t *testing.T) {
 	t.Parallel()
 
-	packageName := "feature-service-package"
+	packageFolderName := "feature-service-package"
 
 	deployment := &feature.Feature{
 		Name:             "test-feature",
@@ -205,7 +244,7 @@ func TestFeatureServiceDeploymentAndDeletionOnLinux(t *testing.T) {
 		},
 		Account: &common.Account{Username: "root", Password: "password"},
 	}
-	response, err := createFeatureDeploymentRequest(t, deployment, packageName)
+	response, err := createFeatureDeploymentRequest(t, deployment, packageFolderName)
 	if err != nil {
 		t.Fatalf("Error creating Test Feature Deployment: %v", err)
 	}
@@ -217,7 +256,7 @@ func TestFeatureServiceDeploymentAndDeletionOnLinux(t *testing.T) {
 func TestFeaturePackageWithALotOfFiles(t *testing.T) {
 	t.Parallel()
 
-	packageName := "feature-plethora"
+	packageFolderName := "feature-plethora"
 
 	deployment := &feature.Feature{
 		Name:             "test-feature",
@@ -229,7 +268,7 @@ func TestFeaturePackageWithALotOfFiles(t *testing.T) {
 		},
 		Account: &common.Account{Username: "root", Password: "password"},
 	}
-	_, err := createFeatureDeploymentRequest(t, deployment, packageName)
+	_, err := createFeatureDeploymentRequest(t, deployment, packageFolderName)
 	if err != nil {
 		t.Fatalf("Error creating Test Feature Deployment: %v", err)
 	}
@@ -238,7 +277,7 @@ func TestFeaturePackageWithALotOfFiles(t *testing.T) {
 func TestFeatureConfigurationDeploymentAndDeletionOnLinux(t *testing.T) {
 	t.Parallel()
 
-	packageName := "feature-config-package"
+	packageFolderName := "feature-config-package"
 
 	deployment := &feature.Feature{
 		Name:             "test-feature",
@@ -250,7 +289,7 @@ func TestFeatureConfigurationDeploymentAndDeletionOnLinux(t *testing.T) {
 		},
 		Account: &common.Account{Username: "root", Password: "password"},
 	}
-	_, err := createFeatureDeploymentRequest(t, deployment, packageName)
+	_, err := createFeatureDeploymentRequest(t, deployment, packageFolderName)
 	if err != nil {
 		t.Fatalf("Error creating Test Feature Deployment: %v", err)
 	}
@@ -259,7 +298,7 @@ func TestFeatureConfigurationDeploymentAndDeletionOnLinux(t *testing.T) {
 func TestFeatureServiceDeploymentAndDeletionOnWindows(t *testing.T) {
 	t.Parallel()
 
-	packageName := "feature-win-service-package"
+	packageFolderName := "feature-win-service-package"
 
 	deployment := &feature.Feature{
 		Name:             "test-feature",
@@ -271,10 +310,30 @@ func TestFeatureServiceDeploymentAndDeletionOnWindows(t *testing.T) {
 		},
 		Account: &common.Account{Username: "user", Password: "password"},
 	}
-	response, err := createFeatureDeploymentRequest(t, deployment, packageName)
+	response, err := createFeatureDeploymentRequest(t, deployment, packageFolderName)
 	if err != nil {
 		t.Fatalf("Error creating Test Feature Deployment: %v", err)
 	}
 
 	log.Infof("Feature output: %#v", response.VmLog)
+}
+
+func TestInjectDeploymentAndDeletionOnLinux(t *testing.T) {
+	t.Parallel()
+
+	packageFolderName := "inject-flag-generator"
+
+	deployment := &inject.Inject{
+		Name:             "test-inject",
+		VirtualMachineId: LinuxTestVirtualMachineUUID,
+		Source: &common.Source{
+			Name:    "flag-generator",
+			Version: "*",
+		},
+		Account: &common.Account{Username: "root", Password: "password"},
+	}
+	_, err := createInjectDeploymentRequest(t, deployment, packageFolderName)
+	if err != nil {
+		t.Fatalf("Error creating Test Feature Deployment: %v", err)
+	}
 }

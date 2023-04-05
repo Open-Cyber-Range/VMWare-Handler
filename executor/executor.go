@@ -18,6 +18,7 @@ import (
 	"github.com/open-cyber-range/vmware-handler/grpc/common"
 	"github.com/open-cyber-range/vmware-handler/grpc/condition"
 	"github.com/open-cyber-range/vmware-handler/grpc/feature"
+	"github.com/open-cyber-range/vmware-handler/grpc/inject"
 	"github.com/open-cyber-range/vmware-handler/library"
 	log "github.com/sirupsen/logrus"
 	"github.com/vmware/govmomi"
@@ -47,6 +48,14 @@ type conditionerServer struct {
 	Mutex         *mutexWrapper
 }
 
+type injectServer struct {
+	inject.UnimplementedInjectServiceServer
+	Client        *govmomi.Client
+	Configuration *library.Configuration
+	Storage       *library.Storage[library.ExecutorContainer]
+	Mutex         *mutexWrapper
+}
+
 type Feature struct {
 	Type   string     `json:"type"`
 	Action string     `json:"action,omitempty"`
@@ -57,6 +66,11 @@ type Condition struct {
 	Interval uint32     `json:"interval,omitempty"`
 	Action   string     `json:"action,omitempty"`
 	Assets   [][]string `json:"assets"`
+}
+
+type Inject struct {
+	Action string     `json:"action,omitempty"`
+	Assets [][]string `json:"assets"`
 }
 
 func (mutex *mutexWrapper) lock() (err error) {
@@ -133,6 +147,18 @@ func unmarshalCondition(packageDataMap *map[string]interface{}) (condition Condi
 	return
 }
 
+	func unmarshalInject(packageDataMap *map[string]interface{}) (inject Inject, err error) {
+		injectInfo := (*packageDataMap)["inject"]
+		infoJson, err := json.Marshal(injectInfo)
+		if err != nil {
+			return Inject{}, err
+		}
+		if err = json.Unmarshal(infoJson, &inject); err != nil {
+			return Inject{}, err
+		}
+		return
+	}
+
 func getPackageContents(packageName string, packageVersion string) (packagePath string, packageTomlContent map[string]interface{}, err error) {
 	packagePath, err = library.DownloadPackage(packageName, packageVersion)
 	if err != nil {
@@ -171,6 +197,21 @@ func getConditionPackageInfo(conditionDeployment *condition.Condition) (packageP
 	condition, err = unmarshalCondition(&packageTomlContent)
 	if err != nil {
 		return "", Condition{}, status.Error(codes.Internal, fmt.Sprintf("Error getting package info: %v", err))
+	}
+	return
+}
+
+func getInjectPackageInfo(injectDeployment *inject.Inject) (packagePath string, inject Inject, err error) {
+	packageName := injectDeployment.GetSource().GetName()
+	packageVersion := injectDeployment.GetSource().GetVersion()
+
+	packagePath, packageTomlContent, err := getPackageContents(packageName, packageVersion)
+	if err != nil {
+		return "", Inject{}, status.Error(codes.NotFound, fmt.Sprintf("Failed to download package: %v", err))
+	}
+	inject, err = unmarshalInject(&packageTomlContent)
+	if err != nil {
+		return "", Inject{}, status.Error(codes.Internal, fmt.Sprintf("Error getting package info: %v", err))
 	}
 	return
 }
@@ -408,6 +449,95 @@ func (server *featurerServer) Delete(ctx context.Context, identifier *common.Ide
 	return new(emptypb.Empty), nil
 }
 
+func (server *injectServer) Create(ctx context.Context, injectDeployment *inject.Inject) (*common.Identifier, error) {
+
+	auth := &types.NamePasswordAuthentication{
+		Username: injectDeployment.GetAccount().GetUsername(),
+		Password: injectDeployment.GetAccount().GetPassword(),
+	}
+	vmwareClient := library.NewVMWareClient(server.Client, server.Configuration.TemplateFolderPath)
+
+	guestManager, err := vmwareClient.CreateGuestManagers(ctx, injectDeployment.GetVirtualMachineId(), auth)
+	if err != nil {
+		return nil, err
+	}
+	if _, err = library.CheckVMStatus(ctx, guestManager.VirtualMachine); err != nil {
+		return nil, err
+	}
+
+	if err = server.Mutex.lock(); err != nil {
+		return nil, err
+	}
+
+	packagePath, inject, err := getInjectPackageInfo(injectDeployment)
+	if err != nil {
+		return nil, err
+	}
+
+	assetFilePaths, err := guestManager.CopyAssetsToVM(ctx, inject.Assets, packagePath)
+	if err != nil {
+		return nil, err
+	}
+	if err = library.CleanupTempPackage(packagePath); err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Error during temp Feature package cleanup (%v)", err))
+	}
+	if err := server.Mutex.unlock(); err != nil {
+		return nil, err
+	}
+
+	currentDeployment := library.ExecutorContainer{
+		VMID:      injectDeployment.GetVirtualMachineId(),
+		Auth:      *guestManager.Auth,
+		FilePaths: assetFilePaths,
+	}
+
+	injectId := uuid.New().String()
+	server.Storage.Container = currentDeployment
+	if err = server.Storage.Create(ctx, injectId); err != nil {
+		return nil, err
+	}
+
+	if err = server.Mutex.lock(); err != nil {
+		return nil, err
+	}
+	if inject.Action != "" {
+		_, err = guestManager.ExecutePackageAction(ctx, inject.Action)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if err := server.Mutex.unlock(); err != nil {
+		return nil, err
+	}
+
+	return &common.Identifier{
+			Value: fmt.Sprintf("%v", injectId),
+		},
+		nil
+}
+
+func (server *injectServer) Delete(ctx context.Context, identifier *common.Identifier) (*emptypb.Empty, error) {
+
+	executorContainer, err := server.Storage.Get(ctx, identifier.GetValue())
+	if err != nil {
+		return nil, err
+	}
+
+	vmwareClient := library.NewVMWareClient(server.Client, server.Configuration.TemplateFolderPath)
+
+	if err = server.Mutex.lock(); err != nil {
+		return new(emptypb.Empty), err
+	}
+	if err = vmwareClient.DeleteUploadedFiles(ctx, &executorContainer); err != nil {
+		return nil, err
+	}
+	if err := server.Mutex.unlock(); err != nil {
+		return new(emptypb.Empty), err
+	}
+
+	return new(emptypb.Empty), nil
+}
+
 func RealMain(configuration *library.Configuration) {
 	ctx := context.Background()
 	govmomiClient, clientError := configuration.CreateClient(ctx)
@@ -446,9 +576,17 @@ func RealMain(configuration *library.Configuration) {
 		Mutex:         &mutexWrapper{Mutex: mutex},
 	})
 
+	inject.RegisterInjectServiceServer(grpcServer, &injectServer{
+		Client:        govmomiClient,
+		Configuration: configuration,
+		Storage:       &storage,
+		Mutex:         &mutexWrapper{Mutex: mutex},
+	})
+
 	capabilityServer := library.NewCapabilityServer([]capability.Capabilities_DeployerTypes{
 		*capability.Capabilities_Feature.Enum(),
 		*capability.Capabilities_Condition.Enum(),
+		*capability.Capabilities_Inject.Enum(),
 	})
 
 	capability.RegisterCapabilityServer(grpcServer, &capabilityServer)
