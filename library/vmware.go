@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/open-cyber-range/vmware-handler/grpc/common"
 	log "github.com/sirupsen/logrus"
 	"github.com/vmware/govmomi"
 	"github.com/vmware/govmomi/find"
@@ -594,4 +595,30 @@ func (guestManager *GuestManager) CopyAssetsToVM(ctx context.Context, assets [][
 		assetFilePaths = append(assetFilePaths, normalizedTargetPath)
 	}
 	return assetFilePaths, nil
+}
+
+func (guestManager *GuestManager) UploadPackageContents(ctx context.Context, source *common.Source) (ExecutorPackage, []string, error) {
+	if _, err := CheckVMStatus(ctx, guestManager.VirtualMachine); err != nil {
+		return ExecutorPackage{}, nil, err
+	}
+
+	packagePath, executorPackage, err := GetPackageMetadata(
+		source.GetName(),
+		source.GetVersion(),
+	)
+	if err != nil {
+		return ExecutorPackage{}, nil, err
+	}
+
+	assets := GetPackageAssets(executorPackage)
+
+	assetFilePaths, err := guestManager.CopyAssetsToVM(ctx, assets, packagePath)
+	if err != nil {
+		return ExecutorPackage{}, nil, err
+	}
+	if err = CleanupTempPackage(packagePath); err != nil {
+		return ExecutorPackage{}, nil, status.Error(codes.Internal, fmt.Sprintf("Error during temp Feature package cleanup (%v)", err))
+	}
+
+	return executorPackage, assetFilePaths, nil
 }

@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-redsync/redsync/v4"
 	"github.com/iancoleman/strcase"
 	"github.com/open-cyber-range/vmware-handler/grpc/capability"
 	log "github.com/sirupsen/logrus"
@@ -29,6 +30,33 @@ const vmToolsTimeoutSec int = 120
 const vmToolsSleepSec int = 5
 const vmToolsCheckTries int = vmToolsTimeoutSec / vmToolsSleepSec
 const tmpPackagePrefix string = "deputy-package"
+const mutexTimeout time.Duration = 30 * 60 * time.Second
+
+type Mutex struct {
+	Mutex *redsync.Mutex
+}
+type Feature struct {
+	Type   string     `json:"type"`
+	Action string     `json:"action,omitempty"`
+	Assets [][]string `json:"assets"`
+}
+
+type Condition struct {
+	Interval uint32     `json:"interval,omitempty"`
+	Action   string     `json:"action,omitempty"`
+	Assets   [][]string `json:"assets"`
+}
+
+type Inject struct {
+	Action string     `json:"action,omitempty"`
+	Assets [][]string `json:"assets"`
+}
+
+type ExecutorPackage struct {
+	Feature   Feature   `json:"feature,omitempty"`
+	Condition Condition `json:"condition,omitempty"`
+	Inject    Inject    `json:"inject,omitempty"`
+}
 
 func CreateRandomString(length int) string {
 	rand.Seed(time.Now().UnixNano())
@@ -228,4 +256,92 @@ func AwaitVMToolsToComeOnline(ctx context.Context, virtualMachine *object.Virtua
 	}
 
 	return status.Error(codes.Internal, fmt.Sprintf("Timeout (%v sec) waiting for VMTools to come online on %v", vmToolsTimeoutSec, vmId))
+}
+
+func GetPackageAssets(executorPackage ExecutorPackage) [][]string {
+	var assets [][]string
+	switch huh := executorPackage; {
+	case len(huh.Feature.Assets) > 0:
+		assets = executorPackage.Feature.Assets
+	case len(huh.Condition.Assets) > 0:
+		assets = executorPackage.Condition.Assets
+	case len(huh.Inject.Assets) > 0:
+		assets = executorPackage.Inject.Assets
+	}
+	return assets
+}
+
+func GetPackageTomlContents(packageName string, packageVersion string) (packagePath string, packageTomlContent map[string]interface{}, err error) {
+	packagePath, err = DownloadPackage(packageName, packageVersion)
+	if err != nil {
+		return "", nil, status.Error(codes.NotFound, fmt.Sprintf("Failed to download package: %v", err))
+	}
+	packageTomlContent, err = GetPackageData(packagePath)
+	if err != nil {
+		log.Errorf("Failed to get package data, %v", err)
+	}
+	return
+}
+
+func GetPackageMetadata(packageName string, packageVersion string) (packagePath string, executorPackage ExecutorPackage, err error) {
+	packagePath, packageTomlContent, err := GetPackageTomlContents(packageName, packageVersion)
+	if err != nil {
+		return "", ExecutorPackage{}, status.Error(codes.NotFound, fmt.Sprintf("Failed to download package: %v", err))
+	}
+	infoJson, err := json.Marshal(&packageTomlContent)
+	if err != nil {
+		return "", ExecutorPackage{}, status.Error(codes.Internal, fmt.Sprintf("Error marshalling Toml contents: %v", err))
+	}
+	if err = json.Unmarshal(infoJson, &executorPackage); err != nil {
+		return "", ExecutorPackage{}, status.Error(codes.Internal, fmt.Sprintf("Error unmarshalling Toml contents: %v", err))
+	}
+	return
+}
+
+func (mutex *Mutex) Lock() (err error) {
+
+	successChannel := make(chan bool)
+	errorChannel := make(chan error)
+
+	go func() {
+		err = mutex.Mutex.Lock()
+		if err != nil {
+			if strings.HasPrefix(err.Error(), "lock already taken") {
+				log.Tracef("Mutex lock taken, trying again")
+				time.Sleep(time.Millisecond * (time.Duration(rand.Intn(100))))
+
+				if err = mutex.Lock(); err != nil {
+					successChannel <- false
+					errorChannel <- err
+				}
+			} else {
+				successChannel <- false
+				errorChannel <- err
+			}
+		}
+		successChannel <- true
+		errorChannel <- nil
+	}()
+	select {
+
+	case isSuccess := <-successChannel:
+		if !isSuccess {
+			err := <-errorChannel
+			if err != nil {
+				return err
+			}
+		}
+
+	case <-time.After(mutexTimeout):
+		return status.Error(codes.Internal, fmt.Sprintf("Mutex lock timed out after %v seconds: %v", mutexTimeout, err))
+	}
+
+	return nil
+}
+
+func (mutex *Mutex) Unlock() (err error) {
+	if isUnlocked, err := mutex.Mutex.Unlock(); !isUnlocked || err != nil {
+		return status.Error(codes.Internal, fmt.Sprintf("Mutex unlock failed: %v", err))
+	}
+	return
 }

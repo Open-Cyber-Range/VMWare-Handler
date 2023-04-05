@@ -2,12 +2,9 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"math/rand"
 	"net"
 	"strconv"
-	"strings"
 	"time"
 
 	goredislib "github.com/go-redis/redis/v8"
@@ -29,15 +26,12 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-type mutexWrapper struct {
-	Mutex *redsync.Mutex
-}
 type featurerServer struct {
 	feature.UnimplementedFeatureServiceServer
 	Client        *govmomi.Client
 	Configuration *library.Configuration
 	Storage       *library.Storage[library.ExecutorContainer]
-	Mutex         *mutexWrapper
+	Mutex         *library.Mutex
 }
 
 type conditionerServer struct {
@@ -45,7 +39,7 @@ type conditionerServer struct {
 	Client        *govmomi.Client
 	Configuration *library.Configuration
 	Storage       *library.Storage[library.ExecutorContainer]
-	Mutex         *mutexWrapper
+	Mutex         *library.Mutex
 }
 
 type injectServer struct {
@@ -53,167 +47,7 @@ type injectServer struct {
 	Client        *govmomi.Client
 	Configuration *library.Configuration
 	Storage       *library.Storage[library.ExecutorContainer]
-	Mutex         *mutexWrapper
-}
-
-type Feature struct {
-	Type   string     `json:"type"`
-	Action string     `json:"action,omitempty"`
-	Assets [][]string `json:"assets"`
-}
-
-type Condition struct {
-	Interval uint32     `json:"interval,omitempty"`
-	Action   string     `json:"action,omitempty"`
-	Assets   [][]string `json:"assets"`
-}
-
-type Inject struct {
-	Action string     `json:"action,omitempty"`
-	Assets [][]string `json:"assets"`
-}
-
-func (mutex *mutexWrapper) lock() (err error) {
-
-	successChannel := make(chan bool)
-	errorChannel := make(chan error)
-
-	timeout := 30 * 60 * time.Second
-
-	go func() {
-		err = mutex.Mutex.Lock()
-		if err != nil {
-			if strings.HasPrefix(err.Error(), "lock already taken") {
-				log.Tracef("Mutex lock taken, trying again")
-				time.Sleep(time.Millisecond * (time.Duration(rand.Intn(100))))
-
-				if err = mutex.lock(); err != nil {
-					successChannel <- false
-					errorChannel <- err
-				}
-			} else {
-				successChannel <- false
-				errorChannel <- err
-			}
-		}
-		successChannel <- true
-		errorChannel <- nil
-	}()
-	select {
-
-	case isSuccess := <-successChannel:
-		if !isSuccess {
-			err := <-errorChannel
-			if err != nil {
-				return err
-			}
-		}
-
-	case <-time.After(timeout):
-		return status.Error(codes.Internal, fmt.Sprintf("Mutex lock timed out after %v seconds: %v", timeout, err))
-	}
-
-	return nil
-}
-
-func (mutex *mutexWrapper) unlock() (err error) {
-	if isUnlocked, err := mutex.Mutex.Unlock(); !isUnlocked || err != nil {
-		return status.Error(codes.Internal, fmt.Sprintf("Mutex unlock failed: %v", err))
-	}
-	return
-}
-
-func unmarshalFeature(packageDataMap *map[string]interface{}) (feature Feature, err error) {
-	featureInfo := (*packageDataMap)["feature"]
-	infoJson, err := json.Marshal(featureInfo)
-	if err != nil {
-		return Feature{}, err
-	}
-	if err = json.Unmarshal(infoJson, &feature); err != nil {
-		return Feature{}, err
-	}
-	return
-}
-
-func unmarshalCondition(packageDataMap *map[string]interface{}) (condition Condition, err error) {
-	conditionInfo := (*packageDataMap)["condition"]
-	infoJson, err := json.Marshal(conditionInfo)
-	if err != nil {
-		return Condition{}, err
-	}
-	if err = json.Unmarshal(infoJson, &condition); err != nil {
-		return Condition{}, err
-	}
-	return
-}
-
-	func unmarshalInject(packageDataMap *map[string]interface{}) (inject Inject, err error) {
-		injectInfo := (*packageDataMap)["inject"]
-		infoJson, err := json.Marshal(injectInfo)
-		if err != nil {
-			return Inject{}, err
-		}
-		if err = json.Unmarshal(infoJson, &inject); err != nil {
-			return Inject{}, err
-		}
-		return
-	}
-
-func getPackageContents(packageName string, packageVersion string) (packagePath string, packageTomlContent map[string]interface{}, err error) {
-	packagePath, err = library.DownloadPackage(packageName, packageVersion)
-	if err != nil {
-		return "", nil, status.Error(codes.NotFound, fmt.Sprintf("Failed to download package: %v", err))
-	}
-	packageTomlContent, err = library.GetPackageData(packagePath)
-	if err != nil {
-		log.Errorf("Failed to get package data, %v", err)
-	}
-	return
-}
-
-func getFeaturePackageInfo(featureDeployment *feature.Feature) (packagePath string, feature Feature, err error) {
-	packageName := featureDeployment.GetSource().GetName()
-	packageVersion := featureDeployment.GetSource().GetVersion()
-
-	packagePath, packageTomlContent, err := getPackageContents(packageName, packageVersion)
-	if err != nil {
-		return "", Feature{}, status.Error(codes.NotFound, fmt.Sprintf("Failed to download package: %v", err))
-	}
-	feature, err = unmarshalFeature(&packageTomlContent)
-	if err != nil {
-		return "", Feature{}, status.Error(codes.Internal, fmt.Sprintf("Error getting package info: %v", err))
-	}
-	return
-}
-
-func getConditionPackageInfo(conditionDeployment *condition.Condition) (packagePath string, condition Condition, err error) {
-	packageName := conditionDeployment.GetSource().GetName()
-	packageVersion := conditionDeployment.GetSource().GetVersion()
-
-	packagePath, packageTomlContent, err := getPackageContents(packageName, packageVersion)
-	if err != nil {
-		return "", Condition{}, status.Error(codes.NotFound, fmt.Sprintf("Failed to download package: %v", err))
-	}
-	condition, err = unmarshalCondition(&packageTomlContent)
-	if err != nil {
-		return "", Condition{}, status.Error(codes.Internal, fmt.Sprintf("Error getting package info: %v", err))
-	}
-	return
-}
-
-func getInjectPackageInfo(injectDeployment *inject.Inject) (packagePath string, inject Inject, err error) {
-	packageName := injectDeployment.GetSource().GetName()
-	packageVersion := injectDeployment.GetSource().GetVersion()
-
-	packagePath, packageTomlContent, err := getPackageContents(packageName, packageVersion)
-	if err != nil {
-		return "", Inject{}, status.Error(codes.NotFound, fmt.Sprintf("Failed to download package: %v", err))
-	}
-	inject, err = unmarshalInject(&packageTomlContent)
-	if err != nil {
-		return "", Inject{}, status.Error(codes.Internal, fmt.Sprintf("Error getting package info: %v", err))
-	}
-	return
+	Mutex         *library.Mutex
 }
 
 func (server *conditionerServer) Create(ctx context.Context, conditionDeployment *condition.Condition) (*common.Identifier, error) {
@@ -239,32 +73,33 @@ func (server *conditionerServer) Create(ctx context.Context, conditionDeployment
 		return nil, err
 	}
 
-	conditionId := uuid.New().String()
-
 	var commandAction string
 	var interval int32
 	var assetFilePaths []string
 
 	if isSourceDeployment {
-		if err = server.Mutex.lock(); err != nil {
+		if err = server.Mutex.Lock(); err != nil {
 			return nil, err
 		}
-		packagePath, packageCondition, err := getConditionPackageInfo(conditionDeployment)
+		packagePath, packageMetadata, err := library.GetPackageMetadata(
+			conditionDeployment.GetSource().GetName(),
+			conditionDeployment.GetSource().GetVersion(),
+		)
 		if err != nil {
 			return nil, err
 		}
 
-		commandAction = packageCondition.Action
-		interval = int32(packageCondition.Interval)
+		commandAction = packageMetadata.Condition.Action
+		interval = int32(packageMetadata.Condition.Interval)
 
-		assetFilePaths, err = guestManager.CopyAssetsToVM(ctx, packageCondition.Assets, packagePath)
+		assetFilePaths, err = guestManager.CopyAssetsToVM(ctx, packageMetadata.Condition.Assets, packagePath)
 		if err != nil {
 			return nil, err
 		}
 		if err = library.CleanupTempPackage(packagePath); err != nil {
 			return nil, status.Error(codes.Internal, fmt.Sprintf("Error during temp Condition package cleanup (%v)", err))
 		}
-		if err := server.Mutex.unlock(); err != nil {
+		if err := server.Mutex.Unlock(); err != nil {
 			return nil, err
 		}
 	} else {
@@ -281,6 +116,7 @@ func (server *conditionerServer) Create(ctx context.Context, conditionDeployment
 		Command:   commandAction,
 		Interval:  interval,
 	}
+	conditionId := uuid.New().String()
 	if err = server.Storage.Create(ctx, conditionId); err != nil {
 		return nil, err
 	}
@@ -305,14 +141,14 @@ func (server *conditionerServer) Stream(identifier *common.Identifier, stream co
 		return err
 	}
 	for {
-		if err = server.Mutex.lock(); err != nil {
+		if err = server.Mutex.Lock(); err != nil {
 			return err
 		}
 		commandReturnValue, err := guestManager.ExecutePackageAction(ctx, container.Command)
 		if err != nil {
 			return err
 		}
-		if err := server.Mutex.unlock(); err != nil {
+		if err := server.Mutex.Unlock(); err != nil {
 			return err
 		}
 
@@ -343,13 +179,13 @@ func (server *conditionerServer) Delete(ctx context.Context, identifier *common.
 
 	vmwareClient := library.NewVMWareClient(server.Client, server.Configuration.TemplateFolderPath)
 
-	if err = server.Mutex.lock(); err != nil {
+	if err = server.Mutex.Lock(); err != nil {
 		return new(emptypb.Empty), err
 	}
 	if err = vmwareClient.DeleteUploadedFiles(ctx, &executorContainer); err != nil {
 		return nil, err
 	}
-	if err := server.Mutex.unlock(); err != nil {
+	if err := server.Mutex.Unlock(); err != nil {
 		return new(emptypb.Empty), err
 	}
 
@@ -363,34 +199,15 @@ func (server *featurerServer) Create(ctx context.Context, featureDeployment *fea
 		Password: featureDeployment.GetAccount().GetPassword(),
 	}
 	vmwareClient := library.NewVMWareClient(server.Client, server.Configuration.TemplateFolderPath)
-
 	guestManager, err := vmwareClient.CreateGuestManagers(ctx, featureDeployment.GetVirtualMachineId(), auth)
 	if err != nil {
 		return nil, err
 	}
-	if _, err = library.CheckVMStatus(ctx, guestManager.VirtualMachine); err != nil {
+	if err = server.Mutex.Lock(); err != nil {
 		return nil, err
 	}
-
-	if err = server.Mutex.lock(); err != nil {
-		return nil, err
-	}
-
-	packagePath, packageFeature, err := getFeaturePackageInfo(featureDeployment)
+	packageMetadata, assetFilePaths, err := guestManager.UploadPackageContents(ctx, featureDeployment.GetSource())
 	if err != nil {
-		return nil, err
-	}
-
-	featureId := uuid.New().String()
-
-	assetFilePaths, err := guestManager.CopyAssetsToVM(ctx, packageFeature.Assets, packagePath)
-	if err != nil {
-		return nil, err
-	}
-	if err = library.CleanupTempPackage(packagePath); err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Error during temp Feature package cleanup (%v)", err))
-	}
-	if err := server.Mutex.unlock(); err != nil {
 		return nil, err
 	}
 
@@ -400,22 +217,21 @@ func (server *featurerServer) Create(ctx context.Context, featureDeployment *fea
 		FilePaths: assetFilePaths,
 	}
 
+	featureId := uuid.New().String()
 	server.Storage.Container = currentDeployment
 	if err = server.Storage.Create(ctx, featureId); err != nil {
 		return nil, err
 	}
 
-	if err = server.Mutex.lock(); err != nil {
-		return nil, err
-	}
 	var vmLog string
-	if packageFeature.Action != "" && featureDeployment.GetFeatureType() == *feature.FeatureType_service.Enum() {
-		vmLog, err = guestManager.ExecutePackageAction(ctx, packageFeature.Action)
+	if packageMetadata.Feature.Action != "" &&
+		featureDeployment.GetFeatureType() == *feature.FeatureType_service.Enum() {
+		vmLog, err = guestManager.ExecutePackageAction(ctx, packageMetadata.Feature.Action)
 		if err != nil {
 			return nil, err
 		}
 	}
-	if err := server.Mutex.unlock(); err != nil {
+	if err := server.Mutex.Unlock(); err != nil {
 		return nil, err
 	}
 
@@ -436,13 +252,13 @@ func (server *featurerServer) Delete(ctx context.Context, identifier *common.Ide
 
 	vmwareClient := library.NewVMWareClient(server.Client, server.Configuration.TemplateFolderPath)
 
-	if err = server.Mutex.lock(); err != nil {
+	if err = server.Mutex.Lock(); err != nil {
 		return new(emptypb.Empty), err
 	}
 	if err = vmwareClient.DeleteUploadedFiles(ctx, &executorContainer); err != nil {
 		return nil, err
 	}
-	if err := server.Mutex.unlock(); err != nil {
+	if err := server.Mutex.Unlock(); err != nil {
 		return new(emptypb.Empty), err
 	}
 
@@ -456,32 +272,16 @@ func (server *injectServer) Create(ctx context.Context, injectDeployment *inject
 		Password: injectDeployment.GetAccount().GetPassword(),
 	}
 	vmwareClient := library.NewVMWareClient(server.Client, server.Configuration.TemplateFolderPath)
-
 	guestManager, err := vmwareClient.CreateGuestManagers(ctx, injectDeployment.GetVirtualMachineId(), auth)
 	if err != nil {
 		return nil, err
 	}
-	if _, err = library.CheckVMStatus(ctx, guestManager.VirtualMachine); err != nil {
+
+	if err = server.Mutex.Lock(); err != nil {
 		return nil, err
 	}
-
-	if err = server.Mutex.lock(); err != nil {
-		return nil, err
-	}
-
-	packagePath, inject, err := getInjectPackageInfo(injectDeployment)
+	packageMetadata, assetFilePaths, err := guestManager.UploadPackageContents(ctx, injectDeployment.GetSource())
 	if err != nil {
-		return nil, err
-	}
-
-	assetFilePaths, err := guestManager.CopyAssetsToVM(ctx, inject.Assets, packagePath)
-	if err != nil {
-		return nil, err
-	}
-	if err = library.CleanupTempPackage(packagePath); err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Error during temp Feature package cleanup (%v)", err))
-	}
-	if err := server.Mutex.unlock(); err != nil {
 		return nil, err
 	}
 
@@ -497,16 +297,13 @@ func (server *injectServer) Create(ctx context.Context, injectDeployment *inject
 		return nil, err
 	}
 
-	if err = server.Mutex.lock(); err != nil {
-		return nil, err
-	}
-	if inject.Action != "" {
-		_, err = guestManager.ExecutePackageAction(ctx, inject.Action)
+	if packageMetadata.Inject.Action != "" {
+		_, err = guestManager.ExecutePackageAction(ctx, packageMetadata.Inject.Action)
 		if err != nil {
 			return nil, err
 		}
 	}
-	if err := server.Mutex.unlock(); err != nil {
+	if err := server.Mutex.Unlock(); err != nil {
 		return nil, err
 	}
 
@@ -525,13 +322,13 @@ func (server *injectServer) Delete(ctx context.Context, identifier *common.Ident
 
 	vmwareClient := library.NewVMWareClient(server.Client, server.Configuration.TemplateFolderPath)
 
-	if err = server.Mutex.lock(); err != nil {
+	if err = server.Mutex.Lock(); err != nil {
 		return new(emptypb.Empty), err
 	}
 	if err = vmwareClient.DeleteUploadedFiles(ctx, &executorContainer); err != nil {
 		return nil, err
 	}
-	if err := server.Mutex.unlock(); err != nil {
+	if err := server.Mutex.Unlock(); err != nil {
 		return new(emptypb.Empty), err
 	}
 
@@ -566,21 +363,21 @@ func RealMain(configuration *library.Configuration) {
 		Client:        govmomiClient,
 		Configuration: configuration,
 		Storage:       &storage,
-		Mutex:         &mutexWrapper{Mutex: mutex},
+		Mutex:         &library.Mutex{Mutex: mutex},
 	})
 
 	condition.RegisterConditionServiceServer(grpcServer, &conditionerServer{
 		Client:        govmomiClient,
 		Configuration: configuration,
 		Storage:       &storage,
-		Mutex:         &mutexWrapper{Mutex: mutex},
+		Mutex:         &library.Mutex{Mutex: mutex},
 	})
 
 	inject.RegisterInjectServiceServer(grpcServer, &injectServer{
 		Client:        govmomiClient,
 		Configuration: configuration,
 		Storage:       &storage,
-		Mutex:         &mutexWrapper{Mutex: mutex},
+		Mutex:         &library.Mutex{Mutex: mutex},
 	})
 
 	capabilityServer := library.NewCapabilityServer([]capability.Capabilities_DeployerTypes{
