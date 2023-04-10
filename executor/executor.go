@@ -28,26 +28,30 @@ import (
 
 type featurerServer struct {
 	feature.UnimplementedFeatureServiceServer
-	Client        *govmomi.Client
-	Configuration *library.Configuration
-	Storage       *library.Storage[library.ExecutorContainer]
-	Mutex         *library.Mutex
+	ServerSpecs *serverSpecs
 }
 
 type conditionerServer struct {
 	condition.UnimplementedConditionServiceServer
+	ServerSpecs *serverSpecs
+}
+
+type injectServer struct {
+	inject.UnimplementedInjectServiceServer
+	ServerSpecs *serverSpecs
+}
+
+type serverSpecs struct {
 	Client        *govmomi.Client
 	Configuration *library.Configuration
 	Storage       *library.Storage[library.ExecutorContainer]
 	Mutex         *library.Mutex
 }
 
-type injectServer struct {
-	inject.UnimplementedInjectServiceServer
-	Client        *govmomi.Client
-	Configuration *library.Configuration
-	Storage       *library.Storage[library.ExecutorContainer]
-	Mutex         *library.Mutex
+type vmWareTarget struct {
+	VmID          string
+	VmAccount     *library.Account
+	PackageSource *common.Source
 }
 
 func (server *conditionerServer) Create(ctx context.Context, conditionDeployment *condition.Condition) (*common.Identifier, error) {
@@ -59,13 +63,13 @@ func (server *conditionerServer) Create(ctx context.Context, conditionDeployment
 		isSourceDeployment = true
 	}
 
-	auth := &types.NamePasswordAuthentication{
+	vmAuthentication := &types.NamePasswordAuthentication{
 		Username: conditionDeployment.GetAccount().GetUsername(),
 		Password: conditionDeployment.GetAccount().GetPassword(),
 	}
-	vmwareClient := library.NewVMWareClient(server.Client, server.Configuration.TemplateFolderPath)
+	vmwareClient := library.NewVMWareClient(server.ServerSpecs.Client, server.ServerSpecs.Configuration.TemplateFolderPath)
 
-	guestManager, err := vmwareClient.CreateGuestManagers(ctx, conditionDeployment.GetVirtualMachineId(), auth)
+	guestManager, err := vmwareClient.CreateGuestManagers(ctx, conditionDeployment.GetVirtualMachineId(), vmAuthentication)
 	if err != nil {
 		return nil, err
 	}
@@ -78,7 +82,7 @@ func (server *conditionerServer) Create(ctx context.Context, conditionDeployment
 	var assetFilePaths []string
 
 	if isSourceDeployment {
-		if err = server.Mutex.Lock(); err != nil {
+		if err = server.ServerSpecs.Mutex.Lock(); err != nil {
 			return nil, err
 		}
 		packagePath, packageMetadata, err := library.GetPackageMetadata(
@@ -99,17 +103,16 @@ func (server *conditionerServer) Create(ctx context.Context, conditionDeployment
 		if err = library.CleanupTempPackage(packagePath); err != nil {
 			return nil, status.Error(codes.Internal, fmt.Sprintf("Error during temp Condition package cleanup (%v)", err))
 		}
-		if err := server.Mutex.Unlock(); err != nil {
+		if err := server.ServerSpecs.Mutex.Unlock(); err != nil {
 			return nil, err
 		}
 	} else {
 		commandAction = conditionDeployment.GetCommand()
 		interval = conditionDeployment.GetInterval()
 		assetFilePaths = append(assetFilePaths, commandAction)
-
 	}
 
-	server.Storage.Container = library.ExecutorContainer{
+	server.ServerSpecs.Storage.Container = library.ExecutorContainer{
 		VMID:      conditionDeployment.GetVirtualMachineId(),
 		Auth:      *guestManager.Auth,
 		FilePaths: assetFilePaths,
@@ -117,7 +120,7 @@ func (server *conditionerServer) Create(ctx context.Context, conditionDeployment
 		Interval:  interval,
 	}
 	conditionId := uuid.New().String()
-	if err = server.Storage.Create(ctx, conditionId); err != nil {
+	if err = server.ServerSpecs.Storage.Create(ctx, conditionId); err != nil {
 		return nil, err
 	}
 
@@ -127,12 +130,12 @@ func (server *conditionerServer) Create(ctx context.Context, conditionDeployment
 func (server *conditionerServer) Stream(identifier *common.Identifier, stream condition.ConditionService_StreamServer) error {
 	ctx := context.Background()
 
-	container, err := server.Storage.Get(context.Background(), identifier.GetValue())
+	container, err := server.ServerSpecs.Storage.Get(context.Background(), identifier.GetValue())
 	if err != nil {
 		return err
 	}
 
-	vmwareClient := library.NewVMWareClient(server.Client, server.Configuration.TemplateFolderPath)
+	vmwareClient := library.NewVMWareClient(server.ServerSpecs.Client, server.ServerSpecs.Configuration.TemplateFolderPath)
 	guestManager, err := vmwareClient.CreateGuestManagers(ctx, container.VMID, &container.Auth)
 	if err != nil {
 		return err
@@ -141,14 +144,14 @@ func (server *conditionerServer) Stream(identifier *common.Identifier, stream co
 		return err
 	}
 	for {
-		if err = server.Mutex.Lock(); err != nil {
+		if err = server.ServerSpecs.Mutex.Lock(); err != nil {
 			return err
 		}
 		commandReturnValue, err := guestManager.ExecutePackageAction(ctx, container.Command)
 		if err != nil {
 			return err
 		}
-		if err := server.Mutex.Unlock(); err != nil {
+		if err := server.ServerSpecs.Mutex.Unlock(); err != nil {
 			return err
 		}
 
@@ -171,164 +174,120 @@ func (server *conditionerServer) Stream(identifier *common.Identifier, stream co
 }
 
 func (server *conditionerServer) Delete(ctx context.Context, identifier *common.Identifier) (*emptypb.Empty, error) {
-
-	executorContainer, err := server.Storage.Get(ctx, identifier.GetValue())
-	if err != nil {
-		return nil, err
-	}
-
-	vmwareClient := library.NewVMWareClient(server.Client, server.Configuration.TemplateFolderPath)
-
-	if err = server.Mutex.Lock(); err != nil {
-		return new(emptypb.Empty), err
-	}
-	if err = vmwareClient.DeleteUploadedFiles(ctx, &executorContainer); err != nil {
-		return nil, err
-	}
-	if err := server.Mutex.Unlock(); err != nil {
-		return new(emptypb.Empty), err
-	}
-
-	return new(emptypb.Empty), nil
+	return uninstallPackage(ctx, server.ServerSpecs, identifier)
 }
 
 func (server *featurerServer) Create(ctx context.Context, featureDeployment *feature.Feature) (*feature.FeatureResponse, error) {
-
-	auth := &types.NamePasswordAuthentication{
-		Username: featureDeployment.GetAccount().GetUsername(),
-		Password: featureDeployment.GetAccount().GetPassword(),
+	vmWareTarget := vmWareTarget{
+		VmAccount: &library.Account{
+			Name:     featureDeployment.GetAccount().GetUsername(),
+			Password: featureDeployment.GetAccount().GetPassword(),
+		},
+		PackageSource: featureDeployment.GetSource(),
+		VmID:          featureDeployment.GetVirtualMachineId(),
 	}
-	vmwareClient := library.NewVMWareClient(server.Client, server.Configuration.TemplateFolderPath)
-	guestManager, err := vmwareClient.CreateGuestManagers(ctx, featureDeployment.GetVirtualMachineId(), auth)
+	identifier, vmLog, err := installPackage(ctx, &vmWareTarget, server.ServerSpecs)
 	if err != nil {
-		return nil, err
-	}
-	if err = server.Mutex.Lock(); err != nil {
-		return nil, err
-	}
-	packageMetadata, assetFilePaths, err := guestManager.UploadPackageContents(ctx, featureDeployment.GetSource())
-	if err != nil {
-		return nil, err
-	}
-
-	currentDeployment := library.ExecutorContainer{
-		VMID:      featureDeployment.GetVirtualMachineId(),
-		Auth:      *guestManager.Auth,
-		FilePaths: assetFilePaths,
-	}
-
-	featureId := uuid.New().String()
-	server.Storage.Container = currentDeployment
-	if err = server.Storage.Create(ctx, featureId); err != nil {
-		return nil, err
-	}
-
-	var vmLog string
-	if packageMetadata.Feature.Action != "" &&
-		featureDeployment.GetFeatureType() == *feature.FeatureType_service.Enum() {
-		vmLog, err = guestManager.ExecutePackageAction(ctx, packageMetadata.Feature.Action)
-		if err != nil {
-			return nil, err
-		}
-	}
-	if err := server.Mutex.Unlock(); err != nil {
-		return nil, err
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Error during Feature Create: %v", err))
 	}
 
 	return &feature.FeatureResponse{
-		Identifier: &common.Identifier{
-			Value: fmt.Sprintf("%v", featureId),
-		},
-		VmLog: vmLog,
+		Identifier: identifier,
+		VmLog:      vmLog,
 	}, nil
 }
 
 func (server *featurerServer) Delete(ctx context.Context, identifier *common.Identifier) (*emptypb.Empty, error) {
-
-	executorContainer, err := server.Storage.Get(ctx, identifier.GetValue())
-	if err != nil {
-		return nil, err
-	}
-
-	vmwareClient := library.NewVMWareClient(server.Client, server.Configuration.TemplateFolderPath)
-
-	if err = server.Mutex.Lock(); err != nil {
-		return new(emptypb.Empty), err
-	}
-	if err = vmwareClient.DeleteUploadedFiles(ctx, &executorContainer); err != nil {
-		return nil, err
-	}
-	if err := server.Mutex.Unlock(); err != nil {
-		return new(emptypb.Empty), err
-	}
-
-	return new(emptypb.Empty), nil
+	return uninstallPackage(ctx, server.ServerSpecs, identifier)
 }
 
 func (server *injectServer) Create(ctx context.Context, injectDeployment *inject.Inject) (*common.Identifier, error) {
 
-	auth := &types.NamePasswordAuthentication{
-		Username: injectDeployment.GetAccount().GetUsername(),
-		Password: injectDeployment.GetAccount().GetPassword(),
+	vmWareTarget := vmWareTarget{
+		VmID: injectDeployment.GetVirtualMachineId(),
+		VmAccount: &library.Account{
+			Name:     injectDeployment.GetAccount().GetUsername(),
+			Password: injectDeployment.GetAccount().GetPassword(),
+		},
+		PackageSource: injectDeployment.GetSource(),
 	}
-	vmwareClient := library.NewVMWareClient(server.Client, server.Configuration.TemplateFolderPath)
-	guestManager, err := vmwareClient.CreateGuestManagers(ctx, injectDeployment.GetVirtualMachineId(), auth)
+	identifier, _, err := installPackage(ctx, &vmWareTarget, server.ServerSpecs)
+
 	if err != nil {
-		return nil, err
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Error during Inject Create: %v", err))
+	}
+	return identifier, nil
+}
+
+func (server *injectServer) Delete(ctx context.Context, identifier *common.Identifier) (*emptypb.Empty, error) {
+	return uninstallPackage(ctx, server.ServerSpecs, identifier)
+}
+
+func installPackage(ctx context.Context, vmWareTarget *vmWareTarget, serverSpecs *serverSpecs) (*common.Identifier, string, error) {
+	vmAuthentication := &types.NamePasswordAuthentication{
+		Username: vmWareTarget.VmAccount.Name,
+		Password: vmWareTarget.VmAccount.Password,
 	}
 
-	if err = server.Mutex.Lock(); err != nil {
-		return nil, err
-	}
-	packageMetadata, assetFilePaths, err := guestManager.UploadPackageContents(ctx, injectDeployment.GetSource())
+	vmwareClient := library.NewVMWareClient(serverSpecs.Client, serverSpecs.Configuration.TemplateFolderPath)
+	guestManager, err := vmwareClient.CreateGuestManagers(ctx, vmWareTarget.VmID, vmAuthentication)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
-	currentDeployment := library.ExecutorContainer{
-		VMID:      injectDeployment.GetVirtualMachineId(),
+	if err = serverSpecs.Mutex.Lock(); err != nil {
+		return nil, "", err
+	}
+	packageMetadata, assetFilePaths, err := guestManager.UploadPackageContents(ctx, vmWareTarget.PackageSource)
+	if err != nil {
+		return nil, "", err
+	}
+
+	vmPackageUuid := uuid.New().String()
+	serverSpecs.Storage.Container = library.ExecutorContainer{
+		VMID:      vmWareTarget.VmID,
 		Auth:      *guestManager.Auth,
 		FilePaths: assetFilePaths,
 	}
 
-	injectId := uuid.New().String()
-	server.Storage.Container = currentDeployment
-	if err = server.Storage.Create(ctx, injectId); err != nil {
-		return nil, err
+	if err = serverSpecs.Storage.Create(ctx, vmPackageUuid); err != nil {
+		return nil, "", err
 	}
 
-	if packageMetadata.Inject.Action != "" {
-		_, err = guestManager.ExecutePackageAction(ctx, packageMetadata.Inject.Action)
+	packageAction := packageMetadata.GetAction()
+	var vmLog string
+	if packageAction != "" {
+		vmLog, err = guestManager.ExecutePackageAction(ctx, packageAction)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 	}
-	if err := server.Mutex.Unlock(); err != nil {
-		return nil, err
+	if err := serverSpecs.Mutex.Unlock(); err != nil {
+		return nil, "", err
 	}
 
 	return &common.Identifier{
-			Value: fmt.Sprintf("%v", injectId),
+			Value: fmt.Sprintf("%v", vmPackageUuid),
 		},
+		vmLog,
 		nil
 }
 
-func (server *injectServer) Delete(ctx context.Context, identifier *common.Identifier) (*emptypb.Empty, error) {
-
-	executorContainer, err := server.Storage.Get(ctx, identifier.GetValue())
+func uninstallPackage(ctx context.Context, serverSpecs *serverSpecs, identifier *common.Identifier) (*emptypb.Empty, error) {
+	executorContainer, err := serverSpecs.Storage.Get(ctx, identifier.GetValue())
 	if err != nil {
 		return nil, err
 	}
 
-	vmwareClient := library.NewVMWareClient(server.Client, server.Configuration.TemplateFolderPath)
+	vmwareClient := library.NewVMWareClient(serverSpecs.Client, serverSpecs.Configuration.TemplateFolderPath)
 
-	if err = server.Mutex.Lock(); err != nil {
+	if err = serverSpecs.Mutex.Lock(); err != nil {
 		return new(emptypb.Empty), err
 	}
 	if err = vmwareClient.DeleteUploadedFiles(ctx, &executorContainer); err != nil {
 		return nil, err
 	}
-	if err := server.Mutex.Unlock(); err != nil {
+	if err := serverSpecs.Mutex.Unlock(); err != nil {
 		return new(emptypb.Empty), err
 	}
 
@@ -359,26 +318,16 @@ func RealMain(configuration *library.Configuration) {
 	mutexName := "my-cool-mutex"
 	mutex := redsync.New(redisPool).NewMutex(mutexName)
 
-	feature.RegisterFeatureServiceServer(grpcServer, &featurerServer{
+	serverSpecs := serverSpecs{
 		Client:        govmomiClient,
 		Configuration: configuration,
 		Storage:       &storage,
 		Mutex:         &library.Mutex{Mutex: mutex},
-	})
+	}
 
-	condition.RegisterConditionServiceServer(grpcServer, &conditionerServer{
-		Client:        govmomiClient,
-		Configuration: configuration,
-		Storage:       &storage,
-		Mutex:         &library.Mutex{Mutex: mutex},
-	})
-
-	inject.RegisterInjectServiceServer(grpcServer, &injectServer{
-		Client:        govmomiClient,
-		Configuration: configuration,
-		Storage:       &storage,
-		Mutex:         &library.Mutex{Mutex: mutex},
-	})
+	feature.RegisterFeatureServiceServer(grpcServer, &featurerServer{ServerSpecs: &serverSpecs})
+	condition.RegisterConditionServiceServer(grpcServer, &conditionerServer{ServerSpecs: &serverSpecs})
+	inject.RegisterInjectServiceServer(grpcServer, &injectServer{ServerSpecs: &serverSpecs})
 
 	capabilityServer := library.NewCapabilityServer([]capability.Capabilities_DeployerTypes{
 		*capability.Capabilities_Feature.Enum(),

@@ -58,6 +58,32 @@ type ExecutorPackage struct {
 	Inject    Inject    `json:"inject,omitempty"`
 }
 
+func (executorPackage ExecutorPackage) GetAssets() (assets [][]string) {
+	switch parcel := executorPackage; {
+	case len(parcel.Feature.Assets) > 0:
+		return executorPackage.Feature.Assets
+	case len(parcel.Condition.Assets) > 0:
+		return executorPackage.Condition.Assets
+	case len(parcel.Inject.Assets) > 0:
+		return executorPackage.Inject.Assets
+	default:
+		return
+	}
+}
+
+func (executorPackage ExecutorPackage) GetAction() (action string) {
+	switch parcel := executorPackage; {
+	case parcel.Feature.Action != "":
+		return executorPackage.Feature.Action
+	case parcel.Condition.Action != "":
+		return executorPackage.Condition.Action
+	case parcel.Inject.Action != "":
+		return executorPackage.Inject.Action
+	default:
+		return
+	}
+}
+
 func CreateRandomString(length int) string {
 	rand.Seed(time.Now().UnixNano())
 	const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -256,19 +282,6 @@ func AwaitVMToolsToComeOnline(ctx context.Context, virtualMachine *object.Virtua
 	}
 
 	return status.Error(codes.Internal, fmt.Sprintf("Timeout (%v sec) waiting for VMTools to come online on %v", vmToolsTimeoutSec, vmId))
-}
-
-func GetPackageAssets(executorPackage ExecutorPackage) [][]string {
-	var assets [][]string
-	switch huh := executorPackage; {
-	case len(huh.Feature.Assets) > 0:
-		assets = executorPackage.Feature.Assets
-	case len(huh.Condition.Assets) > 0:
-		assets = executorPackage.Condition.Assets
-	case len(huh.Inject.Assets) > 0:
-		assets = executorPackage.Inject.Assets
-	}
-	return assets
 }
 
 func GetPackageTomlContents(packageName string, packageVersion string) (packagePath string, packageTomlContent map[string]interface{}, err error) {
