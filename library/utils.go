@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-redis/redis/v8"
 	"github.com/go-redsync/redsync/v4"
 	"github.com/iancoleman/strcase"
 	"github.com/open-cyber-range/vmware-handler/grpc/capability"
@@ -30,10 +31,17 @@ const vmToolsTimeoutSec int = 120
 const vmToolsSleepSec int = 5
 const vmToolsCheckTries int = vmToolsTimeoutSec / vmToolsSleepSec
 const tmpPackagePrefix string = "deputy-package"
+const mutexRedisKey string = "my-cool-pool"
 const mutexTimeout time.Duration = 30 * 60 * time.Second
 
+type MutexPool struct {
+	Redsync        *redsync.Redsync
+	RedisClient    *redis.Client
+	MaxConnections int64
+}
 type Mutex struct {
-	Mutex *redsync.Mutex
+	Mutex       *redsync.Mutex
+	RedisClient *redis.Client
 }
 type Feature struct {
 	Type   string     `json:"type"`
@@ -56,6 +64,99 @@ type ExecutorPackage struct {
 	Feature   Feature   `json:"feature,omitempty"`
 	Condition Condition `json:"condition,omitempty"`
 	Inject    Inject    `json:"inject,omitempty"`
+}
+
+func (mutexPool MutexPool) GetMutex(ctx context.Context, optionalId ...string) (mutex *Mutex, err error) {
+	identifier := "general-mutex"
+	if len(optionalId) != 0 {
+		identifier = "vm-mutex-" + optionalId[len(optionalId)-1]
+	}
+
+	currentConnections, _ := mutexPool.RedisClient.HLen(ctx, mutexRedisKey).Result()
+	if err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Error getting Redis entry, %v", err))
+	}
+	lockAlreadyExists, err := mutexPool.RedisClient.HExists(ctx, mutexRedisKey, identifier).Result()
+	if err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Error checking existence of Redis entry, %v", err))
+	}
+	if currentConnections >= mutexPool.MaxConnections || lockAlreadyExists {
+		time.Sleep(time.Duration(rand.Intn(200)+100) * time.Millisecond)
+		return mutexPool.GetMutex(ctx, optionalId...)
+	}
+	_, err = mutexPool.RedisClient.HSet(ctx, mutexRedisKey, identifier, 0).Result()
+	if err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Error setting Redis entry, %v", err))
+	}
+
+	return &Mutex{
+		Mutex:       mutexPool.Redsync.NewMutex(identifier),
+		RedisClient: mutexPool.RedisClient,
+	}, nil
+}
+
+func (mutex *Mutex) Lock(ctx context.Context) (err error) {
+	successChannel := make(chan bool)
+	errorChannel := make(chan error)
+
+	go func() {
+		err = mutex.Mutex.Lock()
+		if err != nil {
+			if strings.HasPrefix(err.Error(), "lock already taken") {
+				log.Tracef("Mutex lock taken, trying again")
+				time.Sleep(time.Millisecond * (time.Duration(rand.Intn(100) + 50)))
+
+				if err = mutex.Lock(ctx); err != nil {
+					successChannel <- false
+					errorChannel <- err
+				}
+			} else {
+				successChannel <- false
+				errorChannel <- err
+			}
+		}
+		successChannel <- true
+		errorChannel <- nil
+	}()
+	select {
+
+	case isSuccess := <-successChannel:
+		if !isSuccess {
+			err := <-errorChannel
+			if err != nil {
+				return err
+			}
+		}
+
+	case <-time.After(mutexTimeout):
+		return status.Error(codes.Internal, fmt.Sprintf("Mutex lock timed out after %v seconds: %v", mutexTimeout, err))
+	}
+
+	return nil
+}
+
+func (mutex *Mutex) Unlock(ctx context.Context) (err error) {
+	if isUnlocked, err := mutex.Mutex.Unlock(); !isUnlocked || err != nil {
+		return status.Error(codes.Internal, fmt.Sprintf("Mutex unlock failed: %v", err))
+	}
+	_, err = mutex.RedisClient.HDel(ctx, mutexRedisKey, mutex.Mutex.Name()).Result()
+	if err != nil {
+		return status.Error(codes.Internal, fmt.Sprintf("Error deleting Redis entry, %v", err))
+	}
+	return
+}
+
+func NewMutexPool(ctx context.Context, redsync redsync.Redsync, redisClient redis.Client, maxConnections int64) (mutexPool MutexPool, err error) {
+	mutexPool = MutexPool{
+		Redsync:        &redsync,
+		RedisClient:    &redisClient,
+		MaxConnections: maxConnections,
+	}
+	_, err = redisClient.Del(ctx, mutexRedisKey).Result()
+	if err != nil {
+		return MutexPool{}, status.Error(codes.Internal, fmt.Sprintf("Error cleaning up MutexPool, %v", err))
+	}
+	return mutexPool, nil
 }
 
 func (executorPackage ExecutorPackage) GetAssets() (assets [][]string) {
@@ -150,8 +251,8 @@ func DownloadPackage(name string, version string) (packagePath string, err error
 		return
 	}
 
-	log.Infof("Fetching package: %v, version: %v to %v", name, version, packagePath)
-	downloadCommand := exec.Command("deputy", "fetch", name, "-v", version, "-s", packagePath)
+	log.Infof("Fetching package: %v, version: %v to %v", name, version, packageBasePath)
+	downloadCommand := exec.Command("deputy", "fetch", name, "-v", version, "-s", packageBasePath)
 	downloadCommand.Dir = packageBasePath
 	output, err := downloadCommand.CombinedOutput()
 	if err != nil {
@@ -287,7 +388,7 @@ func AwaitVMToolsToComeOnline(ctx context.Context, virtualMachine *object.Virtua
 func GetPackageTomlContents(packageName string, packageVersion string) (packagePath string, packageTomlContent map[string]interface{}, err error) {
 	packagePath, err = DownloadPackage(packageName, packageVersion)
 	if err != nil {
-		return "", nil, status.Error(codes.NotFound, fmt.Sprintf("Failed to download package: %v", err))
+		return "", nil, err
 	}
 	packageTomlContent, err = GetPackageData(packagePath)
 	if err != nil {
@@ -307,54 +408,6 @@ func GetPackageMetadata(packageName string, packageVersion string) (packagePath 
 	}
 	if err = json.Unmarshal(infoJson, &executorPackage); err != nil {
 		return "", ExecutorPackage{}, status.Error(codes.Internal, fmt.Sprintf("Error unmarshalling Toml contents: %v", err))
-	}
-	return
-}
-
-func (mutex *Mutex) Lock() (err error) {
-
-	successChannel := make(chan bool)
-	errorChannel := make(chan error)
-
-	go func() {
-		err = mutex.Mutex.Lock()
-		if err != nil {
-			if strings.HasPrefix(err.Error(), "lock already taken") {
-				log.Tracef("Mutex lock taken, trying again")
-				time.Sleep(time.Millisecond * (time.Duration(rand.Intn(100))))
-
-				if err = mutex.Lock(); err != nil {
-					successChannel <- false
-					errorChannel <- err
-				}
-			} else {
-				successChannel <- false
-				errorChannel <- err
-			}
-		}
-		successChannel <- true
-		errorChannel <- nil
-	}()
-	select {
-
-	case isSuccess := <-successChannel:
-		if !isSuccess {
-			err := <-errorChannel
-			if err != nil {
-				return err
-			}
-		}
-
-	case <-time.After(mutexTimeout):
-		return status.Error(codes.Internal, fmt.Sprintf("Mutex lock timed out after %v seconds: %v", mutexTimeout, err))
-	}
-
-	return nil
-}
-
-func (mutex *Mutex) Unlock() (err error) {
-	if isUnlocked, err := mutex.Mutex.Unlock(); !isUnlocked || err != nil {
-		return status.Error(codes.Internal, fmt.Sprintf("Mutex unlock failed: %v", err))
 	}
 	return
 }

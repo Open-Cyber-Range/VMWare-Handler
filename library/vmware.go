@@ -439,6 +439,9 @@ func (guestManager *GuestManager) GetVMLogContents(ctx context.Context, vmLogPat
 	if err = guestManager.FileManager.DeleteFile(ctx, guestManager.Auth, vmLogPath); err != nil {
 		return "", status.Error(codes.Internal, fmt.Sprintf("Error deleting log file: %v", err))
 	}
+	if err = os.Remove(filePath); err != nil {
+		return "", err
+	}
 	return trimmedLog, nil
 }
 
@@ -466,6 +469,7 @@ func (guestManager *GuestManager) AwaitProcessCompletion(ctx context.Context, pr
 			log.Tracef("VM UUID: `%v` PID: `%v` exit code: %v", vmUUID, processID, exitCode)
 			break
 		}
+		time.Sleep(time.Duration(500) * time.Millisecond)
 	}
 	return true, nil
 }

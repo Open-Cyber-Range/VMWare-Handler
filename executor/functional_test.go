@@ -90,7 +90,7 @@ func createInjectClient(t *testing.T, serverPath string) inject.InjectServiceCli
 	return inject.NewInjectServiceClient(connection)
 }
 
-func createFeatureDeploymentRequest(t *testing.T, deployment *feature.Feature, packageName string) (response *feature.FeatureResponse, err error) {
+func createFeatureDeploymentRequest(t *testing.T, deployment *feature.Feature, packageName string) (executorResponse *common.ExecutorResponse, err error) {
 	configuration := startServer(3 * time.Second)
 	ctx := context.Background()
 	gRPCClient := createFeatureClient(t, configuration.ServerAddress)
@@ -99,27 +99,27 @@ func createFeatureDeploymentRequest(t *testing.T, deployment *feature.Feature, p
 		t.Fatalf("Failed to upload test feature package: %v", err)
 	}
 
-	response, err = gRPCClient.Create(ctx, deployment)
+	executorResponse, err = gRPCClient.Create(ctx, deployment)
 	if err != nil {
 		t.Fatalf("Test Create request error: %v", err)
 	}
 
-	log.Infof("Feature Create finished, id: %v", response.Identifier.GetValue())
-	_, err = gRPCClient.Delete(ctx, response.Identifier)
+	log.Infof("Feature Create finished, id: %v", executorResponse.Identifier.GetValue())
+	_, err = gRPCClient.Delete(ctx, executorResponse.Identifier)
 	if err != nil {
 		t.Fatalf("Test Delete request error: %v", err)
 	}
 	log.Infof("Feature delete finished")
 
 	if deployment.FeatureType == feature.FeatureType_service {
-		if response.VmLog == "" {
+		if executorResponse.VmLog == "" {
 			t.Fatalf("Test Feature Service produced no logs and was likely not executed")
 		}
 	}
 	return
 }
 
-func createInjectDeploymentRequest(t *testing.T, deployment *inject.Inject, packageName string) (identifier *common.Identifier, err error) {
+func createInjectDeploymentRequest(t *testing.T, deployment *inject.Inject, packageName string) (executorResponse *common.ExecutorResponse, err error) {
 	configuration := startServer(3 * time.Second)
 	ctx := context.Background()
 	gRPCClient := createInjectClient(t, configuration.ServerAddress)
@@ -128,13 +128,13 @@ func createInjectDeploymentRequest(t *testing.T, deployment *inject.Inject, pack
 		t.Fatalf("Failed to upload test inject package: %v", err)
 	}
 
-	identifier, err = gRPCClient.Create(ctx, deployment)
+	executorResponse, err = gRPCClient.Create(ctx, deployment)
 	if err != nil {
 		t.Fatalf("Test Create request error: %v", err)
 	}
 
-	log.Infof("Inject Create finished, id: %v", identifier.GetValue())
-	_, err = gRPCClient.Delete(ctx, identifier)
+	log.Infof("Inject Create finished, id: %v", executorResponse.Identifier.GetValue())
+	_, err = gRPCClient.Delete(ctx, executorResponse.Identifier)
 	if err != nil {
 		t.Fatalf("Test Delete request error: %v", err)
 	}
@@ -194,7 +194,6 @@ func createConditionerDeploymentRequest(t *testing.T, deployment *condition.Cond
 }
 
 func TestConditionerWithCommand(t *testing.T) {
-	t.Parallel()
 
 	deployment := &condition.Condition{
 		Name:             "command-condition",
@@ -208,7 +207,6 @@ func TestConditionerWithCommand(t *testing.T) {
 }
 
 func TestConditionerWithSourcePackage(t *testing.T) {
-	t.Parallel()
 
 	packageFolderName := "condition-package"
 
@@ -230,7 +228,6 @@ func TestConditionerWithSourcePackage(t *testing.T) {
 }
 
 func TestFeatureServiceDeploymentAndDeletionOnLinux(t *testing.T) {
-	t.Parallel()
 
 	packageFolderName := "feature-service-package"
 
@@ -254,7 +251,6 @@ func TestFeatureServiceDeploymentAndDeletionOnLinux(t *testing.T) {
 }
 
 func TestFeaturePackageWithALotOfFiles(t *testing.T) {
-	t.Parallel()
 
 	packageFolderName := "feature-plethora"
 
@@ -275,7 +271,6 @@ func TestFeaturePackageWithALotOfFiles(t *testing.T) {
 }
 
 func TestFeatureConfigurationDeploymentAndDeletionOnLinux(t *testing.T) {
-	t.Parallel()
 
 	packageFolderName := "feature-config-package"
 
@@ -296,7 +291,6 @@ func TestFeatureConfigurationDeploymentAndDeletionOnLinux(t *testing.T) {
 }
 
 func TestFeatureServiceDeploymentAndDeletionOnWindows(t *testing.T) {
-	t.Parallel()
 
 	packageFolderName := "feature-win-service-package"
 
@@ -319,7 +313,6 @@ func TestFeatureServiceDeploymentAndDeletionOnWindows(t *testing.T) {
 }
 
 func TestInjectDeploymentAndDeletionOnLinux(t *testing.T) {
-	t.Parallel()
 
 	packageFolderName := "inject-flag-generator"
 
