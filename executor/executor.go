@@ -292,20 +292,20 @@ func uninstallPackage(ctx context.Context, serverSpecs *serverSpecs, identifier 
 		return new(emptypb.Empty), err
 	}
 	vmwareClient := library.NewVMWareClient(serverSpecs.Client, serverSpecs.Configuration.TemplateFolderPath)
-	mutex, err := serverSpecs.MutexPool.GetMutex(ctx, executorContainer.VMID)
+	mutex, err := serverSpecs.MutexPool.GetMutex(ctx)
 	if err != nil {
 		return new(emptypb.Empty), err
 	}
 	if err = mutex.Lock(ctx); err != nil {
 		return new(emptypb.Empty), err
 	}
-	if err = vmwareClient.DeleteUploadedFiles(ctx, &executorContainer); err != nil {
-		return new(emptypb.Empty), err
-	}
+	deleteErr := vmwareClient.DeleteUploadedFiles(ctx, &executorContainer)
 	if err := mutex.Unlock(ctx); err != nil {
 		return new(emptypb.Empty), err
 	}
-
+	if deleteErr != nil {
+		return new(emptypb.Empty), deleteErr
+	}
 	return new(emptypb.Empty), nil
 }
 
