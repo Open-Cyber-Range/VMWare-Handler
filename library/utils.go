@@ -31,15 +31,16 @@ const vmToolsTimeoutSec int = 120
 const vmToolsSleepSec int = 5
 const vmToolsCheckTries int = vmToolsTimeoutSec / vmToolsSleepSec
 const tmpPackagePrefix string = "deputy-package"
-const mutexRedisKey string = "my-cool-pool"
 const mutexTimeout time.Duration = 30 * 60 * time.Second
 
 type MutexPool struct {
+	Id             string
 	Redsync        *redsync.Redsync
 	RedisClient    *redis.Client
 	MaxConnections int64
 }
 type Mutex struct {
+	PoolId      string
 	Mutex       *redsync.Mutex
 	RedisClient *redis.Client
 }
@@ -72,11 +73,11 @@ func (mutexPool MutexPool) GetMutex(ctx context.Context, optionalId ...string) (
 		identifier = "vm-mutex-" + optionalId[len(optionalId)-1]
 	}
 
-	currentConnections, _ := mutexPool.RedisClient.HLen(ctx, mutexRedisKey).Result()
+	currentConnections, _ := mutexPool.RedisClient.HLen(ctx, mutexPool.Id).Result()
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Error getting Redis entry, %v", err))
 	}
-	lockAlreadyExists, err := mutexPool.RedisClient.HExists(ctx, mutexRedisKey, identifier).Result()
+	lockAlreadyExists, err := mutexPool.RedisClient.HExists(ctx, mutexPool.Id, identifier).Result()
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Error checking existence of Redis entry, %v", err))
 	}
@@ -84,12 +85,13 @@ func (mutexPool MutexPool) GetMutex(ctx context.Context, optionalId ...string) (
 		time.Sleep(time.Duration(rand.Intn(200)+100) * time.Millisecond)
 		return mutexPool.GetMutex(ctx, optionalId...)
 	}
-	_, err = mutexPool.RedisClient.HSet(ctx, mutexRedisKey, identifier, 0).Result()
+	_, err = mutexPool.RedisClient.HSet(ctx, mutexPool.Id, identifier, 0).Result()
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Error setting Redis entry, %v", err))
 	}
 
 	return &Mutex{
+		PoolId:      mutexPool.Id,
 		Mutex:       mutexPool.Redsync.NewMutex(identifier),
 		RedisClient: mutexPool.RedisClient,
 	}, nil
@@ -139,20 +141,21 @@ func (mutex *Mutex) Unlock(ctx context.Context) (err error) {
 	if isUnlocked, err := mutex.Mutex.Unlock(); !isUnlocked || err != nil {
 		return status.Error(codes.Internal, fmt.Sprintf("Mutex unlock failed: %v", err))
 	}
-	_, err = mutex.RedisClient.HDel(ctx, mutexRedisKey, mutex.Mutex.Name()).Result()
+	_, err = mutex.RedisClient.HDel(ctx, mutex.PoolId, mutex.Mutex.Name()).Result()
 	if err != nil {
 		return status.Error(codes.Internal, fmt.Sprintf("Error deleting Redis entry, %v", err))
 	}
 	return
 }
 
-func NewMutexPool(ctx context.Context, redsync redsync.Redsync, redisClient redis.Client, maxConnections int64) (mutexPool MutexPool, err error) {
+func NewMutexPool(ctx context.Context, poolIdentifier string, redsync redsync.Redsync, redisClient redis.Client, maxConnections int64) (mutexPool MutexPool, err error) {
 	mutexPool = MutexPool{
+		Id:             poolIdentifier,
 		Redsync:        &redsync,
 		RedisClient:    &redisClient,
 		MaxConnections: maxConnections,
 	}
-	_, err = redisClient.Del(ctx, mutexRedisKey).Result()
+	_, err = redisClient.Del(ctx, poolIdentifier).Result()
 	if err != nil {
 		return MutexPool{}, status.Error(codes.Internal, fmt.Sprintf("Error cleaning up MutexPool, %v", err))
 	}

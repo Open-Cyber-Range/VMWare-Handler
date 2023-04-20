@@ -328,7 +328,7 @@ func RealMain(configuration *library.Configuration) {
 		Password: configuration.RedisPassword,
 	})
 	redisPool := goredis.NewPool(redisClient)
-	mutexPool, err := library.NewMutexPool(ctx, *redsync.New(redisPool), *redisClient, 3)
+	mutexPool, err := library.NewMutexPool(ctx, configuration.Hostname, *redsync.New(redisPool), *redisClient, 3)
 	if err != nil {
 		log.Fatal(err)
 	}
