@@ -1,4 +1,4 @@
-.PHONY: all clean install compile-protobuf build build-machiner build-switcher build-templater build-executor test test-machiner test-switcher test-templater test-executor run-machiner run-switcher run-executor test-and-build build-deb generate-nsx-t-openapi
+.PHONY: all clean install compile-protobuf build build-machiner build-switcher build-templater build-executor test test-machiner test-switcher test-templater test-executor run-machiner run-switcher run-executor test-injects test-and-build build-deb generate-nsx-t-openapi
 
 all: build
 
@@ -47,6 +47,7 @@ compile-protobuf:
 	--go_opt=Msrc/switch.proto=github.com/open-cyber-range/vmware-handler/grpc/switch \
 	--go_opt=Msrc/feature.proto=github.com/open-cyber-range/vmware-handler/grpc/feature \
 	--go_opt=Msrc/condition.proto=github.com/open-cyber-range/vmware-handler/grpc/condition \
+	--go_opt=Msrc/inject.proto=github.com/open-cyber-range/vmware-handler/grpc/inject \
 	--go-grpc_opt=Msrc/common.proto=github.com/open-cyber-range/vmware-handler/grpc/common \
 	--go-grpc_opt=Msrc/template.proto=github.com/open-cyber-range/vmware-handler/grpc/template \
 	--go-grpc_opt=Msrc/capability.proto=github.com/open-cyber-range/vmware-handler/grpc/capability  \
@@ -54,9 +55,10 @@ compile-protobuf:
 	--go-grpc_opt=Msrc/switch.proto=github.com/open-cyber-range/vmware-handler/grpc/switch  \
 	--go-grpc_opt=Msrc/feature.proto=github.com/open-cyber-range/vmware-handler/grpc/feature  \
 	--go-grpc_opt=Msrc/condition.proto=github.com/open-cyber-range/vmware-handler/grpc/condition  \
+	--go-grpc_opt=Msrc/inject.proto=github.com/open-cyber-range/vmware-handler/grpc/inject  \
 	--go_opt=module=github.com/open-cyber-range/vmware-handler/grpc \
 	--go-grpc_opt=module=github.com/open-cyber-range/vmware-handler/grpc \
-	--proto_path=grpc/proto src/virtual-machine.proto src/switch.proto src/common.proto src/capability.proto src/template.proto src/feature.proto src/condition.proto
+	--proto_path=grpc/proto src/virtual-machine.proto src/switch.proto src/common.proto src/capability.proto src/template.proto src/feature.proto src/condition.proto src/inject.proto
 
 generate-nsx-t-openapi:
 	java -Dapis=Segments,Connectivity -Dmodels -DsupportingFiles -jar /var/opt/swagger/swagger-codegen-cli.jar generate -DpackageName=nsx_t_openapi -DmodelTests=false -DapiTests=false -DapiDocs=false -DmodelDocs=false -D io.swagger.parser.util.RemoteUrl.trustAll=true -i extra/nsx_policy_api.yaml -l go -o nsx_t_openapi &&\
@@ -89,6 +91,9 @@ test-templater: build-templater
 
 test-executor: build-executor
 	go test -v -count=1 ./executor
+	
+test-injects: build-executor
+	go test -v -count=1 ./executor -run TestInjectDeploymentAndDeletionOnLinux
 
 test-library:
 	go test -v -count=1 ./library
