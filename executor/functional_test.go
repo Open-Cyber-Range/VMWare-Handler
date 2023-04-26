@@ -33,7 +33,9 @@ var testConfiguration = library.Configuration{
 }
 
 const LinuxTestVirtualMachineUUID = "4212b4a9-dd30-45cc-3667-b72c8dd97558"
+const LinuxConditionsTestVirtualMachineUUID = "42128ddc-dfda-786d-905f-3d4db40b7cbb"
 const WindowsTestVirtualMachineUUID = "42122b12-3a17-c0fb-eb3c-7cd935bb595b"
+const WindowsConditionsTestVirtualMachineUUID = "4212d188-36c8-d2c3-c14d-98f2c25434c9"
 
 func startServer(timeout time.Duration) (configuration library.Configuration) {
 	configuration = testConfiguration
@@ -197,10 +199,10 @@ func TestConditionerWithCommand(t *testing.T) {
 
 	deployment := &condition.Condition{
 		Name:             "command-condition",
-		VirtualMachineId: LinuxTestVirtualMachineUUID,
+		VirtualMachineId: LinuxConditionsTestVirtualMachineUUID,
 		Account:          &common.Account{Username: "root", Password: "password"},
 		Command:          "/prebaked-conditions/divider.sh",
-		Interval:         1,
+		Interval:         5,
 	}
 
 	createConditionerDeploymentRequest(t, deployment)
@@ -216,10 +218,31 @@ func TestConditionerWithSourcePackage(t *testing.T) {
 
 	deployment := &condition.Condition{
 		Name:             "source-condition",
-		VirtualMachineId: LinuxTestVirtualMachineUUID,
+		VirtualMachineId: LinuxConditionsTestVirtualMachineUUID,
 		Account:          &common.Account{Username: "root", Password: "password"},
 		Source: &common.Source{
 			Name:    "test-condition",
+			Version: "*",
+		},
+	}
+
+	createConditionerDeploymentRequest(t, deployment)
+}
+
+func TestConditionerWithSourcePackageOnWindows(t *testing.T) {
+
+	packageFolderName := "condition-win-package"
+
+	if err := library.PublishTestPackage(packageFolderName); err != nil {
+		t.Fatalf("Test publish failed: %v", err)
+	}
+
+	deployment := &condition.Condition{
+		Name:             "source-condition",
+		VirtualMachineId: WindowsConditionsTestVirtualMachineUUID,
+		Account:          &common.Account{Username: "user", Password: "password"},
+		Source: &common.Source{
+			Name:    "test-windows-condition",
 			Version: "*",
 		},
 	}
@@ -309,7 +332,7 @@ func TestFeatureServiceDeploymentAndDeletionOnWindows(t *testing.T) {
 		t.Fatalf("Error creating Test Feature Deployment: %v", err)
 	}
 
-	log.Infof("Feature output: %#v", response.VmLog)
+	log.Infof("Feature output: %v", response.VmLog)
 }
 
 func TestInjectDeploymentAndDeletionOnLinux(t *testing.T) {

@@ -1,1 +1,2 @@
+@ECHO OFF
 ECHO %date%
