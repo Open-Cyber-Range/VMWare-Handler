@@ -27,7 +27,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-const vmToolsTimeoutSec int = 120
+const vmToolsTimeoutSec int = 600
 const vmToolsSleepSec int = 5
 const vmToolsCheckTries int = vmToolsTimeoutSec / vmToolsSleepSec
 const tmpPackagePrefix string = "deputy-package"
@@ -73,7 +73,7 @@ func (mutexPool MutexPool) GetMutex(ctx context.Context, optionalId ...string) (
 		identifier = "vm-mutex-" + optionalId[len(optionalId)-1]
 	}
 
-	currentConnections, _ := mutexPool.RedisClient.HLen(ctx, mutexPool.Id).Result()
+	currentConnections, err := mutexPool.RedisClient.HLen(ctx, mutexPool.Id).Result()
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Error getting Redis entry, %v", err))
 	}
@@ -82,7 +82,7 @@ func (mutexPool MutexPool) GetMutex(ctx context.Context, optionalId ...string) (
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Error checking existence of Redis entry, %v", err))
 	}
 	if currentConnections >= mutexPool.MaxConnections || lockAlreadyExists {
-		time.Sleep(time.Duration(rand.Intn(200)+100) * time.Millisecond)
+		time.Sleep(time.Duration(rand.Intn(50)+20) * time.Millisecond)
 		return mutexPool.GetMutex(ctx, optionalId...)
 	}
 	_, err = mutexPool.RedisClient.HSet(ctx, mutexPool.Id, identifier, 0).Result()
@@ -138,9 +138,7 @@ func (mutex *Mutex) Lock(ctx context.Context) (err error) {
 }
 
 func (mutex *Mutex) Unlock(ctx context.Context) (err error) {
-	if isUnlocked, err := mutex.Mutex.Unlock(); !isUnlocked || err != nil {
-		return status.Error(codes.Internal, fmt.Sprintf("Mutex unlock failed: %v", err))
-	}
+	mutex.Mutex.Unlock()
 	_, err = mutex.RedisClient.HDel(ctx, mutex.PoolId, mutex.Mutex.Name()).Result()
 	if err != nil {
 		return status.Error(codes.Internal, fmt.Sprintf("Error deleting Redis entry, %v", err))
@@ -243,7 +241,7 @@ func SanitizeToCompatibleName(input string) string {
 }
 
 func createRandomPackagePath() (string, error) {
-	return os.MkdirTemp("/tmp", tmpPackagePrefix)
+	return os.MkdirTemp("/tmp", tmpPackagePrefix+"*")
 }
 
 func DownloadPackage(name string, version string) (packagePath string, err error) {
@@ -259,6 +257,7 @@ func DownloadPackage(name string, version string) (packagePath string, err error
 	downloadCommand.Dir = packageBasePath
 	output, err := downloadCommand.CombinedOutput()
 	if err != nil {
+		log.Errorf("Deputy fetch command failed, %v", err)
 		return "", fmt.Errorf("%v (%v)", string(output), err)
 	}
 	directories, err := IOReadDir(packageBasePath)

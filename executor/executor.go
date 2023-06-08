@@ -103,7 +103,7 @@ func (server *conditionerServer) Create(ctx context.Context, conditionDeployment
 	if _, err = library.CheckVMStatus(ctx, guestManager.VirtualMachine); err != nil {
 		return nil, err
 	}
-	mutex, err := server.ServerSpecs.MutexPool.GetMutex(ctx)
+	mutex, err := server.ServerSpecs.MutexPool.GetMutex(ctx, conditionDeployment.GetVirtualMachineId())
 	if err != nil {
 		return nil, err
 	}
@@ -328,7 +328,7 @@ func RealMain(configuration *library.Configuration) {
 		Password: configuration.RedisPassword,
 	})
 	redisPool := goredis.NewPool(redisClient)
-	mutexPool, err := library.NewMutexPool(ctx, configuration.Hostname, *redsync.New(redisPool), *redisClient, 3)
+	mutexPool, err := library.NewMutexPool(ctx, configuration.Hostname, *redsync.New(redisPool), *redisClient, 50)
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -20,8 +21,10 @@ import (
 	"github.com/vmware/govmomi"
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/guest"
+	"github.com/vmware/govmomi/guest/toolbox"
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/vim25/mo"
+	"github.com/vmware/govmomi/vim25/soap"
 	"github.com/vmware/govmomi/vim25/types"
 	"google.golang.org/grpc/codes"
 
@@ -38,6 +41,7 @@ type GuestManager struct {
 	Auth           *types.NamePasswordAuthentication
 	ProcessManager *guest.ProcessManager
 	FileManager    *guest.FileManager
+	Toolbox        *toolbox.Client
 }
 
 type GuestOSFamily int
@@ -93,11 +97,19 @@ func (vmwareClient *VMWareClient) CreateGuestManagers(ctx context.Context, vmId 
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Error creating a process manager, %v", err))
 	}
 
+	var vmManagedObject mo.VirtualMachine
+	virtualMachine.Properties(ctx, virtualMachine.Reference(), []string{}, &vmManagedObject)
+	toolboxClient, err := toolbox.NewClient(ctx, processManager.Client(), vmManagedObject.Reference(), auth)
+	if err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Error creating Toolbox Client' %v", err))
+	}
+
 	guestManager := &GuestManager{
 		VirtualMachine: virtualMachine,
 		Auth:           auth,
 		FileManager:    fileManager,
 		ProcessManager: processManager,
+		Toolbox:        toolboxClient,
 	}
 	return guestManager, nil
 }
@@ -518,40 +530,23 @@ func (guestManager *GuestManager) AwaitProcessWithTimeout(ctx context.Context, p
 	return nil
 }
 
-func (guestManager *GuestManager) ExecutePackageAction(ctx context.Context, action string) (vmLog string, err error) {
-	vmLogPath, err := guestManager.FileManager.CreateTemporaryFile(ctx, guestManager.Auth, "executor-", ".log", "")
-	if err != nil {
-		return "", status.Error(codes.Internal, fmt.Sprintf("Error creating log file on vm, %v", err))
+func (guestManager *GuestManager) ExecutePackageAction(ctx context.Context, action string) (commandOutput string, err error) {
+	var vmManagedObject mo.VirtualMachine
+	guestManager.VirtualMachine.Properties(ctx, guestManager.VirtualMachine.Reference(), []string{}, &vmManagedObject)
 
-	}
-	programSpec := &types.GuestProgramSpec{
-		ProgramPath:      action,
-		Arguments:        fmt.Sprintf("> %v 2>&1", vmLogPath),
-		WorkingDirectory: path.Dir(action),
-		EnvVariables:     []string{},
-	}
+	stdoutBuffer := new(bytes.Buffer)
+	stderrBuffer := new(bytes.Buffer)
 
-	log.Tracef("Starting program: %v", action)
-	processID, err := guestManager.ProcessManager.StartProgram(ctx, guestManager.Auth, programSpec)
-	if err != nil {
-		return "", status.Error(codes.Internal, fmt.Sprintf("Error starting program, %v", err))
+	cmd := &exec.Cmd{
+		Path:   action,
+		Stdout: stdoutBuffer,
+		Stderr: stderrBuffer,
 	}
 
-	if processID > 0 {
-		err = guestManager.AwaitProcessWithTimeout(ctx, processID, action)
-		if err != nil {
-			vmLog, logErr := guestManager.GetVMLogContents(ctx, vmLogPath)
-			if logErr != nil {
-				return vmLog, logErr
-			}
-			return vmLog, err
-		}
-	}
-	vmLog, err = guestManager.GetVMLogContents(ctx, vmLogPath)
-	if err != nil {
-		return
-	}
-	log.Tracef("PID %v output: %v", processID, vmLog)
+	err = guestManager.Toolbox.Run(ctx, cmd)
+	stdout := strings.TrimSpace(stdoutBuffer.String())
+	stderr := strings.TrimSpace(stderrBuffer.String())
+	commandOutput = stdout + stderr
 	return
 }
 
@@ -587,25 +582,30 @@ func (guestManager *GuestManager) CopyAssetsToVM(ctx context.Context, assets [][
 		sourcePath := path.Join(packagePath, filepath.FromSlash(asset[0]))
 		targetPath := asset[1]
 
+		var vmManagedObject mo.VirtualMachine
+		guestManager.VirtualMachine.Properties(ctx, guestManager.VirtualMachine.Reference(), []string{}, &vmManagedObject)
+
 		fileSize, fileAttributes, err := guestManager.getAssetSizeAndAttributes(ctx, sourcePath, asset)
 		if err != nil {
 			return nil, err
 		}
+		httpPutRequest := soap.DefaultUpload
+		httpPutRequest.ContentLength = fileSize
 
 		normalizedTargetPath := normalizePackageTargetPath(sourcePath, targetPath)
-
+		log.Debugf("Creating Directory %s", path.Dir(normalizedTargetPath))
 		err = guestManager.FileManager.MakeDirectory(ctx, guestManager.Auth, path.Dir(normalizedTargetPath), true)
 		if err != nil && !strings.HasSuffix(err.Error(), "already exists") {
 			return nil, status.Error(codes.Internal, fmt.Sprintf("Error creating VM directories, %v", err))
 		}
-
-		transferUrl, err := guestManager.FileManager.InitiateFileTransferToGuest(ctx, guestManager.Auth, normalizedTargetPath, fileAttributes, fileSize, true)
+		file, err := os.Open(sourcePath)
 		if err != nil {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("Error creating transfer URL, %v", err))
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Error reading source file, %v", err))
 		}
-
-		if err = sendFileToVM(transferUrl, sourcePath); err != nil {
-			return nil, err
+		log.Debugf("Uploading file %s to %s", sourcePath, normalizedTargetPath)
+		err = guestManager.Toolbox.Upload(ctx, file, normalizedTargetPath, httpPutRequest, fileAttributes, true)
+		if err != nil {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Error Uploading file to VM %v", err))
 		}
 
 		splitFilepath := strings.Split(normalizedTargetPath, "/")

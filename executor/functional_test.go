@@ -348,8 +348,9 @@ func TestInjectDeploymentAndDeletionOnLinux(t *testing.T) {
 		},
 		Account: &common.Account{Username: "root", Password: "password"},
 	}
-	_, err := createInjectDeploymentRequest(t, deployment, packageFolderName)
+	response, err := createInjectDeploymentRequest(t, deployment, packageFolderName)
 	if err != nil {
-		t.Fatalf("Error creating Test Feature Deployment: %v", err)
+		t.Fatalf("Error creating Test Inject Deployment: %v", err)
 	}
+	log.Infof("Inject output: %v", response.VmLog)
 }
