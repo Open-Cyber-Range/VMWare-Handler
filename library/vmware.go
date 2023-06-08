@@ -409,14 +409,32 @@ func createFileAttributesByOsFamily(guestOsFamily GuestOSFamily, filePermissions
 func (guestManager *GuestManager) FindGuestOSFamily(ctx context.Context) (GuestOSFamily, error) {
 	var vmProperties mo.VirtualMachine
 
-	guestManager.VirtualMachine.Properties(ctx, guestManager.VirtualMachine.Reference(), []string{}, &vmProperties)
+	var tries int
+	for tries = 0; tries < 60; tries++ {
+		err := guestManager.VirtualMachine.Properties(ctx, guestManager.VirtualMachine.Reference(), []string{}, &vmProperties)
+		if err != nil {
+			return 0, status.Error(codes.Internal, fmt.Sprintf("Error retrieving VM properties, %v", err))
+		}
+		if vmProperties.Guest.GuestFamily == "" || vmProperties.Guest.GuestFamily == "0" {
+			log.Info("Awaiting VM properties to be populated...") // change me to a debug log
+			time.Sleep(1 * time.Second)
+			continue
+
+		} else {
+			break
+		}
+
+	}
+	if tries >= 60 {
+		return 0, status.Error(codes.Internal, fmt.Sprintf("Timeout retrieving VM %v properties", guestManager.VirtualMachine.UUID(ctx)))
+	}
 
 	matchedFamily, successful_match := parseOsFamily(vmProperties.Guest.GuestFamily)
 	if successful_match {
 		return matchedFamily, nil
+	} else {
+		return 0, status.Errorf(codes.Internal, "Guest OS Family not supported: %v", matchedFamily)
 	}
-
-	return 0, status.Error(codes.Internal, "Guest OS Family not supported")
 }
 
 func (guestManager *GuestManager) GetVMLogContents(ctx context.Context, vmLogPath string) (output string, err error) {
