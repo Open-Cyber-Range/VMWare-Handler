@@ -193,7 +193,7 @@ func (server *featurerServer) Create(ctx context.Context, featureDeployment *fea
 		PackageSource: featureDeployment.GetSource(),
 		VmID:          featureDeployment.GetVirtualMachineId(),
 	}
-	mutex, err := server.ServerSpecs.MutexPool.GetMutex(ctx)
+	mutex, err := server.ServerSpecs.MutexPool.GetMutex(ctx, featureDeployment.GetVirtualMachineId())
 	if err != nil {
 		return nil, err
 	}
@@ -224,7 +224,7 @@ func (server *injectServer) Create(ctx context.Context, injectDeployment *inject
 		},
 		PackageSource: injectDeployment.GetSource(),
 	}
-	mutex, err := server.ServerSpecs.MutexPool.GetMutex(ctx)
+	mutex, err := server.ServerSpecs.MutexPool.GetMutex(ctx, injectDeployment.GetVirtualMachineId())
 	if err != nil {
 		return nil, err
 	}
@@ -292,7 +292,7 @@ func uninstallPackage(ctx context.Context, serverSpecs *serverSpecs, identifier 
 		return new(emptypb.Empty), err
 	}
 	vmwareClient := library.NewVMWareClient(serverSpecs.Client, serverSpecs.Configuration.TemplateFolderPath)
-	mutex, err := serverSpecs.MutexPool.GetMutex(ctx)
+	mutex, err := serverSpecs.MutexPool.GetMutex(ctx, executorContainer.VMID)
 	if err != nil {
 		return new(emptypb.Empty), err
 	}
