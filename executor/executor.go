@@ -328,7 +328,12 @@ func RealMain(configuration *library.Configuration) {
 		Password: configuration.RedisPassword,
 	})
 	redisPool := goredis.NewPool(redisClient)
-	mutexPool, err := library.NewMutexPool(ctx, configuration.Hostname, *redsync.New(redisPool), *redisClient, 50)
+
+	if configuration.MaxConnections == 0 {
+		configuration.MaxConnections = 50
+	}
+
+	mutexPool, err := library.NewMutexPool(ctx, configuration.Hostname, *redsync.New(redisPool), *redisClient, configuration.MaxConnections)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -352,6 +357,8 @@ func RealMain(configuration *library.Configuration) {
 	capability.RegisterCapabilityServer(grpcServer, &capabilityServer)
 
 	log.Printf("Executor listening at %v", listeningAddress.Addr())
+	log.Printf("Max Connections: %v", mutexPool.MaxConnections)
+
 	if bindError := grpcServer.Serve(listeningAddress); bindError != nil {
 		log.Fatalf("Failed to serve: %v", bindError)
 	}

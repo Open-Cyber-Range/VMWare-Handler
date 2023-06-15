@@ -72,6 +72,7 @@ type Configuration struct {
 	DatastorePath      string `yaml:"datastore_path,omitempty"`
 	RedisAddress       string `yaml:"redis_address,omitempty"`
 	RedisPassword      string `yaml:"redis_password,omitempty"`
+	MaxConnections     int64    `yaml:"max_connections,omitempty"`
 }
 
 func (configuration *Configuration) Validate(validator *Validator) error {
