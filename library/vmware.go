@@ -422,13 +422,13 @@ func (guestManager *GuestManager) FindGuestOSFamily(ctx context.Context) (GuestO
 	var vmProperties mo.VirtualMachine
 
 	var tries int
-	for tries = 0; tries < 60; tries++ {
+	for tries = 0; tries < 30; tries++ {
 		err := guestManager.VirtualMachine.Properties(ctx, guestManager.VirtualMachine.Reference(), []string{}, &vmProperties)
 		if err != nil {
 			return 0, status.Error(codes.Internal, fmt.Sprintf("Error retrieving VM properties, %v", err))
 		}
 		if vmProperties.Guest.GuestFamily == "" || vmProperties.Guest.GuestFamily == "0" {
-			log.Info("Awaiting VM properties to be populated...") // change me to a debug log
+			log.Debugf("Awaiting VM properties to be populated for VM %v", guestManager.VirtualMachine.UUID(ctx))
 			time.Sleep(1 * time.Second)
 			continue
 
@@ -437,11 +437,13 @@ func (guestManager *GuestManager) FindGuestOSFamily(ctx context.Context) (GuestO
 		}
 
 	}
-	if tries >= 60 {
-		return 0, status.Error(codes.Internal, fmt.Sprintf("Timeout retrieving VM %v properties", guestManager.VirtualMachine.UUID(ctx)))
+	vmGuestFamily := vmProperties.Guest.GuestFamily
+	if tries >= 30 {
+		log.Warnf("Timeout retrieving VM %v properties, defaulting to 'linuxGuest'", guestManager.VirtualMachine.UUID(ctx))
+		vmGuestFamily = "linuxGuest"
 	}
 
-	matchedFamily, successful_match := parseOsFamily(vmProperties.Guest.GuestFamily)
+	matchedFamily, successful_match := parseOsFamily(vmGuestFamily)
 	if successful_match {
 		return matchedFamily, nil
 	} else {
