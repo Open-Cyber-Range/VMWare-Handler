@@ -39,6 +39,11 @@ const WindowsConditionsTestVirtualMachineUUID = "4212d188-36c8-d2c3-c14d-98f2c25
 
 func startServer(timeout time.Duration) (configuration library.Configuration) {
 	configuration = testConfiguration
+	validator := library.NewValidator().SetRequireExerciseRootPath(true)
+	err := configuration.Validate(validator)
+	if err != nil {
+		log.Fatalf("Failed to validate configuration: %v", err)
+	}
 	rand.Seed(time.Now().UnixNano())
 	randomPort := rand.Intn(10000) + 10000
 	configuration.ServerAddress = fmt.Sprintf("%v:%v", configuration.ServerAddress, randomPort)

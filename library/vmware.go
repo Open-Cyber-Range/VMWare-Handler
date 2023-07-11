@@ -32,8 +32,9 @@ import (
 )
 
 type VMWareClient struct {
-	Client       *govmomi.Client
-	templatePath string
+	Client        *govmomi.Client
+	templatePath  string
+	configuration ConfigurationVariables
 }
 
 type GuestManager struct {
@@ -42,6 +43,7 @@ type GuestManager struct {
 	ProcessManager *guest.ProcessManager
 	FileManager    *guest.FileManager
 	Toolbox        *toolbox.Client
+	configuration  ConfigurationVariables
 }
 
 type GuestOSFamily int
@@ -63,10 +65,11 @@ func parseOsFamily(vmOsFamily string) (family GuestOSFamily, success bool) {
 	return
 }
 
-func NewVMWareClient(client *govmomi.Client, templatePath string) (configuration VMWareClient) {
+func NewVMWareClient(client *govmomi.Client, templatePath string, configuration ConfigurationVariables) VMWareClient {
 	return VMWareClient{
-		Client:       client,
-		templatePath: templatePath,
+		Client:        client,
+		templatePath:  templatePath,
+		configuration: configuration,
 	}
 }
 
@@ -80,7 +83,7 @@ func (vmwareClient *VMWareClient) CreateGuestManagers(ctx context.Context, vmId 
 	if err != nil {
 		return nil, err
 	} else if !isVmToolsRunning {
-		err = AwaitVMToolsToComeOnline(ctx, virtualMachine)
+		err = AwaitVMToolsToComeOnline(ctx, virtualMachine, vmwareClient.configuration)
 		if err != nil {
 			return nil, err
 		}
@@ -110,6 +113,7 @@ func (vmwareClient *VMWareClient) CreateGuestManagers(ctx context.Context, vmId 
 		FileManager:    fileManager,
 		ProcessManager: processManager,
 		Toolbox:        toolboxClient,
+		configuration:  vmwareClient.configuration,
 	}
 	return guestManager, nil
 }
@@ -422,7 +426,7 @@ func (guestManager *GuestManager) FindGuestOSFamily(ctx context.Context) (GuestO
 	var vmProperties mo.VirtualMachine
 
 	var tries int
-	for tries = 0; tries < 30; tries++ {
+	for tries = 0; tries < guestManager.configuration.VmPropertiesTimeoutSec; tries++ {
 		err := guestManager.VirtualMachine.Properties(ctx, guestManager.VirtualMachine.Reference(), []string{}, &vmProperties)
 		if err != nil {
 			return 0, status.Error(codes.Internal, fmt.Sprintf("Error retrieving VM properties, %v", err))
@@ -438,7 +442,7 @@ func (guestManager *GuestManager) FindGuestOSFamily(ctx context.Context) (GuestO
 
 	}
 	vmGuestFamily := vmProperties.Guest.GuestFamily
-	if tries >= 30 {
+	if tries >= guestManager.configuration.VmPropertiesTimeoutSec {
 		log.Warnf("Timeout retrieving VM %v properties, defaulting to 'linuxGuest'", guestManager.VirtualMachine.UUID(ctx))
 		vmGuestFamily = "linuxGuest"
 	}

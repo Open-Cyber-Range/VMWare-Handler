@@ -95,7 +95,7 @@ func (server *conditionerServer) Create(ctx context.Context, conditionDeployment
 		Username: conditionDeployment.GetAccount().GetUsername(),
 		Password: conditionDeployment.GetAccount().GetPassword(),
 	}
-	vmwareClient := library.NewVMWareClient(server.ServerSpecs.Client, server.ServerSpecs.Configuration.TemplateFolderPath)
+	vmwareClient := library.NewVMWareClient(server.ServerSpecs.Client, server.ServerSpecs.Configuration.TemplateFolderPath, server.ServerSpecs.Configuration.Variables)
 	guestManager, err := vmwareClient.CreateGuestManagers(ctx, conditionDeployment.GetVirtualMachineId(), vmAuthentication)
 	if err != nil {
 		return nil, err
@@ -139,7 +139,7 @@ func (server *conditionerServer) Stream(identifier *common.Identifier, stream co
 		return err
 	}
 
-	vmwareClient := library.NewVMWareClient(server.ServerSpecs.Client, server.ServerSpecs.Configuration.TemplateFolderPath)
+	vmwareClient := library.NewVMWareClient(server.ServerSpecs.Client, server.ServerSpecs.Configuration.TemplateFolderPath, server.ServerSpecs.Configuration.Variables)
 	guestManager, err := vmwareClient.CreateGuestManagers(ctx, container.VMID, &container.Auth)
 	if err != nil {
 		return err
@@ -251,7 +251,7 @@ func installPackage(ctx context.Context, vmWareTarget *vmWareTarget, serverSpecs
 		Username: vmWareTarget.VmAccount.Name,
 		Password: vmWareTarget.VmAccount.Password,
 	}
-	vmwareClient := library.NewVMWareClient(serverSpecs.Client, serverSpecs.Configuration.TemplateFolderPath)
+	vmwareClient := library.NewVMWareClient(serverSpecs.Client, serverSpecs.Configuration.TemplateFolderPath, serverSpecs.Configuration.Variables)
 	guestManager, err := vmwareClient.CreateGuestManagers(ctx, vmWareTarget.VmID, vmAuthentication)
 	if err != nil {
 		return nil, err
@@ -291,7 +291,7 @@ func uninstallPackage(ctx context.Context, serverSpecs *serverSpecs, identifier 
 	if err != nil {
 		return new(emptypb.Empty), err
 	}
-	vmwareClient := library.NewVMWareClient(serverSpecs.Client, serverSpecs.Configuration.TemplateFolderPath)
+	vmwareClient := library.NewVMWareClient(serverSpecs.Client, serverSpecs.Configuration.TemplateFolderPath, serverSpecs.Configuration.Variables)
 	mutex, err := serverSpecs.MutexPool.GetMutex(ctx, executorContainer.VMID)
 	if err != nil {
 		return new(emptypb.Empty), err
@@ -329,11 +329,7 @@ func RealMain(configuration *library.Configuration) {
 	})
 	redisPool := goredis.NewPool(redisClient)
 
-	if configuration.MaxConnections == 0 {
-		configuration.MaxConnections = 50
-	}
-
-	mutexPool, err := library.NewMutexPool(ctx, configuration.Hostname, *redsync.New(redisPool), *redisClient, configuration.MaxConnections)
+	mutexPool, err := library.NewMutexPool(ctx, configuration.Hostname, *redsync.New(redisPool), *redisClient, configuration.Variables)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -357,7 +353,7 @@ func RealMain(configuration *library.Configuration) {
 	capability.RegisterCapabilityServer(grpcServer, &capabilityServer)
 
 	log.Printf("Executor listening at %v", listeningAddress.Addr())
-	log.Printf("Max Connections: %v", mutexPool.MaxConnections)
+	log.Printf("Max Connections: %v", mutexPool.Configuration.MaxConnections)
 
 	if bindError := grpcServer.Serve(listeningAddress); bindError != nil {
 		log.Fatalf("Failed to serve: %v", bindError)
