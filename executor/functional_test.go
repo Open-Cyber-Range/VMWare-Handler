@@ -12,6 +12,7 @@ import (
 	"github.com/open-cyber-range/vmware-handler/grpc/common"
 	"github.com/open-cyber-range/vmware-handler/grpc/condition"
 	"github.com/open-cyber-range/vmware-handler/grpc/feature"
+	"github.com/open-cyber-range/vmware-handler/grpc/inject"
 	"github.com/open-cyber-range/vmware-handler/library"
 	log "github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
@@ -32,10 +33,17 @@ var testConfiguration = library.Configuration{
 }
 
 const LinuxTestVirtualMachineUUID = "4212b4a9-dd30-45cc-3667-b72c8dd97558"
+const LinuxConditionsTestVirtualMachineUUID = "42128ddc-dfda-786d-905f-3d4db40b7cbb"
 const WindowsTestVirtualMachineUUID = "42122b12-3a17-c0fb-eb3c-7cd935bb595b"
+const WindowsConditionsTestVirtualMachineUUID = "4212d188-36c8-d2c3-c14d-98f2c25434c9"
 
 func startServer(timeout time.Duration) (configuration library.Configuration) {
 	configuration = testConfiguration
+	validator := library.NewValidator().SetRequireExerciseRootPath(true)
+	err := configuration.Validate(validator)
+	if err != nil {
+		log.Fatalf("Failed to validate configuration: %v", err)
+	}
 	rand.Seed(time.Now().UnixNano())
 	randomPort := rand.Intn(10000) + 10000
 	configuration.ServerAddress = fmt.Sprintf("%v:%v", configuration.ServerAddress, randomPort)
@@ -75,7 +83,21 @@ func createConditionClient(t *testing.T, serverPath string) condition.ConditionS
 	return condition.NewConditionServiceClient(connection)
 }
 
-func createFeatureDeploymentRequest(t *testing.T, deployment *feature.Feature, packageName string) (response *feature.FeatureResponse, err error) {
+func createInjectClient(t *testing.T, serverPath string) inject.InjectServiceClient {
+	connection, connectionError := grpc.Dial(serverPath, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if connectionError != nil {
+		t.Fatalf("Failed to connect to grpc server: %v", connectionError)
+	}
+	t.Cleanup(func() {
+		connectionError := connection.Close()
+		if connectionError != nil {
+			t.Fatalf("Failed to close grpc connection: %v", connectionError)
+		}
+	})
+	return inject.NewInjectServiceClient(connection)
+}
+
+func createFeatureDeploymentRequest(t *testing.T, deployment *feature.Feature, packageName string) (executorResponse *common.ExecutorResponse, err error) {
 	configuration := startServer(3 * time.Second)
 	ctx := context.Background()
 	gRPCClient := createFeatureClient(t, configuration.ServerAddress)
@@ -84,23 +106,47 @@ func createFeatureDeploymentRequest(t *testing.T, deployment *feature.Feature, p
 		t.Fatalf("Failed to upload test feature package: %v", err)
 	}
 
-	response, err = gRPCClient.Create(ctx, deployment)
+	executorResponse, err = gRPCClient.Create(ctx, deployment)
 	if err != nil {
 		t.Fatalf("Test Create request error: %v", err)
 	}
 
-	log.Infof("Feature Create finished, id: %v", response.Identifier.GetValue())
-	_, err = gRPCClient.Delete(ctx, response.Identifier)
+	log.Infof("Feature Create finished, id: %v", executorResponse.Identifier.GetValue())
+	_, err = gRPCClient.Delete(ctx, executorResponse.Identifier)
 	if err != nil {
 		t.Fatalf("Test Delete request error: %v", err)
 	}
 	log.Infof("Feature delete finished")
 
 	if deployment.FeatureType == feature.FeatureType_service {
-		if response.VmLog == "" {
+		if executorResponse.VmLog == "" {
 			t.Fatalf("Test Feature Service produced no logs and was likely not executed")
 		}
 	}
+	return
+}
+
+func createInjectDeploymentRequest(t *testing.T, deployment *inject.Inject, packageName string) (executorResponse *common.ExecutorResponse, err error) {
+	configuration := startServer(3 * time.Second)
+	ctx := context.Background()
+	gRPCClient := createInjectClient(t, configuration.ServerAddress)
+
+	if err := library.PublishTestPackage(packageName); err != nil {
+		t.Fatalf("Failed to upload test inject package: %v", err)
+	}
+
+	executorResponse, err = gRPCClient.Create(ctx, deployment)
+	if err != nil {
+		t.Fatalf("Test Create request error: %v", err)
+	}
+
+	log.Infof("Inject Create finished, id: %v", executorResponse.Identifier.GetValue())
+	_, err = gRPCClient.Delete(ctx, executorResponse.Identifier)
+	if err != nil {
+		t.Fatalf("Test Delete request error: %v", err)
+	}
+	log.Infof("Inject delete finished")
+
 	return
 }
 
@@ -155,31 +201,29 @@ func createConditionerDeploymentRequest(t *testing.T, deployment *condition.Cond
 }
 
 func TestConditionerWithCommand(t *testing.T) {
-	t.Parallel()
 
 	deployment := &condition.Condition{
 		Name:             "command-condition",
-		VirtualMachineId: LinuxTestVirtualMachineUUID,
+		VirtualMachineId: LinuxConditionsTestVirtualMachineUUID,
 		Account:          &common.Account{Username: "root", Password: "password"},
 		Command:          "/prebaked-conditions/divider.sh",
-		Interval:         1,
+		Interval:         5,
 	}
 
 	createConditionerDeploymentRequest(t, deployment)
 }
 
 func TestConditionerWithSourcePackage(t *testing.T) {
-	t.Parallel()
 
-	packageName := "condition-package"
+	packageFolderName := "condition-package"
 
-	if err := library.PublishTestPackage(packageName); err != nil {
+	if err := library.PublishTestPackage(packageFolderName); err != nil {
 		t.Fatalf("Test publish failed: %v", err)
 	}
 
 	deployment := &condition.Condition{
 		Name:             "source-condition",
-		VirtualMachineId: LinuxTestVirtualMachineUUID,
+		VirtualMachineId: LinuxConditionsTestVirtualMachineUUID,
 		Account:          &common.Account{Username: "root", Password: "password"},
 		Source: &common.Source{
 			Name:    "test-condition",
@@ -190,10 +234,30 @@ func TestConditionerWithSourcePackage(t *testing.T) {
 	createConditionerDeploymentRequest(t, deployment)
 }
 
-func TestFeatureServiceDeploymentAndDeletionOnLinux(t *testing.T) {
-	t.Parallel()
+func TestConditionerWithSourcePackageOnWindows(t *testing.T) {
 
-	packageName := "feature-service-package"
+	packageFolderName := "condition-win-package"
+
+	if err := library.PublishTestPackage(packageFolderName); err != nil {
+		t.Fatalf("Test publish failed: %v", err)
+	}
+
+	deployment := &condition.Condition{
+		Name:             "source-condition",
+		VirtualMachineId: WindowsConditionsTestVirtualMachineUUID,
+		Account:          &common.Account{Username: "user", Password: "password"},
+		Source: &common.Source{
+			Name:    "test-windows-condition",
+			Version: "*",
+		},
+	}
+
+	createConditionerDeploymentRequest(t, deployment)
+}
+
+func TestFeatureServiceDeploymentAndDeletionOnLinux(t *testing.T) {
+
+	packageFolderName := "feature-service-package"
 
 	deployment := &feature.Feature{
 		Name:             "test-feature",
@@ -205,7 +269,7 @@ func TestFeatureServiceDeploymentAndDeletionOnLinux(t *testing.T) {
 		},
 		Account: &common.Account{Username: "root", Password: "password"},
 	}
-	response, err := createFeatureDeploymentRequest(t, deployment, packageName)
+	response, err := createFeatureDeploymentRequest(t, deployment, packageFolderName)
 	if err != nil {
 		t.Fatalf("Error creating Test Feature Deployment: %v", err)
 	}
@@ -215,9 +279,8 @@ func TestFeatureServiceDeploymentAndDeletionOnLinux(t *testing.T) {
 }
 
 func TestFeaturePackageWithALotOfFiles(t *testing.T) {
-	t.Parallel()
 
-	packageName := "feature-plethora"
+	packageFolderName := "feature-plethora"
 
 	deployment := &feature.Feature{
 		Name:             "test-feature",
@@ -229,16 +292,15 @@ func TestFeaturePackageWithALotOfFiles(t *testing.T) {
 		},
 		Account: &common.Account{Username: "root", Password: "password"},
 	}
-	_, err := createFeatureDeploymentRequest(t, deployment, packageName)
+	_, err := createFeatureDeploymentRequest(t, deployment, packageFolderName)
 	if err != nil {
 		t.Fatalf("Error creating Test Feature Deployment: %v", err)
 	}
 }
 
 func TestFeatureConfigurationDeploymentAndDeletionOnLinux(t *testing.T) {
-	t.Parallel()
 
-	packageName := "feature-config-package"
+	packageFolderName := "feature-config-package"
 
 	deployment := &feature.Feature{
 		Name:             "test-feature",
@@ -250,16 +312,15 @@ func TestFeatureConfigurationDeploymentAndDeletionOnLinux(t *testing.T) {
 		},
 		Account: &common.Account{Username: "root", Password: "password"},
 	}
-	_, err := createFeatureDeploymentRequest(t, deployment, packageName)
+	_, err := createFeatureDeploymentRequest(t, deployment, packageFolderName)
 	if err != nil {
 		t.Fatalf("Error creating Test Feature Deployment: %v", err)
 	}
 }
 
 func TestFeatureServiceDeploymentAndDeletionOnWindows(t *testing.T) {
-	t.Parallel()
 
-	packageName := "feature-win-service-package"
+	packageFolderName := "feature-win-service-package"
 
 	deployment := &feature.Feature{
 		Name:             "test-feature",
@@ -271,10 +332,30 @@ func TestFeatureServiceDeploymentAndDeletionOnWindows(t *testing.T) {
 		},
 		Account: &common.Account{Username: "user", Password: "password"},
 	}
-	response, err := createFeatureDeploymentRequest(t, deployment, packageName)
+	response, err := createFeatureDeploymentRequest(t, deployment, packageFolderName)
 	if err != nil {
 		t.Fatalf("Error creating Test Feature Deployment: %v", err)
 	}
 
-	log.Infof("Feature output: %#v", response.VmLog)
+	log.Infof("Feature output: %v", response.VmLog)
+}
+
+func TestInjectDeploymentAndDeletionOnLinux(t *testing.T) {
+
+	packageFolderName := "inject-flag-generator"
+
+	deployment := &inject.Inject{
+		Name:             "test-inject",
+		VirtualMachineId: LinuxTestVirtualMachineUUID,
+		Source: &common.Source{
+			Name:    "flag-generator",
+			Version: "*",
+		},
+		Account: &common.Account{Username: "root", Password: "password"},
+	}
+	response, err := createInjectDeploymentRequest(t, deployment, packageFolderName)
+	if err != nil {
+		t.Fatalf("Error creating Test Inject Deployment: %v", err)
+	}
+	log.Infof("Inject output: %v", response.VmLog)
 }

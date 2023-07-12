@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-redis/redis/v8"
+	"github.com/go-redsync/redsync/v4"
 	"github.com/iancoleman/strcase"
 	"github.com/open-cyber-range/vmware-handler/grpc/capability"
 	log "github.com/sirupsen/logrus"
@@ -25,10 +27,162 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-const vmToolsTimeoutSec int = 120
-const vmToolsSleepSec int = 5
-const vmToolsCheckTries int = vmToolsTimeoutSec / vmToolsSleepSec
-const tmpPackagePrefix string = "deputy-package"
+type MutexPool struct {
+	Id            string
+	Redsync       *redsync.Redsync
+	RedisClient   *redis.Client
+	Configuration ConfigurationVariables
+}
+type Mutex struct {
+	PoolId           string
+	Mutex            *redsync.Mutex
+	RedisClient      *redis.Client
+	RetryIntervalMax int
+	RetryIntervalMin int
+	Timeout          int
+}
+type Feature struct {
+	Type   string     `json:"type"`
+	Action string     `json:"action,omitempty"`
+	Assets [][]string `json:"assets"`
+}
+
+type Condition struct {
+	Interval uint32     `json:"interval,omitempty"`
+	Action   string     `json:"action,omitempty"`
+	Assets   [][]string `json:"assets"`
+}
+
+type Inject struct {
+	Action string     `json:"action,omitempty"`
+	Assets [][]string `json:"assets"`
+}
+
+type ExecutorPackage struct {
+	Feature   Feature   `json:"feature,omitempty"`
+	Condition Condition `json:"condition,omitempty"`
+	Inject    Inject    `json:"inject,omitempty"`
+}
+
+func (mutexPool MutexPool) GetMutex(ctx context.Context, optionalId ...string) (mutex *Mutex, err error) {
+	identifier := "general-mutex"
+	if len(optionalId) != 0 {
+		identifier = "vm-mutex-" + optionalId[len(optionalId)-1]
+	}
+
+	currentConnections, err := mutexPool.RedisClient.HLen(ctx, mutexPool.Id).Result()
+	if err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Error getting Redis entry, %v", err))
+	}
+	lockAlreadyExists, err := mutexPool.RedisClient.HExists(ctx, mutexPool.Id, identifier).Result()
+	if err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Error checking existence of Redis entry, %v", err))
+	}
+	if currentConnections >= mutexPool.Configuration.MaxConnections || lockAlreadyExists {
+		time.Sleep(time.Duration(rand.Intn(mutexPool.Configuration.MutexPoolMaxRetryMillis)+mutexPool.Configuration.MutexPoolMinRetryMillis) * time.Millisecond)
+		return mutexPool.GetMutex(ctx, optionalId...)
+	}
+	_, err = mutexPool.RedisClient.HSet(ctx, mutexPool.Id, identifier, 0).Result()
+	if err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Error setting Redis entry, %v", err))
+	}
+
+	return &Mutex{
+		PoolId:      mutexPool.Id,
+		Mutex:       mutexPool.Redsync.NewMutex(identifier),
+		RedisClient: mutexPool.RedisClient,
+		Timeout:     mutexPool.Configuration.MutexTimeoutSec,
+	}, nil
+}
+
+func (mutex *Mutex) Lock(ctx context.Context) (err error) {
+	successChannel := make(chan bool)
+	errorChannel := make(chan error)
+
+	go func() {
+		err = mutex.Mutex.Lock()
+		if err != nil {
+			if strings.HasPrefix(err.Error(), "lock already taken") {
+				log.Tracef("Mutex lock taken, trying again")
+				time.Sleep(time.Millisecond * (time.Duration(rand.Intn(100) + 50)))
+
+				if err = mutex.Lock(ctx); err != nil {
+					successChannel <- false
+					errorChannel <- err
+				}
+			} else {
+				successChannel <- false
+				errorChannel <- err
+			}
+		}
+		successChannel <- true
+		errorChannel <- nil
+	}()
+	select {
+
+	case isSuccess := <-successChannel:
+		if !isSuccess {
+			err := <-errorChannel
+			if err != nil {
+				return err
+			}
+		}
+
+	case <-time.After(time.Duration(mutex.Timeout) * time.Second):
+		return status.Error(codes.Internal, fmt.Sprintf("Mutex lock timed out after %v seconds: %v", mutex.Timeout, err))
+	}
+
+	return nil
+}
+
+func (mutex *Mutex) Unlock(ctx context.Context) (err error) {
+	mutex.Mutex.Unlock()
+	_, err = mutex.RedisClient.HDel(ctx, mutex.PoolId, mutex.Mutex.Name()).Result()
+	if err != nil {
+		return status.Error(codes.Internal, fmt.Sprintf("Error deleting Redis entry, %v", err))
+	}
+	return
+}
+
+func NewMutexPool(ctx context.Context, poolIdentifier string, redsync redsync.Redsync, redisClient redis.Client, configuration ConfigurationVariables) (mutexPool MutexPool, err error) {
+	mutexPool = MutexPool{
+		Id:            poolIdentifier,
+		Redsync:       &redsync,
+		RedisClient:   &redisClient,
+		Configuration: configuration,
+	}
+	_, err = redisClient.Del(ctx, poolIdentifier).Result()
+	if err != nil {
+		return MutexPool{}, status.Error(codes.Internal, fmt.Sprintf("Error cleaning up MutexPool, %v", err))
+	}
+	return mutexPool, nil
+}
+
+func (executorPackage ExecutorPackage) GetAssets() (assets [][]string) {
+	switch parcel := executorPackage; {
+	case len(parcel.Feature.Assets) > 0:
+		return executorPackage.Feature.Assets
+	case len(parcel.Condition.Assets) > 0:
+		return executorPackage.Condition.Assets
+	case len(parcel.Inject.Assets) > 0:
+		return executorPackage.Inject.Assets
+	default:
+		return
+	}
+}
+
+func (executorPackage ExecutorPackage) GetAction() (action string) {
+	switch parcel := executorPackage; {
+	case parcel.Feature.Action != "":
+		return executorPackage.Feature.Action
+	case parcel.Condition.Action != "":
+		return executorPackage.Condition.Action
+	case parcel.Inject.Action != "":
+		return executorPackage.Inject.Action
+	default:
+		return
+	}
+}
 
 func CreateRandomString(length int) string {
 	rand.Seed(time.Now().UnixNano())
@@ -85,7 +239,7 @@ func SanitizeToCompatibleName(input string) string {
 }
 
 func createRandomPackagePath() (string, error) {
-	return os.MkdirTemp("/tmp", tmpPackagePrefix)
+	return os.MkdirTemp("/tmp", TmpPackagePrefix+"*")
 }
 
 func DownloadPackage(name string, version string) (packagePath string, err error) {
@@ -96,11 +250,12 @@ func DownloadPackage(name string, version string) (packagePath string, err error
 		return
 	}
 
-	log.Infof("Fetching package: %v, version: %v to %v", name, version, packagePath)
-	downloadCommand := exec.Command("deputy", "fetch", name, "-v", version, "-s", packagePath)
+	log.Infof("Fetching package: %v, version: %v to %v", name, version, packageBasePath)
+	downloadCommand := exec.Command("deputy", "fetch", name, "-v", version, "-s", packageBasePath)
 	downloadCommand.Dir = packageBasePath
 	output, err := downloadCommand.CombinedOutput()
 	if err != nil {
+		log.Errorf("Deputy fetch command failed, %v", err)
 		return "", fmt.Errorf("%v (%v)", string(output), err)
 	}
 	directories, err := IOReadDir(packageBasePath)
@@ -121,8 +276,8 @@ func DownloadPackage(name string, version string) (packagePath string, err error
 
 func CleanupTempPackage(packagePath string) (err error) {
 	packageBasePath := filepath.Clean(filepath.Join(packagePath, ".."))
-	if !strings.Contains(packageBasePath, tmpPackagePrefix) {
-		log.Warnf("Temp Package folder %v was not cleaned up, folder did not contain prefix %v", packageBasePath, tmpPackagePrefix)
+	if !strings.Contains(packageBasePath, TmpPackagePrefix) {
+		log.Warnf("Temp Package folder %v was not cleaned up, folder did not contain prefix %v", packageBasePath, TmpPackagePrefix)
 		return nil
 	}
 	if err := os.RemoveAll(packageBasePath); err != nil {
@@ -204,8 +359,8 @@ func CheckVMStatus(ctx context.Context, virtualMachine *object.VirtualMachine) (
 	return false, status.Error(codes.Internal, fmt.Sprintf("Error: VM Power state: %v, VM Tools status: %v", vmPowerState, vmToolsStatus))
 }
 
-func AwaitVMToolsToComeOnline(ctx context.Context, virtualMachine *object.VirtualMachine) error {
-	var tries = int(vmToolsCheckTries)
+func AwaitVMToolsToComeOnline(ctx context.Context, virtualMachine *object.VirtualMachine, configuration ConfigurationVariables) error {
+	var tries = int(configuration.VmToolsTimeoutSec / configuration.VmToolsRetrySec)
 	vmId := virtualMachine.UUID(ctx)
 
 	for tries > 0 {
@@ -224,8 +379,35 @@ func AwaitVMToolsToComeOnline(ctx context.Context, virtualMachine *object.Virtua
 			return nil
 		}
 
-		time.Sleep(time.Second * time.Duration(vmToolsSleepSec))
+		time.Sleep(time.Second * time.Duration(configuration.VmToolsRetrySec))
 	}
 
-	return status.Error(codes.Internal, fmt.Sprintf("Timeout (%v sec) waiting for VMTools to come online on %v", vmToolsTimeoutSec, vmId))
+	return status.Error(codes.Internal, fmt.Sprintf("Timeout (%v sec) waiting for VMTools to come online on %v", configuration.VmToolsRetrySec, vmId))
+}
+
+func GetPackageTomlContents(packageName string, packageVersion string) (packagePath string, packageTomlContent map[string]interface{}, err error) {
+	packagePath, err = DownloadPackage(packageName, packageVersion)
+	if err != nil {
+		return "", nil, err
+	}
+	packageTomlContent, err = GetPackageData(packagePath)
+	if err != nil {
+		log.Errorf("Failed to get package data, %v", err)
+	}
+	return
+}
+
+func GetPackageMetadata(packageName string, packageVersion string) (packagePath string, executorPackage ExecutorPackage, err error) {
+	packagePath, packageTomlContent, err := GetPackageTomlContents(packageName, packageVersion)
+	if err != nil {
+		return "", ExecutorPackage{}, status.Error(codes.NotFound, fmt.Sprintf("Failed to download package: %v", err))
+	}
+	infoJson, err := json.Marshal(&packageTomlContent)
+	if err != nil {
+		return "", ExecutorPackage{}, status.Error(codes.Internal, fmt.Sprintf("Error marshalling Toml contents: %v", err))
+	}
+	if err = json.Unmarshal(infoJson, &executorPackage); err != nil {
+		return "", ExecutorPackage{}, status.Error(codes.Internal, fmt.Sprintf("Error unmarshalling Toml contents: %v", err))
+	}
+	return
 }

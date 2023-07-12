@@ -161,7 +161,7 @@ type virtualMachineServer struct {
 }
 
 func (server *virtualMachineServer) Create(ctx context.Context, virtualMachineDeployment *virtual_machine.DeployVirtualMachine) (*common.Identifier, error) {
-	vmwareClient := library.NewVMWareClient(server.Client, server.Configuration.TemplateFolderPath)
+	vmwareClient := library.NewVMWareClient(server.Client, server.Configuration.TemplateFolderPath, server.Configuration.Variables)
 	deployment := Deployment{
 		Client:         &vmwareClient,
 		Configuration:  server.Configuration,
@@ -207,7 +207,7 @@ func (server *virtualMachineServer) Create(ctx context.Context, virtualMachineDe
 }
 
 func (server *virtualMachineServer) Delete(ctx context.Context, identifier *common.Identifier) (*emptypb.Empty, error) {
-	vmwareClient := library.NewVMWareClient(server.Client, server.Configuration.TemplateFolderPath)
+	vmwareClient := library.NewVMWareClient(server.Client, server.Configuration.TemplateFolderPath, server.Configuration.Variables)
 	uuid := identifier.GetValue()
 	deployment := Deployment{
 		Client:        &vmwareClient,

@@ -280,7 +280,7 @@ func TestVerifyNodeCpuAndMemory(t *testing.T) {
 	if govmomiClientError != nil {
 		t.Fatalf("Failed to send request: %v", govmomiClientError)
 	}
-	vmwareClient := library.NewVMWareClient(govmomiClient, testConfiguration.TemplateFolderPath)
+	vmwareClient := library.NewVMWareClient(govmomiClient, testConfiguration.TemplateFolderPath, testConfiguration.Variables)
 	gRPCClient := creategRPCClient(t, configuration.ServerAddress)
 	exerciseName, deploymentName, _ := createExercise(t, &vmwareClient)
 	createVmNode(t, gRPCClient, exerciseName, deploymentName, &vmwareClient, []string{})
@@ -304,7 +304,7 @@ func TestNodeDeletion(t *testing.T) {
 	if govmomiClientError != nil {
 		t.Fatalf("Failed to create govmomi client: %v", govmomiClientError)
 	}
-	vmwareClient := library.NewVMWareClient(govmomiClient, testConfiguration.TemplateFolderPath)
+	vmwareClient := library.NewVMWareClient(govmomiClient, testConfiguration.TemplateFolderPath, testConfiguration.Variables)
 	gRPCClient := creategRPCClient(t, configuration.ServerAddress)
 	exerciseName, deploymentName, _ := createExercise(t, &vmwareClient)
 	virtualMachineIdentifier := createVmNode(t, gRPCClient, exerciseName, deploymentName, &vmwareClient, []string{})
@@ -324,7 +324,7 @@ func TestNodeCreation(t *testing.T) {
 	if govmomiClientError != nil {
 		t.Fatalf("Failed to send request: %v", govmomiClientError)
 	}
-	vmwareClient := library.NewVMWareClient(govmomiClient, testConfiguration.TemplateFolderPath)
+	vmwareClient := library.NewVMWareClient(govmomiClient, testConfiguration.TemplateFolderPath, testConfiguration.Variables)
 	gRPCClient := creategRPCClient(t, configuration.ServerAddress)
 	exerciseName, deploymentName, _ := createExercise(t, &vmwareClient)
 
@@ -382,7 +382,7 @@ func TestLinkAddition(t *testing.T) {
 	if govmomiClientError != nil {
 		t.Fatalf("Failed to send request: %v", govmomiClientError)
 	}
-	vmwareClient := library.NewVMWareClient(govmomiClient, testConfiguration.TemplateFolderPath)
+	vmwareClient := library.NewVMWareClient(govmomiClient, testConfiguration.TemplateFolderPath, testConfiguration.Variables)
 	gRPCClient := creategRPCClient(t, configuration.ServerAddress)
 	apiClient := createAPIClient()
 	amountOfLinks := 3
