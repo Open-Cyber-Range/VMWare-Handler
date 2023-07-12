@@ -39,6 +39,11 @@ const WindowsConditionsTestVirtualMachineUUID = "4212d188-36c8-d2c3-c14d-98f2c25
 
 func startServer(timeout time.Duration) (configuration library.Configuration) {
 	configuration = testConfiguration
+	validator := library.NewValidator().SetRequireExerciseRootPath(true)
+	err := configuration.Validate(validator)
+	if err != nil {
+		log.Fatalf("Failed to validate configuration: %v", err)
+	}
 	rand.Seed(time.Now().UnixNano())
 	randomPort := rand.Intn(10000) + 10000
 	configuration.ServerAddress = fmt.Sprintf("%v:%v", configuration.ServerAddress, randomPort)
@@ -348,8 +353,9 @@ func TestInjectDeploymentAndDeletionOnLinux(t *testing.T) {
 		},
 		Account: &common.Account{Username: "root", Password: "password"},
 	}
-	_, err := createInjectDeploymentRequest(t, deployment, packageFolderName)
+	response, err := createInjectDeploymentRequest(t, deployment, packageFolderName)
 	if err != nil {
-		t.Fatalf("Error creating Test Feature Deployment: %v", err)
+		t.Fatalf("Error creating Test Inject Deployment: %v", err)
 	}
+	log.Infof("Inject output: %v", response.VmLog)
 }

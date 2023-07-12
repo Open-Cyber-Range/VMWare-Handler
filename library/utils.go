@@ -27,22 +27,19 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-const vmToolsTimeoutSec int = 120
-const vmToolsSleepSec int = 5
-const vmToolsCheckTries int = vmToolsTimeoutSec / vmToolsSleepSec
-const tmpPackagePrefix string = "deputy-package"
-const mutexTimeout time.Duration = 30 * 60 * time.Second
-
 type MutexPool struct {
-	Id             string
-	Redsync        *redsync.Redsync
-	RedisClient    *redis.Client
-	MaxConnections int64
+	Id            string
+	Redsync       *redsync.Redsync
+	RedisClient   *redis.Client
+	Configuration ConfigurationVariables
 }
 type Mutex struct {
-	PoolId      string
-	Mutex       *redsync.Mutex
-	RedisClient *redis.Client
+	PoolId           string
+	Mutex            *redsync.Mutex
+	RedisClient      *redis.Client
+	RetryIntervalMax int
+	RetryIntervalMin int
+	Timeout          int
 }
 type Feature struct {
 	Type   string     `json:"type"`
@@ -73,7 +70,7 @@ func (mutexPool MutexPool) GetMutex(ctx context.Context, optionalId ...string) (
 		identifier = "vm-mutex-" + optionalId[len(optionalId)-1]
 	}
 
-	currentConnections, _ := mutexPool.RedisClient.HLen(ctx, mutexPool.Id).Result()
+	currentConnections, err := mutexPool.RedisClient.HLen(ctx, mutexPool.Id).Result()
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Error getting Redis entry, %v", err))
 	}
@@ -81,8 +78,8 @@ func (mutexPool MutexPool) GetMutex(ctx context.Context, optionalId ...string) (
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Error checking existence of Redis entry, %v", err))
 	}
-	if currentConnections >= mutexPool.MaxConnections || lockAlreadyExists {
-		time.Sleep(time.Duration(rand.Intn(200)+100) * time.Millisecond)
+	if currentConnections >= mutexPool.Configuration.MaxConnections || lockAlreadyExists {
+		time.Sleep(time.Duration(rand.Intn(mutexPool.Configuration.MutexPoolMaxRetryMillis)+mutexPool.Configuration.MutexPoolMinRetryMillis) * time.Millisecond)
 		return mutexPool.GetMutex(ctx, optionalId...)
 	}
 	_, err = mutexPool.RedisClient.HSet(ctx, mutexPool.Id, identifier, 0).Result()
@@ -94,6 +91,7 @@ func (mutexPool MutexPool) GetMutex(ctx context.Context, optionalId ...string) (
 		PoolId:      mutexPool.Id,
 		Mutex:       mutexPool.Redsync.NewMutex(identifier),
 		RedisClient: mutexPool.RedisClient,
+		Timeout:     mutexPool.Configuration.MutexTimeoutSec,
 	}, nil
 }
 
@@ -130,17 +128,15 @@ func (mutex *Mutex) Lock(ctx context.Context) (err error) {
 			}
 		}
 
-	case <-time.After(mutexTimeout):
-		return status.Error(codes.Internal, fmt.Sprintf("Mutex lock timed out after %v seconds: %v", mutexTimeout, err))
+	case <-time.After(time.Duration(mutex.Timeout) * time.Second):
+		return status.Error(codes.Internal, fmt.Sprintf("Mutex lock timed out after %v seconds: %v", mutex.Timeout, err))
 	}
 
 	return nil
 }
 
 func (mutex *Mutex) Unlock(ctx context.Context) (err error) {
-	if isUnlocked, err := mutex.Mutex.Unlock(); !isUnlocked || err != nil {
-		return status.Error(codes.Internal, fmt.Sprintf("Mutex unlock failed: %v", err))
-	}
+	mutex.Mutex.Unlock()
 	_, err = mutex.RedisClient.HDel(ctx, mutex.PoolId, mutex.Mutex.Name()).Result()
 	if err != nil {
 		return status.Error(codes.Internal, fmt.Sprintf("Error deleting Redis entry, %v", err))
@@ -148,12 +144,12 @@ func (mutex *Mutex) Unlock(ctx context.Context) (err error) {
 	return
 }
 
-func NewMutexPool(ctx context.Context, poolIdentifier string, redsync redsync.Redsync, redisClient redis.Client, maxConnections int64) (mutexPool MutexPool, err error) {
+func NewMutexPool(ctx context.Context, poolIdentifier string, redsync redsync.Redsync, redisClient redis.Client, configuration ConfigurationVariables) (mutexPool MutexPool, err error) {
 	mutexPool = MutexPool{
-		Id:             poolIdentifier,
-		Redsync:        &redsync,
-		RedisClient:    &redisClient,
-		MaxConnections: maxConnections,
+		Id:            poolIdentifier,
+		Redsync:       &redsync,
+		RedisClient:   &redisClient,
+		Configuration: configuration,
 	}
 	_, err = redisClient.Del(ctx, poolIdentifier).Result()
 	if err != nil {
@@ -243,7 +239,7 @@ func SanitizeToCompatibleName(input string) string {
 }
 
 func createRandomPackagePath() (string, error) {
-	return os.MkdirTemp("/tmp", tmpPackagePrefix)
+	return os.MkdirTemp("/tmp", TmpPackagePrefix+"*")
 }
 
 func DownloadPackage(name string, version string) (packagePath string, err error) {
@@ -259,6 +255,7 @@ func DownloadPackage(name string, version string) (packagePath string, err error
 	downloadCommand.Dir = packageBasePath
 	output, err := downloadCommand.CombinedOutput()
 	if err != nil {
+		log.Errorf("Deputy fetch command failed, %v", err)
 		return "", fmt.Errorf("%v (%v)", string(output), err)
 	}
 	directories, err := IOReadDir(packageBasePath)
@@ -279,8 +276,8 @@ func DownloadPackage(name string, version string) (packagePath string, err error
 
 func CleanupTempPackage(packagePath string) (err error) {
 	packageBasePath := filepath.Clean(filepath.Join(packagePath, ".."))
-	if !strings.Contains(packageBasePath, tmpPackagePrefix) {
-		log.Warnf("Temp Package folder %v was not cleaned up, folder did not contain prefix %v", packageBasePath, tmpPackagePrefix)
+	if !strings.Contains(packageBasePath, TmpPackagePrefix) {
+		log.Warnf("Temp Package folder %v was not cleaned up, folder did not contain prefix %v", packageBasePath, TmpPackagePrefix)
 		return nil
 	}
 	if err := os.RemoveAll(packageBasePath); err != nil {
@@ -362,8 +359,8 @@ func CheckVMStatus(ctx context.Context, virtualMachine *object.VirtualMachine) (
 	return false, status.Error(codes.Internal, fmt.Sprintf("Error: VM Power state: %v, VM Tools status: %v", vmPowerState, vmToolsStatus))
 }
 
-func AwaitVMToolsToComeOnline(ctx context.Context, virtualMachine *object.VirtualMachine) error {
-	var tries = int(vmToolsCheckTries)
+func AwaitVMToolsToComeOnline(ctx context.Context, virtualMachine *object.VirtualMachine, configuration ConfigurationVariables) error {
+	var tries = int(configuration.VmToolsTimeoutSec / configuration.VmToolsRetrySec)
 	vmId := virtualMachine.UUID(ctx)
 
 	for tries > 0 {
@@ -382,10 +379,10 @@ func AwaitVMToolsToComeOnline(ctx context.Context, virtualMachine *object.Virtua
 			return nil
 		}
 
-		time.Sleep(time.Second * time.Duration(vmToolsSleepSec))
+		time.Sleep(time.Second * time.Duration(configuration.VmToolsRetrySec))
 	}
 
-	return status.Error(codes.Internal, fmt.Sprintf("Timeout (%v sec) waiting for VMTools to come online on %v", vmToolsTimeoutSec, vmId))
+	return status.Error(codes.Internal, fmt.Sprintf("Timeout (%v sec) waiting for VMTools to come online on %v", configuration.VmToolsRetrySec, vmId))
 }
 
 func GetPackageTomlContents(packageName string, packageVersion string) (packagePath string, packageTomlContent map[string]interface{}, err error) {

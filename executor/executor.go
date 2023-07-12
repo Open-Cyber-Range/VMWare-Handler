@@ -95,7 +95,7 @@ func (server *conditionerServer) Create(ctx context.Context, conditionDeployment
 		Username: conditionDeployment.GetAccount().GetUsername(),
 		Password: conditionDeployment.GetAccount().GetPassword(),
 	}
-	vmwareClient := library.NewVMWareClient(server.ServerSpecs.Client, server.ServerSpecs.Configuration.TemplateFolderPath)
+	vmwareClient := library.NewVMWareClient(server.ServerSpecs.Client, server.ServerSpecs.Configuration.TemplateFolderPath, server.ServerSpecs.Configuration.Variables)
 	guestManager, err := vmwareClient.CreateGuestManagers(ctx, conditionDeployment.GetVirtualMachineId(), vmAuthentication)
 	if err != nil {
 		return nil, err
@@ -103,7 +103,7 @@ func (server *conditionerServer) Create(ctx context.Context, conditionDeployment
 	if _, err = library.CheckVMStatus(ctx, guestManager.VirtualMachine); err != nil {
 		return nil, err
 	}
-	mutex, err := server.ServerSpecs.MutexPool.GetMutex(ctx)
+	mutex, err := server.ServerSpecs.MutexPool.GetMutex(ctx, conditionDeployment.GetVirtualMachineId())
 	if err != nil {
 		return nil, err
 	}
@@ -139,7 +139,7 @@ func (server *conditionerServer) Stream(identifier *common.Identifier, stream co
 		return err
 	}
 
-	vmwareClient := library.NewVMWareClient(server.ServerSpecs.Client, server.ServerSpecs.Configuration.TemplateFolderPath)
+	vmwareClient := library.NewVMWareClient(server.ServerSpecs.Client, server.ServerSpecs.Configuration.TemplateFolderPath, server.ServerSpecs.Configuration.Variables)
 	guestManager, err := vmwareClient.CreateGuestManagers(ctx, container.VMID, &container.Auth)
 	if err != nil {
 		return err
@@ -193,7 +193,7 @@ func (server *featurerServer) Create(ctx context.Context, featureDeployment *fea
 		PackageSource: featureDeployment.GetSource(),
 		VmID:          featureDeployment.GetVirtualMachineId(),
 	}
-	mutex, err := server.ServerSpecs.MutexPool.GetMutex(ctx)
+	mutex, err := server.ServerSpecs.MutexPool.GetMutex(ctx, featureDeployment.GetVirtualMachineId())
 	if err != nil {
 		return nil, err
 	}
@@ -224,7 +224,7 @@ func (server *injectServer) Create(ctx context.Context, injectDeployment *inject
 		},
 		PackageSource: injectDeployment.GetSource(),
 	}
-	mutex, err := server.ServerSpecs.MutexPool.GetMutex(ctx)
+	mutex, err := server.ServerSpecs.MutexPool.GetMutex(ctx, injectDeployment.GetVirtualMachineId())
 	if err != nil {
 		return nil, err
 	}
@@ -251,7 +251,7 @@ func installPackage(ctx context.Context, vmWareTarget *vmWareTarget, serverSpecs
 		Username: vmWareTarget.VmAccount.Name,
 		Password: vmWareTarget.VmAccount.Password,
 	}
-	vmwareClient := library.NewVMWareClient(serverSpecs.Client, serverSpecs.Configuration.TemplateFolderPath)
+	vmwareClient := library.NewVMWareClient(serverSpecs.Client, serverSpecs.Configuration.TemplateFolderPath, serverSpecs.Configuration.Variables)
 	guestManager, err := vmwareClient.CreateGuestManagers(ctx, vmWareTarget.VmID, vmAuthentication)
 	if err != nil {
 		return nil, err
@@ -291,8 +291,8 @@ func uninstallPackage(ctx context.Context, serverSpecs *serverSpecs, identifier 
 	if err != nil {
 		return new(emptypb.Empty), err
 	}
-	vmwareClient := library.NewVMWareClient(serverSpecs.Client, serverSpecs.Configuration.TemplateFolderPath)
-	mutex, err := serverSpecs.MutexPool.GetMutex(ctx)
+	vmwareClient := library.NewVMWareClient(serverSpecs.Client, serverSpecs.Configuration.TemplateFolderPath, serverSpecs.Configuration.Variables)
+	mutex, err := serverSpecs.MutexPool.GetMutex(ctx, executorContainer.VMID)
 	if err != nil {
 		return new(emptypb.Empty), err
 	}
@@ -328,7 +328,8 @@ func RealMain(configuration *library.Configuration) {
 		Password: configuration.RedisPassword,
 	})
 	redisPool := goredis.NewPool(redisClient)
-	mutexPool, err := library.NewMutexPool(ctx, configuration.Hostname, *redsync.New(redisPool), *redisClient, 3)
+
+	mutexPool, err := library.NewMutexPool(ctx, configuration.Hostname, *redsync.New(redisPool), *redisClient, configuration.Variables)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -352,6 +353,8 @@ func RealMain(configuration *library.Configuration) {
 	capability.RegisterCapabilityServer(grpcServer, &capabilityServer)
 
 	log.Printf("Executor listening at %v", listeningAddress.Addr())
+	log.Printf("Max Connections: %v", mutexPool.Configuration.MaxConnections)
+
 	if bindError := grpcServer.Serve(listeningAddress); bindError != nil {
 		log.Fatalf("Failed to serve: %v", bindError)
 	}
