@@ -75,7 +75,7 @@ func (server *conditionerServer) createCondition(ctx context.Context, conditionD
 		commandAction = packageMetadata.Condition.Action
 		interval = int32(packageMetadata.Condition.Interval)
 
-		assetFilePaths, err = guestManager.CopyAssetsToVM(ctx, packageMetadata.Condition.Assets, packagePath)
+		assetFilePaths, err = guestManager.CopyAssetsToVM(ctx, packageMetadata.PackageBody.Assets, packagePath)
 		if err != nil {
 			return "", 0, nil, err
 		}

@@ -618,7 +618,7 @@ func (guestManager *GuestManager) UploadPackageContents(ctx context.Context, sou
 		return ExecutorPackage{}, nil, err
 	}
 
-	assetFilePaths, err := guestManager.CopyAssetsToVM(ctx, executorPackage.GetAssets(), packagePath)
+	assetFilePaths, err := guestManager.CopyAssetsToVM(ctx, executorPackage.PackageBody.Assets, packagePath)
 	if err != nil {
 		return ExecutorPackage{}, nil, err
 	}

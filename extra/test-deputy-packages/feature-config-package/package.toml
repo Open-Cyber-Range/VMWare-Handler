@@ -1,16 +1,16 @@
 [package]
 name = "test-configuration"
 description = "This is a simple configuration feature package"
-version = "0.4.0"
+version = "0.5.0"
 authors = ["Rait Rotšan rait.rotsan@cr14.ee"]
 license = "MIT"
 readme = "src/readme.md"
+assets = [
+     ["src/config.yml", "/tmp/test-folder/", "554"],
+]
 
 [content]
 type = "feature"
 
 [feature]
 type = "Configuration"
-assets = [
-     ["src/config.yml", "/tmp/test-folder/", "554"],
-]

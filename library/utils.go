@@ -44,24 +44,31 @@ type Mutex struct {
 type Feature struct {
 	Type   string     `json:"type"`
 	Action string     `json:"action,omitempty"`
-	Assets [][]string `json:"assets"`
 }
 
 type Condition struct {
 	Interval uint32     `json:"interval,omitempty"`
 	Action   string     `json:"action,omitempty"`
-	Assets   [][]string `json:"assets"`
 }
 
 type Inject struct {
 	Action string     `json:"action,omitempty"`
-	Assets [][]string `json:"assets"`
+}
+
+type PackageBody struct {
+	Name        string     `json:"name"`
+	Description string     `json:"description"`
+	Authors     []string   `json:"authors,omitempty"`
+	Version     string     `json:"version"`
+	License     string     `json:"license"`
+	Assets      [][]string `json:"assets,omitempty"`
 }
 
 type ExecutorPackage struct {
-	Feature   Feature   `json:"feature,omitempty"`
-	Condition Condition `json:"condition,omitempty"`
-	Inject    Inject    `json:"inject,omitempty"`
+	PackageBody PackageBody `json:"package"`
+	Feature     Feature     `json:"feature,omitempty"`
+	Condition   Condition   `json:"condition,omitempty"`
+	Inject      Inject      `json:"inject,omitempty"`
 }
 
 func (mutexPool MutexPool) GetMutex(ctx context.Context, optionalId ...string) (mutex *Mutex, err error) {
@@ -156,19 +163,6 @@ func NewMutexPool(ctx context.Context, poolIdentifier string, redsync redsync.Re
 		return MutexPool{}, status.Error(codes.Internal, fmt.Sprintf("Error cleaning up MutexPool, %v", err))
 	}
 	return mutexPool, nil
-}
-
-func (executorPackage ExecutorPackage) GetAssets() (assets [][]string) {
-	switch parcel := executorPackage; {
-	case len(parcel.Feature.Assets) > 0:
-		return executorPackage.Feature.Assets
-	case len(parcel.Condition.Assets) > 0:
-		return executorPackage.Condition.Assets
-	case len(parcel.Inject.Assets) > 0:
-		return executorPackage.Inject.Assets
-	default:
-		return
-	}
 }
 
 func (executorPackage ExecutorPackage) GetAction() (action string) {
@@ -310,8 +304,8 @@ func NormalizePackageVersion(packageName string, versionRequirement string) (nor
 
 func GetPackageData(packagePath string) (packageData map[string]interface{}, err error) {
 	packageTomlPath := path.Join(packagePath, "package.toml")
-	checksumCommand := exec.Command("deputy", "parse-toml", packageTomlPath)
-	output, err := checksumCommand.Output()
+	inspectCommand := exec.Command("deputy", "inspect", packageTomlPath)
+	output, err := inspectCommand.Output()
 	if err != nil {
 		return
 	}
