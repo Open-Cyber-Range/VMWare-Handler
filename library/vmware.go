@@ -514,7 +514,7 @@ func (guestManager *GuestManager) AwaitProcessWithTimeout(ctx context.Context, p
 	return nil
 }
 
-func (guestManager *GuestManager) ExecutePackageAction(ctx context.Context, action string) (commandOutput string, err error) {
+func (guestManager *GuestManager) ExecutePackageAction(ctx context.Context, action string, environment []string) (commandOutput string, err error) {
 	var vmManagedObject mo.VirtualMachine
 	guestManager.VirtualMachine.Properties(ctx, guestManager.VirtualMachine.Reference(), []string{}, &vmManagedObject)
 
@@ -523,6 +523,7 @@ func (guestManager *GuestManager) ExecutePackageAction(ctx context.Context, acti
 
 	cmd := &exec.Cmd{
 		Path:   action,
+		Env:    environment,
 		Stdout: stdoutBuffer,
 		Stderr: stderrBuffer,
 	}
