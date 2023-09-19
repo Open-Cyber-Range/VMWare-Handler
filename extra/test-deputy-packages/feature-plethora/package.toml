@@ -1,16 +1,10 @@
 [package]
 name = "feature-plethora"
 description = "This is a test package with a lot of files"
-version = "0.2.2"
+version = "0.3.0"
 authors = ["Rait Rotšan rait.rotsan@cr14.ee"]
 license = "MIT"
 readme = "src/readme.md"
-
-[content]
-type = "feature"
-
-[feature]
-type = "Configuration"
 assets = [
      ["src/config copy 01.yml", "/tmp/test-folder/", "554"],
      ["src/config copy 02.yml", "/tmp/test-folder/", "554"],
@@ -28,3 +22,9 @@ assets = [
      ["src/config copy 14.yml", "/tmp/test-folder/sub-test-folder2/", "554"],
      ["src/config copy 15.yml", "/tmp/test-folder/sub-test-folder2/", "554"],
 ]
+
+[content]
+type = "feature"
+
+[feature]
+type = "Configuration"

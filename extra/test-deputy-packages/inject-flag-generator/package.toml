@@ -1,17 +1,16 @@
 [package]
 name = "flag-generator"
 description = "Generates a flag file for testing purposes"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Rait Rotšan rait.rotsan@cr14.ee"]
 license = "MIT"
 readme = "src/readme.md"
-
+assets = [
+     ["src/flag_generator.sh", "/tmp/test-folder/", "554"],
+]
 
 [content]
 type = "inject"
 
 [inject]
 action = "/tmp/test-folder/flag_generator.sh"
-assets = [
-     ["src/flag_generator.sh", "/tmp/test-folder/", "554"],
-]
