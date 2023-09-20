@@ -12,11 +12,12 @@ import (
 )
 
 type ExecutorContainer struct {
-	VMID      string
-	Auth      types.NamePasswordAuthentication
-	FilePaths []string
-	Command   string
-	Interval  int32
+	VMID        string
+	Auth        types.NamePasswordAuthentication
+	FilePaths   []string
+	Command     string
+	Interval    int32
+	Environment []string
 }
 
 type Account struct {

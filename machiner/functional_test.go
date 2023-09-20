@@ -164,10 +164,16 @@ func createVmNode(t *testing.T, client virtual_machine.VirtualMachineServiceClie
 }
 
 func getVmConfigurations(client *library.VMWareClient, exerciseName string, deploymentName string, nodeName string) (managedVirtualMachine mo.VirtualMachine, err error) {
-	finder, _, _ := client.CreateFinderAndDatacenter()
+	finder, _, err := client.CreateFinderAndDatacenter()
+	if err != nil {
+		return managedVirtualMachine, err
+	}
 
 	ctx := context.Background()
-	virtualMachine, _ := finder.VirtualMachine(ctx, path.Join("functional-tests", exerciseName, deploymentName, nodeName))
+	virtualMachine, err := finder.VirtualMachine(ctx, path.Join("Functional-Tests", exerciseName, deploymentName, nodeName))
+	if err != nil {
+		return managedVirtualMachine, err
+	}
 
 	err = virtualMachine.Properties(ctx, virtualMachine.Reference(), []string{}, &managedVirtualMachine)
 	if err != nil {

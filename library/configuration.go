@@ -154,7 +154,11 @@ func (configuration *Configuration) CreateClient(ctx context.Context) (*govmomi.
 
 	hostURL.User = url.UserPassword(configuration.User, configuration.Password)
 	soapClient := soap.NewClient(hostURL, configuration.Insecure)
-	vimClient, _ := vim25.NewClient(ctx, soapClient)
+	vimClient, vimClientError := vim25.NewClient(ctx, soapClient)
+	if vimClientError != nil {
+		return nil, fmt.Errorf("failed to create new client: %s", vimClientError)
+	}
+
 	vimClient.RoundTripper = keepalive.NewHandlerSOAP(vimClient.RoundTripper, time.Duration(10)*time.Minute, nil)
 	sessionManager := session.NewManager(vimClient)
 	client := &govmomi.Client{

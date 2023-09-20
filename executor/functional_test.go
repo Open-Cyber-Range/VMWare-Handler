@@ -172,6 +172,7 @@ func createConditionerDeploymentRequest(t *testing.T, deployment *condition.Cond
 		for {
 			result, err := stream.Recv()
 			if err == io.EOF {
+				log.Fatalf("Test Stream EOF error: %v", err)
 				finished <- true
 				return
 			}
@@ -208,6 +209,20 @@ func TestConditionerWithCommand(t *testing.T) {
 		Account:          &common.Account{Username: "root", Password: "password"},
 		Command:          "/prebaked-conditions/divider.sh",
 		Interval:         5,
+	}
+
+	createConditionerDeploymentRequest(t, deployment)
+}
+
+func TestConditionerWithCommandAndEnvironment(t *testing.T) {
+
+	deployment := &condition.Condition{
+		Name:             "command-condition",
+		VirtualMachineId: LinuxConditionsTestVirtualMachineUUID,
+		Account:          &common.Account{Username: "root", Password: "password"},
+		Command:          "echo $TEST1",
+		Interval:         5,
+		Environment:      []string{"TEST1=1"},
 	}
 
 	createConditionerDeploymentRequest(t, deployment)
