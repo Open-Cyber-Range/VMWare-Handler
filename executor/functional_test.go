@@ -213,6 +213,20 @@ func TestConditionerWithCommand(t *testing.T) {
 	createConditionerDeploymentRequest(t, deployment)
 }
 
+func TestConditionerWithCommandAndEnvironment(t *testing.T) {
+
+	deployment := &condition.Condition{
+		Name:             "command-condition",
+		VirtualMachineId: LinuxConditionsTestVirtualMachineUUID,
+		Account:          &common.Account{Username: "root", Password: "password"},
+		Command:          "echo $TEST1",
+		Interval:         5,
+		Environment:      []string{"TEST1=1"},
+	}
+
+	createConditionerDeploymentRequest(t, deployment)
+}
+
 func TestConditionerWithSourcePackage(t *testing.T) {
 
 	packageFolderName := "condition-package"
