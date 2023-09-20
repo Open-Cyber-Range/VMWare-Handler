@@ -172,6 +172,7 @@ func createConditionerDeploymentRequest(t *testing.T, deployment *condition.Cond
 		for {
 			result, err := stream.Recv()
 			if err == io.EOF {
+				log.Fatalf("Test Stream EOF error: %v", err)
 				finished <- true
 				return
 			}
