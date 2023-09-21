@@ -356,28 +356,6 @@ func normalizePackageTargetPath(sourcePath string, destinationPath string) strin
 	return destinationPath
 }
 
-func sendFileToVM(url string, filePath string) (err error) {
-	transport := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
-	client := http.Client{Transport: transport, Timeout: 30 * time.Second}
-	file, err := os.ReadFile(filePath)
-	if err != nil {
-		return status.Error(codes.Internal, fmt.Sprintf("Error reading source file, %v", err))
-	}
-
-	request, err := http.NewRequest(http.MethodPut, url, bytes.NewReader(file))
-	if err != nil {
-		return status.Error(codes.Internal, fmt.Sprintf("Error creating HTTP request, %v", err))
-	}
-
-	response, err := client.Do(request)
-	if err != nil {
-		return status.Error(codes.Internal, fmt.Sprintf("Error sending HTTP request: %v", err))
-	}
-	if response.StatusCode != 200 {
-		return status.Error(codes.Internal, fmt.Sprintf("Error while uploading file: %v", response.Status))
-	}
-	return err
-}
 
 func receiveFileFromVM(url string) (logPath string, err error) {
 	out, err := os.CreateTemp("", "executor.log")
@@ -536,7 +514,7 @@ func (guestManager *GuestManager) AwaitProcessWithTimeout(ctx context.Context, p
 	return nil
 }
 
-func (guestManager *GuestManager) ExecutePackageAction(ctx context.Context, action string) (commandOutput string, err error) {
+func (guestManager *GuestManager) ExecutePackageAction(ctx context.Context, action string, environment []string) (commandOutput string, err error) {
 	var vmManagedObject mo.VirtualMachine
 	guestManager.VirtualMachine.Properties(ctx, guestManager.VirtualMachine.Reference(), []string{}, &vmManagedObject)
 
@@ -545,6 +523,7 @@ func (guestManager *GuestManager) ExecutePackageAction(ctx context.Context, acti
 
 	cmd := &exec.Cmd{
 		Path:   action,
+		Env:    environment,
 		Stdout: stdoutBuffer,
 		Stderr: stderrBuffer,
 	}
@@ -640,7 +619,7 @@ func (guestManager *GuestManager) UploadPackageContents(ctx context.Context, sou
 		return ExecutorPackage{}, nil, err
 	}
 
-	assetFilePaths, err := guestManager.CopyAssetsToVM(ctx, executorPackage.GetAssets(), packagePath)
+	assetFilePaths, err := guestManager.CopyAssetsToVM(ctx, executorPackage.PackageBody.Assets, packagePath)
 	if err != nil {
 		return ExecutorPackage{}, nil, err
 	}

@@ -52,6 +52,7 @@ type vmWareTarget struct {
 	VmID          string
 	VmAccount     *library.Account
 	PackageSource *common.Source
+	Environment   []string
 }
 
 func (server *conditionerServer) createCondition(ctx context.Context, conditionDeployment *condition.Condition, guestManager library.GuestManager) (commandAction string, interval int32, assetFilePaths []string, err error) {
@@ -75,7 +76,7 @@ func (server *conditionerServer) createCondition(ctx context.Context, conditionD
 		commandAction = packageMetadata.Condition.Action
 		interval = int32(packageMetadata.Condition.Interval)
 
-		assetFilePaths, err = guestManager.CopyAssetsToVM(ctx, packageMetadata.Condition.Assets, packagePath)
+		assetFilePaths, err = guestManager.CopyAssetsToVM(ctx, packageMetadata.PackageBody.Assets, packagePath)
 		if err != nil {
 			return "", 0, nil, err
 		}
@@ -118,11 +119,12 @@ func (server *conditionerServer) Create(ctx context.Context, conditionDeployment
 		return nil, createErr
 	}
 	server.ServerSpecs.Storage.Container = library.ExecutorContainer{
-		VMID:      conditionDeployment.GetVirtualMachineId(),
-		Auth:      *guestManager.Auth,
-		FilePaths: assetFilePaths,
-		Command:   commandAction,
-		Interval:  interval,
+		VMID:        conditionDeployment.GetVirtualMachineId(),
+		Auth:        *guestManager.Auth,
+		FilePaths:   assetFilePaths,
+		Command:     commandAction,
+		Interval:    interval,
+		Environment: conditionDeployment.GetEnvironment(),
 	}
 	conditionId := uuid.New().String()
 	if err = server.ServerSpecs.Storage.Create(ctx, conditionId); err != nil {
@@ -155,7 +157,7 @@ func (server *conditionerServer) Stream(identifier *common.Identifier, stream co
 		if err = mutex.Lock(ctx); err != nil {
 			return err
 		}
-		commandReturnValue, executeErr := guestManager.ExecutePackageAction(ctx, container.Command)
+		commandReturnValue, executeErr := guestManager.ExecutePackageAction(ctx, container.Command, container.Environment)
 		if err := mutex.Unlock(ctx); err != nil {
 			return err
 		}
@@ -192,6 +194,7 @@ func (server *featurerServer) Create(ctx context.Context, featureDeployment *fea
 		},
 		PackageSource: featureDeployment.GetSource(),
 		VmID:          featureDeployment.GetVirtualMachineId(),
+		Environment:   featureDeployment.GetEnvironment(),
 	}
 	mutex, err := server.ServerSpecs.MutexPool.GetMutex(ctx, featureDeployment.GetVirtualMachineId())
 	if err != nil {
@@ -223,6 +226,7 @@ func (server *injectServer) Create(ctx context.Context, injectDeployment *inject
 			Password: injectDeployment.GetAccount().GetPassword(),
 		},
 		PackageSource: injectDeployment.GetSource(),
+		Environment:   injectDeployment.GetEnvironment(),
 	}
 	mutex, err := server.ServerSpecs.MutexPool.GetMutex(ctx, injectDeployment.GetVirtualMachineId())
 	if err != nil {
@@ -262,9 +266,10 @@ func installPackage(ctx context.Context, vmWareTarget *vmWareTarget, serverSpecs
 	}
 	vmPackageUuid := uuid.New().String()
 	serverSpecs.Storage.Container = library.ExecutorContainer{
-		VMID:      vmWareTarget.VmID,
-		Auth:      *guestManager.Auth,
-		FilePaths: assetFilePaths,
+		VMID:        vmWareTarget.VmID,
+		Auth:        *guestManager.Auth,
+		FilePaths:   assetFilePaths,
+		Environment: vmWareTarget.Environment,
 	}
 	if err = serverSpecs.Storage.Create(ctx, vmPackageUuid); err != nil {
 		return nil, err
@@ -272,7 +277,7 @@ func installPackage(ctx context.Context, vmWareTarget *vmWareTarget, serverSpecs
 	packageAction := packageMetadata.GetAction()
 	var vmLog string
 	if packageAction != "" {
-		vmLog, err = guestManager.ExecutePackageAction(ctx, packageAction)
+		vmLog, err = guestManager.ExecutePackageAction(ctx, packageAction, vmWareTarget.Environment)
 		if err != nil {
 			return nil, err
 		}

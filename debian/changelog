@@ -1,3 +1,10 @@
+ranger-vmware-handlers (4.3.0) stretch; urgency=medium
+
+  * Adapt to deputy-cli 3.1.0 (assets field, inspect command) 
+  * Add environment variables support for Executor
+
+ -- Rait Rotšan <developers@cr14.ee>  Thu, 21 Sep 2023 12:09:12 +0300 
+
 ranger-vmware-handlers (4.2.0) stretch; urgency=medium
 
   * Replace backend Govmomi Vmware api with Govmomi Toolbox
