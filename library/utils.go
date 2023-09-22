@@ -303,8 +303,7 @@ func NormalizePackageVersion(packageName string, versionRequirement string) (nor
 }
 
 func GetPackageData(packagePath string) (packageData map[string]interface{}, err error) {
-	packageTomlPath := path.Join(packagePath, "package.toml")
-	inspectCommand := exec.Command("deputy", "inspect", "-p", packageTomlPath)
+	inspectCommand := exec.Command("deputy", "inspect", "-p", packagePath)
 	output, err := inspectCommand.Output()
 	if err != nil {
 		return
