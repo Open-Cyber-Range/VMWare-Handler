@@ -42,17 +42,17 @@ type Mutex struct {
 	Timeout          int
 }
 type Feature struct {
-	Type   string     `json:"type"`
-	Action string     `json:"action,omitempty"`
+	Type   string `json:"type"`
+	Action string `json:"action,omitempty"`
 }
 
 type Condition struct {
-	Interval uint32     `json:"interval,omitempty"`
-	Action   string     `json:"action,omitempty"`
+	Interval uint32 `json:"interval,omitempty"`
+	Action   string `json:"action,omitempty"`
 }
 
 type Inject struct {
-	Action string     `json:"action,omitempty"`
+	Action string `json:"action,omitempty"`
 }
 
 type PackageBody struct {
@@ -304,7 +304,7 @@ func NormalizePackageVersion(packageName string, versionRequirement string) (nor
 
 func GetPackageData(packagePath string) (packageData map[string]interface{}, err error) {
 	packageTomlPath := path.Join(packagePath, "package.toml")
-	inspectCommand := exec.Command("deputy", "inspect", packageTomlPath)
+	inspectCommand := exec.Command("deputy", "inspect", "-p", packageTomlPath)
 	output, err := inspectCommand.Output()
 	if err != nil {
 		return
