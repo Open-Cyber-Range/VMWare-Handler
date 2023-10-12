@@ -340,37 +340,48 @@ func CheckVMStatus(ctx context.Context, virtualMachine *object.VirtualMachine) (
 	var vmProperties mo.VirtualMachine
 	virtualMachine.Properties(ctx, virtualMachine.Reference(), []string{}, &vmProperties)
 
-	vmPowerState := vmProperties.Runtime.PowerState
-	vmToolsStatus := vmProperties.Guest.ToolsStatus
+	if vmProperties.Name == "" {
+		return false, status.Error(codes.Internal, "VM does not exist, likely deleted")
+	}
 
+	vmPowerState := vmProperties.Runtime.PowerState
 	if vmPowerState == types.VirtualMachinePowerStatePoweredOn {
-		if vmToolsStatus == types.VirtualMachineToolsStatusToolsOk {
+		vmToolsStatus := vmProperties.Guest.ToolsRunningStatus
+		guestHeartBeatStatus := vmProperties.GuestHeartbeatStatus
+
+		log.Debugf("%v: %v, Heartbeat: %v", vmProperties.Config.Uuid, vmToolsStatus, guestHeartBeatStatus)
+		if vmToolsStatus == string(types.VirtualMachineToolsRunningStatusGuestToolsRunning) &&
+			guestHeartBeatStatus == types.ManagedEntityStatusGreen {
 			return true, nil
-		} else if vmToolsStatus == types.VirtualMachineToolsStatusToolsNotRunning {
+		} else {
 			return false, nil
 		}
 	}
-
-	return false, status.Error(codes.Internal, fmt.Sprintf("Error: VM Power state: %v, VM Tools status: %v", vmPowerState, vmToolsStatus))
+	return false, nil
 }
 
-func AwaitVMToolsToComeOnline(ctx context.Context, virtualMachine *object.VirtualMachine, configuration ConfigurationVariables) error {
+func AwaitVMToolsToComeOnline(ctx context.Context, virtualMachine *object.VirtualMachine, configuration ConfigurationVariables) (err error) {
 	var tries = int(configuration.VmToolsTimeoutSec / configuration.VmToolsRetrySec)
+	defer func() {
+		if panicLog := recover(); panicLog != nil {
+			log.Warnf("AwaitVMToolsToComeOnline recovered from panic: %v", panicLog)
+			err = status.Error(codes.Internal, "VM was likely deleted during health check")
+		}
+	}()
+
+	if virtualMachine == nil {
+		log.Errorf("Virtual machine is nil, likely deleted")
+		return status.Error(codes.Internal, "Virtual machine is nil, likely deleted")
+	}
 	vmId := virtualMachine.UUID(ctx)
 
 	for tries > 0 {
 		tries -= 1
-
-		var vmProperties mo.VirtualMachine
-		virtualMachine.Properties(ctx, virtualMachine.Reference(), []string{}, &vmProperties)
-
-		toolsStatus := vmProperties.Guest.ToolsStatus
-		guestHeartBeatStatus := vmProperties.GuestHeartbeatStatus
-
-		log.Infof("Awaiting VMTools on %v. VmTools: %v, GuestHeartBeat: %v", vmId, toolsStatus, guestHeartBeatStatus)
-
-		if toolsStatus == types.VirtualMachineToolsStatusToolsOk &&
-			guestHeartBeatStatus == types.ManagedEntityStatusGreen {
+		isToolsRunning, err := CheckVMStatus(ctx, virtualMachine)
+		if err != nil {
+			return err
+		}
+		if isToolsRunning {
 			return nil
 		}
 

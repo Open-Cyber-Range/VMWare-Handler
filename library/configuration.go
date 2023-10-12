@@ -70,6 +70,8 @@ type ConfigurationVariables struct {
 	MutexPoolMinRetryMillis int   `yaml:"min_mutex_pool_retry_millis,omitempty"`
 	MutexLockMaxRetryMillis int   `yaml:"max_mutex_lock_retry_millis,omitempty"`
 	MutexLockMinRetryMillis int   `yaml:"min_mutex_lock_retry_millis,omitempty"`
+	ExecutorRunTimeoutSec   int   `yaml:"executor_run_timeout_sec,omitempty"`
+	ExecutorRunRetrySec     int   `yaml:"executor_run_retry_sec,omitempty"`
 }
 
 type Configuration struct {
@@ -141,6 +143,12 @@ func (configuration *Configuration) Validate(validator *Validator) error {
 	}
 	if configuration.Variables.MutexLockMinRetryMillis == 0 {
 		configuration.Variables.MutexLockMinRetryMillis = DefaultConfigurationVariables.MutexLockMinRetryMillis
+	}
+	if configuration.Variables.ExecutorRunTimeoutSec == 0 {
+		configuration.Variables.ExecutorRunTimeoutSec = DefaultConfigurationVariables.ExecutorRunTimeoutSec
+	}
+	if configuration.Variables.ExecutorRunRetrySec == 0 {
+		configuration.Variables.ExecutorRunRetrySec = DefaultConfigurationVariables.ExecutorRunRetrySec
 	}
 	return nil
 }

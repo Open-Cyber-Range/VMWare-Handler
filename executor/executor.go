@@ -101,7 +101,7 @@ func (server *conditionerServer) Create(ctx context.Context, conditionDeployment
 	if err != nil {
 		return nil, err
 	}
-	if _, err = library.CheckVMStatus(ctx, guestManager.VirtualMachine); err != nil {
+	if err = library.AwaitVMToolsToComeOnline(ctx, guestManager.VirtualMachine, server.ServerSpecs.Configuration.Variables); err != nil {
 		return nil, err
 	}
 	mutex, err := server.ServerSpecs.MutexPool.GetMutex(ctx, conditionDeployment.GetVirtualMachineId())
@@ -146,10 +146,10 @@ func (server *conditionerServer) Stream(identifier *common.Identifier, stream co
 	if err != nil {
 		return err
 	}
-	if _, err = library.CheckVMStatus(ctx, guestManager.VirtualMachine); err != nil {
-		return err
-	}
 	for {
+		if err = library.AwaitVMToolsToComeOnline(ctx, guestManager.VirtualMachine, server.ServerSpecs.Configuration.Variables); err != nil {
+			return err
+		}
 		mutex, err := server.ServerSpecs.MutexPool.GetMutex(ctx, container.VMID)
 		if err != nil {
 			return err
@@ -162,7 +162,7 @@ func (server *conditionerServer) Stream(identifier *common.Identifier, stream co
 			return err
 		}
 		if executeErr != nil {
-			return err
+			return executeErr
 		}
 		conditionValue, err := strconv.ParseFloat(commandReturnValue, 32)
 		if err != nil {

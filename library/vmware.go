@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/open-cyber-range/vmware-handler/grpc/common"
@@ -71,6 +72,11 @@ func NewVMWareClient(client *govmomi.Client, templatePath string, configuration 
 		templatePath:  templatePath,
 		configuration: configuration,
 	}
+}
+
+var packageActionRetryFlag struct {
+	sync.Mutex
+	flag bool
 }
 
 func (vmwareClient *VMWareClient) CreateGuestManagers(ctx context.Context, vmId string, auth *types.NamePasswordAuthentication) (*GuestManager, error) {
@@ -356,7 +362,6 @@ func normalizePackageTargetPath(sourcePath string, destinationPath string) strin
 	return destinationPath
 }
 
-
 func receiveFileFromVM(url string) (logPath string, err error) {
 	out, err := os.CreateTemp("", "executor.log")
 	if err != nil {
@@ -521,14 +526,66 @@ func (guestManager *GuestManager) ExecutePackageAction(ctx context.Context, acti
 	stdoutBuffer := new(bytes.Buffer)
 	stderrBuffer := new(bytes.Buffer)
 
-	cmd := &exec.Cmd{
-		Path:   action,
-		Env:    environment,
-		Stdout: stdoutBuffer,
-		Stderr: stderrBuffer,
+	var tries = int(guestManager.configuration.ExecutorRunTimeoutSec / guestManager.configuration.ExecutorRunRetrySec)
+	for tries > 0 {
+		tries -= 1
+
+		stdoutBuffer = new(bytes.Buffer)
+		stderrBuffer = new(bytes.Buffer)
+
+		cmd := &exec.Cmd{
+			Path:   action,
+			Env:    environment,
+			Stdout: stdoutBuffer,
+			Stderr: stderrBuffer,
+		}
+
+		defer func() {
+			if panicLog := recover(); panicLog != nil {
+				log.Warnf("Panic occurred during execution of %v, err: %v", action, panicLog)
+				packageActionRetryFlag.Lock()
+				defer func() {
+					packageActionRetryFlag.flag = false
+					defer packageActionRetryFlag.Unlock()
+				}()
+
+				if !packageActionRetryFlag.flag {
+					err = AwaitVMToolsToComeOnline(ctx, guestManager.VirtualMachine, guestManager.configuration)
+					log.Warnf("Retrying function after panic: %v", action)
+					packageActionRetryFlag.flag = true
+					commandOutput, err = guestManager.ExecutePackageAction(ctx, action, environment)
+					return
+				}
+				log.Warnf("Repeating panic by %v, err: %v", action, panicLog)
+				err = status.Error(codes.Internal, fmt.Sprintf("Repeating panic by %v, err: %v", action, panicLog))
+			}
+		}()
+
+		runErr := guestManager.Toolbox.Run(ctx, cmd)
+		if runErr != nil {
+			var isAllowedError bool
+			for _, allowedError := range PotentialRebootErrorList {
+				if strings.Contains(runErr.Error(), allowedError) {
+					isAllowedError = true
+					break
+				}
+			}
+			if isAllowedError {
+				log.Infof("Retrying action %v, err: %v", action, runErr)
+				if err = AwaitVMToolsToComeOnline(ctx, guestManager.VirtualMachine, guestManager.configuration); err != nil {
+					return "", err
+				}
+				time.Sleep(time.Duration(guestManager.configuration.ExecutorRunRetrySec) * time.Second)
+				runErr = nil
+				stdoutBuffer.Reset()
+				stderrBuffer.Reset()
+				continue
+			}
+			return "", status.Error(codes.Internal, fmt.Sprintf("Error executing command, %v", runErr))
+		}
+		break
 	}
 
-	err = guestManager.Toolbox.Run(ctx, cmd)
 	stdout := strings.TrimSpace(stdoutBuffer.String())
 	stderr := strings.TrimSpace(stderrBuffer.String())
 	commandOutput = stdout + stderr
@@ -607,7 +664,7 @@ func (guestManager *GuestManager) CopyAssetsToVM(ctx context.Context, assets [][
 }
 
 func (guestManager *GuestManager) UploadPackageContents(ctx context.Context, source *common.Source) (ExecutorPackage, []string, error) {
-	if _, err := CheckVMStatus(ctx, guestManager.VirtualMachine); err != nil {
+	if err := AwaitVMToolsToComeOnline(ctx, guestManager.VirtualMachine, guestManager.configuration); err != nil {
 		return ExecutorPackage{}, nil, err
 	}
 
@@ -637,7 +694,7 @@ func (guestManager *GuestManager) Reboot(ctx context.Context) (err error) {
 		return err
 	}
 
-	time.Sleep(time.Second * 5) 
+	time.Sleep(time.Second * 5)
 	if err = AwaitVMToolsToComeOnline(ctx, guestManager.VirtualMachine, guestManager.configuration); err != nil {
 		return err
 	}
