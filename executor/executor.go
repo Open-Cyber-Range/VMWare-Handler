@@ -283,6 +283,14 @@ func installPackage(ctx context.Context, vmWareTarget *vmWareTarget, serverSpecs
 		}
 	}
 
+	if packageMetadata.Feature.Restarts || packageMetadata.Inject.Restarts {
+		log.Infof("Restarting VM %v as requested by package %v", guestManager.VirtualMachine.UUID(ctx), packageMetadata.PackageBody.Name)
+		if err = guestManager.Reboot(ctx); err != nil {
+			log.Errorf("Failed to reboot VM %v: %v", guestManager.VirtualMachine.UUID(ctx), err)
+			return nil, err
+		}
+	}
+
 	return &common.ExecutorResponse{
 		Identifier: &common.Identifier{
 			Value: fmt.Sprintf("%v", vmPackageUuid),

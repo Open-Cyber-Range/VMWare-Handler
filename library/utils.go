@@ -42,8 +42,9 @@ type Mutex struct {
 	Timeout          int
 }
 type Feature struct {
-	Type   string `json:"type"`
-	Action string `json:"action,omitempty"`
+	Type     string `json:"type"`
+	Action   string `json:"action,omitempty"`
+	Restarts bool   `json:"restarts,omitempty"`
 }
 
 type Condition struct {
@@ -52,7 +53,8 @@ type Condition struct {
 }
 
 type Inject struct {
-	Action string `json:"action,omitempty"`
+	Action   string `json:"action,omitempty"`
+	Restarts bool   `json:"restarts,omitempty"`
 }
 
 type PackageBody struct {
