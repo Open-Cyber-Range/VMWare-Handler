@@ -32,10 +32,10 @@ var testConfiguration = library.Configuration{
 	RedisPassword:      os.Getenv("TEST_REDIS_PASSWORD"),
 }
 
-const LinuxTestVirtualMachineUUID = "4212b4a9-dd30-45cc-3667-b72c8dd97558"
-const LinuxConditionsTestVirtualMachineUUID = "42128ddc-dfda-786d-905f-3d4db40b7cbb"
-const WindowsTestVirtualMachineUUID = "42122b12-3a17-c0fb-eb3c-7cd935bb595b"
-const WindowsConditionsTestVirtualMachineUUID = "4212d188-36c8-d2c3-c14d-98f2c25434c9"
+const LinuxTestVirtualMachineUUID = "422df4b2-e516-6f4a-3707-f4a379553a5a"
+const LinuxConditionsTestVirtualMachineUUID = "422d914a-6e37-5557-885e-ab92e1fc830b"
+const WindowsTestVirtualMachineUUID = "422d31fd-d355-2133-8a62-829e034b1095"
+const WindowsConditionsTestVirtualMachineUUID = "422d4097-5852-be8d-3be7-70e3483996e7"
 
 func startServer(timeout time.Duration) (configuration library.Configuration) {
 	configuration = testConfiguration
