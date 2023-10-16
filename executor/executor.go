@@ -59,6 +59,7 @@ func (server *conditionerServer) createCondition(ctx context.Context, conditionD
 	var isSourceDeployment bool
 
 	if conditionDeployment.Source != nil && conditionDeployment.Command != "" {
+		log.Errorf("Conflicting deployment info - A Condition deployment cannot have both `Command` and `Source`")
 		return "", 0, nil, status.Error(codes.Internal, fmt.Sprintln("Conflicting deployment info - A Condition deployment cannot have both `Command` and `Source`"))
 	} else if conditionDeployment.Source != nil && conditionDeployment.Command == "" {
 		isSourceDeployment = true
@@ -70,6 +71,7 @@ func (server *conditionerServer) createCondition(ctx context.Context, conditionD
 			conditionDeployment.GetSource().GetVersion(),
 		)
 		if err != nil {
+			log.Errorf("Error getting Condition package metadata: %v", err)
 			return "", 0, nil, err
 		}
 
@@ -78,9 +80,11 @@ func (server *conditionerServer) createCondition(ctx context.Context, conditionD
 
 		assetFilePaths, err = guestManager.CopyAssetsToVM(ctx, packageMetadata.PackageBody.Assets, packagePath)
 		if err != nil {
+			log.Errorf("Error copying Condition assets to VM: %v", err)
 			return "", 0, nil, err
 		}
 		if err = library.CleanupTempPackage(packagePath); err != nil {
+			log.Errorf("Error during temp Condition package cleanup: %v", err)
 			return "", 0, nil, status.Error(codes.Internal, fmt.Sprintf("Error during temp Condition package cleanup (%v)", err))
 		}
 	} else {
@@ -99,9 +103,11 @@ func (server *conditionerServer) Create(ctx context.Context, conditionDeployment
 	vmwareClient := library.NewVMWareClient(server.ServerSpecs.Client, server.ServerSpecs.Configuration.TemplateFolderPath, server.ServerSpecs.Configuration.Variables)
 	guestManager, err := vmwareClient.CreateGuestManagers(ctx, conditionDeployment.GetVirtualMachineId(), vmAuthentication)
 	if err != nil {
+		log.Errorf("Error creating Condition: %v", err)
 		return nil, err
 	}
 	if err = library.AwaitVMToolsToComeOnline(ctx, guestManager.VirtualMachine, server.ServerSpecs.Configuration.Variables); err != nil {
+		log.Errorf("Error awaiting VMTools to come online: %v", err)
 		return nil, err
 	}
 	mutex, err := server.ServerSpecs.MutexPool.GetMutex(ctx, conditionDeployment.GetVirtualMachineId())
