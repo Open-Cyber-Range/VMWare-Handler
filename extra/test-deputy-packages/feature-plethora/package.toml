@@ -1,5 +1,5 @@
 [package]
-name = "feature-plethora"
+name = "handler-test-feature-plethora"
 description = "This is a test package with a lot of files"
 version = "0.3.0"
 authors = ["Rait Rotšan rait.rotsan@cr14.ee"]

@@ -6,8 +6,6 @@ stages:
 image: $DOCKER_REGISTRY_PULL/vmware-handler-builder
 
 services:
-  - name: $DOCKER_REGISTRY_PULL/deputy-package-server-repository-combo
-    alias: deputy-package-server-combo
   - name: $DOCKER_REGISTRY_PULL/featurer-redis-server
     alias: featurer-redis-server
 
@@ -36,6 +34,7 @@ test:
       TEST_VMWARE_DATASTORE_PATH=$OCR_TEST_VMWARE_DATASTORE_PATH
       TEST_REDIS_ADDRESS=$OCR_TEST_REDIS_ADDRESS
       TEST_REDIS_PASSWORD=$OCR_TEST_REDIS_PASSWORD
+      TEST_DEPUTY_TOKEN=$OCR_TEST_VMWARE_DEPUTY_TOKEN
       make test
   only:
     - develop

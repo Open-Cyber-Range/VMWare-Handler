@@ -1,12 +1,12 @@
 [package]
-name = "test-windows-service"
+name = "handler-test-windows-service"
 description = "This is a simple service feature package for windows"
-version = "0.6.0"
+version = "0.7.0"
 authors = ["Rait Rotšan rait.rotsan@cr14.ee"]
 license = "MIT"
 readme = "src/readme.md"
 assets = [
-     ["src/date.bat", "C:\\Users\\user\\Appdata\\Local\\Temp\\date.bat"],
+     ["src/date.bat", "C:\\Users\\test-user\\Appdata\\Local\\Temp\\date.bat"],
 ]
 
 [content]
@@ -14,4 +14,4 @@ type = "feature"
 
 [feature]
 type = "Service"
-action = "C:\\Users\\user\\Appdata\\Local\\Temp\\date.bat"
+action = "C:\\Users\\test-user\\Appdata\\Local\\Temp\\date.bat"

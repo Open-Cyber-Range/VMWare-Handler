@@ -101,8 +101,8 @@ func createFeatureDeploymentRequest(t *testing.T, deployment *feature.Feature, p
 	configuration := startServer(3 * time.Second)
 	ctx := context.Background()
 	gRPCClient := createFeatureClient(t, configuration.ServerAddress)
-
-	if err := library.PublishTestPackage(packageName); err != nil {
+	token := os.Getenv("TEST_DEPUTY_TOKEN")
+	if err := library.PublishTestPackage(packageName, token); err != nil {
 		t.Fatalf("Failed to upload test feature package: %v", err)
 	}
 
@@ -130,8 +130,8 @@ func createInjectDeploymentRequest(t *testing.T, deployment *inject.Inject, pack
 	configuration := startServer(3 * time.Second)
 	ctx := context.Background()
 	gRPCClient := createInjectClient(t, configuration.ServerAddress)
-
-	if err := library.PublishTestPackage(packageName); err != nil {
+	token := os.Getenv("TEST_DEPUTY_TOKEN")
+	if err := library.PublishTestPackage(packageName, token); err != nil {
 		t.Fatalf("Failed to upload test inject package: %v", err)
 	}
 
@@ -155,6 +155,7 @@ func createConditionerDeploymentRequest(t *testing.T, deployment *condition.Cond
 	ctx := context.Background()
 	gRPCClient := createConditionClient(t, configuration.ServerAddress)
 
+	log.Infof("Creating Deployment for Condition: %v", deployment)
 	identifier, err := gRPCClient.Create(ctx, deployment)
 	if err != nil {
 		t.Fatalf("Test Create request error: %v", err)
@@ -231,8 +232,9 @@ func TestConditionerWithCommandAndEnvironment(t *testing.T) {
 func TestConditionerWithSourcePackage(t *testing.T) {
 
 	packageFolderName := "condition-package"
+	token := os.Getenv("TEST_DEPUTY_TOKEN")
 
-	if err := library.PublishTestPackage(packageFolderName); err != nil {
+	if err := library.PublishTestPackage(packageFolderName, token); err != nil {
 		t.Fatalf("Test publish failed: %v", err)
 	}
 
@@ -241,7 +243,7 @@ func TestConditionerWithSourcePackage(t *testing.T) {
 		VirtualMachineId: LinuxConditionsTestVirtualMachineUUID,
 		Account:          &common.Account{Username: "root", Password: "password"},
 		Source: &common.Source{
-			Name:    "test-condition",
+			Name:    "handler-test-condition",
 			Version: "*",
 		},
 	}
@@ -252,17 +254,18 @@ func TestConditionerWithSourcePackage(t *testing.T) {
 func TestConditionerWithSourcePackageOnWindows(t *testing.T) {
 
 	packageFolderName := "condition-win-package"
+	token := os.Getenv("TEST_DEPUTY_TOKEN")
 
-	if err := library.PublishTestPackage(packageFolderName); err != nil {
+	if err := library.PublishTestPackage(packageFolderName, token); err != nil {
 		t.Fatalf("Test publish failed: %v", err)
 	}
 
 	deployment := &condition.Condition{
 		Name:             "source-condition",
 		VirtualMachineId: WindowsConditionsTestVirtualMachineUUID,
-		Account:          &common.Account{Username: "user", Password: "password"},
+		Account:          &common.Account{Username: "test-user", Password: "Passw0rd"},
 		Source: &common.Source{
-			Name:    "test-windows-condition",
+			Name:    "handler-test-windows-condition",
 			Version: "*",
 		},
 	}
@@ -279,7 +282,7 @@ func TestFeatureServiceDeploymentAndDeletionOnLinux(t *testing.T) {
 		VirtualMachineId: LinuxTestVirtualMachineUUID,
 		FeatureType:      feature.FeatureType_service,
 		Source: &common.Source{
-			Name:    "test-service",
+			Name:    "handler-test-service",
 			Version: "*",
 		},
 		Account: &common.Account{Username: "root", Password: "password"},
@@ -302,7 +305,7 @@ func TestFeaturePackageWithALotOfFiles(t *testing.T) {
 		VirtualMachineId: LinuxTestVirtualMachineUUID,
 		FeatureType:      feature.FeatureType_configuration,
 		Source: &common.Source{
-			Name:    "feature-plethora",
+			Name:    "handler-test-feature-plethora",
 			Version: "*",
 		},
 		Account: &common.Account{Username: "root", Password: "password"},
@@ -322,7 +325,7 @@ func TestFeatureConfigurationDeploymentAndDeletionOnLinux(t *testing.T) {
 		VirtualMachineId: LinuxTestVirtualMachineUUID,
 		FeatureType:      feature.FeatureType_configuration,
 		Source: &common.Source{
-			Name:    "test-configuration",
+			Name:    "handler-test-configuration",
 			Version: "*",
 		},
 		Account: &common.Account{Username: "root", Password: "password"},
@@ -342,10 +345,10 @@ func TestFeatureServiceDeploymentAndDeletionOnWindows(t *testing.T) {
 		VirtualMachineId: WindowsTestVirtualMachineUUID,
 		FeatureType:      feature.FeatureType_service,
 		Source: &common.Source{
-			Name:    "test-windows-service",
+			Name:    "handler-test-windows-service",
 			Version: "*",
 		},
-		Account: &common.Account{Username: "user", Password: "password"},
+		Account: &common.Account{Username: "test-user", Password: "Passw0rd"},
 	}
 	response, err := createFeatureDeploymentRequest(t, deployment, packageFolderName)
 	if err != nil {
@@ -363,7 +366,7 @@ func TestInjectDeploymentAndDeletionOnLinux(t *testing.T) {
 		Name:             "test-inject",
 		VirtualMachineId: LinuxTestVirtualMachineUUID,
 		Source: &common.Source{
-			Name:    "flag-generator",
+			Name:    "handler-flag-generator",
 			Version: "*",
 		},
 		Account: &common.Account{Username: "root", Password: "password"},

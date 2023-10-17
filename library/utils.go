@@ -319,10 +319,21 @@ func GetPackageData(packagePath string) (packageData map[string]interface{}, err
 
 	return
 }
+
+func LoginToDeputy(token string) (err error) {
+	loginCommand := exec.Command("deputy", "login", "-T", token)
+	output, err := loginCommand.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%v (%v)", string(output), err)
+	}
 	return
 }
 
-func PublishTestPackage(packageFolderName string) (err error) {
+func PublishTestPackage(packageFolderName string, token string) (err error) {
+	if err = LoginToDeputy(token); err != nil {
+		return
+	}
+
 	uploadCommand := exec.Command("deputy", "publish")
 	workingDirectory, err := os.Getwd()
 	if err != nil {
@@ -336,7 +347,7 @@ func PublishTestPackage(packageFolderName string) (err error) {
 	outputString := string(output)
 
 	log.Infof("Publish output: `%v` ", outputString)
-	if strings.Contains(outputString, "Package version on the server is either same or later") {
+	if strings.Contains(outputString, "already exists") {
 		return nil
 	} else if err != nil {
 		return fmt.Errorf("%v (%v)", outputString, err)

@@ -1,5 +1,5 @@
 [package]
-name = "test-condition"
+name = "handler-test-condition"
 description = "This is a simple condition package that checks if the current time in epoch seconds is fully divisible"
 version = "0.2.0"
 authors = ["Rait Rotšan rait.rotsan@cr14.ee"]
