@@ -390,12 +390,16 @@ func createFileAttributesByOsFamily(guestOsFamily GuestOSFamily, filePermissions
 	switch guestOsFamily {
 
 	case Linux:
-		permissionsInt, err := strconv.Atoi(filePermissions)
-		if err != nil {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("Error converting str to int, %v", err))
-		}
-		fileAttributes = &types.GuestPosixFileAttributes{
-			Permissions: int64(permissionsInt),
+		if filePermissions == "" {
+			fileAttributes = &types.GuestPosixFileAttributes{}
+		} else {
+			permissionsInt, err := strconv.Atoi(filePermissions)
+			if err != nil {
+				return nil, status.Error(codes.Internal, fmt.Sprintf("Error converting str to int, %v", err))
+			}
+			fileAttributes = &types.GuestPosixFileAttributes{
+				Permissions: int64(permissionsInt),
+			}
 		}
 
 	case Windows:
