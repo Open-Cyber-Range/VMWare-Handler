@@ -688,13 +688,12 @@ func (guestManager *GuestManager) UploadPackageContents(ctx context.Context, sou
 }
 
 func (guestManager *GuestManager) Reboot(ctx context.Context) (err error) {
-	log.Infof("Rebooting VM: %v", guestManager.VirtualMachine.UUID(ctx))
 	if err = guestManager.VirtualMachine.RebootGuest(ctx); err != nil {
 		log.Errorf("Error rebooting VM: %v", err)
 		return err
 	}
 
-	time.Sleep(time.Second * 5)
+	time.Sleep(time.Second * 10)
 	if err = AwaitVMToolsToComeOnline(ctx, guestManager.VirtualMachine, guestManager.configuration); err != nil {
 		return err
 	}
