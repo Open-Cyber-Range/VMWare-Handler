@@ -304,7 +304,19 @@ func uninstallPackage(ctx context.Context, serverSpecs *serverSpecs, identifier 
 	if err != nil {
 		return new(emptypb.Empty), err
 	}
+
 	vmwareClient := library.NewVMWareClient(serverSpecs.Client, serverSpecs.Configuration.TemplateFolderPath, serverSpecs.Configuration.Variables)
+
+	virtualMachine, err := vmwareClient.GetVirtualMachineByUUID(ctx, executorContainer.VMID)
+	if err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Error getting VM by UUID, %v", err))
+	}
+
+	err = library.AwaitVMToolsToComeOnline(ctx, virtualMachine, serverSpecs.Configuration.Variables)
+	if err != nil {
+		return nil, err
+	}
+
 	mutex, err := serverSpecs.MutexPool.GetMutex(ctx, executorContainer.VMID)
 	if err != nil {
 		return new(emptypb.Empty), err
