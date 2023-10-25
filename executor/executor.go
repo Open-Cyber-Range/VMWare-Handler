@@ -101,7 +101,7 @@ func (server *conditionerServer) Create(ctx context.Context, conditionDeployment
 	if err != nil {
 		return nil, err
 	}
-	if _, err = library.CheckVMStatus(ctx, guestManager.VirtualMachine); err != nil {
+	if err = library.AwaitVMToolsToComeOnline(ctx, guestManager.VirtualMachine, server.ServerSpecs.Configuration.Variables); err != nil {
 		return nil, err
 	}
 	mutex, err := server.ServerSpecs.MutexPool.GetMutex(ctx, conditionDeployment.GetVirtualMachineId())
@@ -146,10 +146,10 @@ func (server *conditionerServer) Stream(identifier *common.Identifier, stream co
 	if err != nil {
 		return err
 	}
-	if _, err = library.CheckVMStatus(ctx, guestManager.VirtualMachine); err != nil {
-		return err
-	}
 	for {
+		if err = library.AwaitVMToolsToComeOnline(ctx, guestManager.VirtualMachine, server.ServerSpecs.Configuration.Variables); err != nil {
+			return err
+		}
 		mutex, err := server.ServerSpecs.MutexPool.GetMutex(ctx, container.VMID)
 		if err != nil {
 			return err
@@ -162,7 +162,7 @@ func (server *conditionerServer) Stream(identifier *common.Identifier, stream co
 			return err
 		}
 		if executeErr != nil {
-			return err
+			return executeErr
 		}
 		conditionValue, err := strconv.ParseFloat(commandReturnValue, 32)
 		if err != nil {
@@ -283,6 +283,14 @@ func installPackage(ctx context.Context, vmWareTarget *vmWareTarget, serverSpecs
 		}
 	}
 
+	if packageMetadata.Feature.Restarts || packageMetadata.Inject.Restarts {
+		log.Infof("Restarting VM %v as requested by package %v", guestManager.VirtualMachine.UUID(ctx), packageMetadata.PackageBody.Name)
+		if err = guestManager.Reboot(ctx); err != nil {
+			log.Errorf("Failed to reboot VM %v: %v", guestManager.VirtualMachine.UUID(ctx), err)
+			return nil, err
+		}
+	}
+
 	return &common.ExecutorResponse{
 		Identifier: &common.Identifier{
 			Value: fmt.Sprintf("%v", vmPackageUuid),
@@ -296,7 +304,19 @@ func uninstallPackage(ctx context.Context, serverSpecs *serverSpecs, identifier 
 	if err != nil {
 		return new(emptypb.Empty), err
 	}
+
 	vmwareClient := library.NewVMWareClient(serverSpecs.Client, serverSpecs.Configuration.TemplateFolderPath, serverSpecs.Configuration.Variables)
+
+	virtualMachine, err := vmwareClient.GetVirtualMachineByUUID(ctx, executorContainer.VMID)
+	if err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Error getting VM by UUID, %v", err))
+	}
+
+	err = library.AwaitVMToolsToComeOnline(ctx, virtualMachine, serverSpecs.Configuration.Variables)
+	if err != nil {
+		return nil, err
+	}
+
 	mutex, err := serverSpecs.MutexPool.GetMutex(ctx, executorContainer.VMID)
 	if err != nil {
 		return new(emptypb.Empty), err
