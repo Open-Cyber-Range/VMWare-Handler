@@ -1,5 +1,5 @@
 [package]
-name = "test-configuration"
+name = "handler-test-configuration"
 description = "This is a simple configuration feature package"
 version = "0.5.0"
 authors = ["Rait Rotšan rait.rotsan@cr14.ee"]

@@ -1,18 +1,18 @@
 [package]
-name = "test-windows-condition"
+name = "handler-test-windows-condition"
 description = "Returns a random decimal using PowerShell"
-version = "0.6.0"
+version = "0.7.0"
 authors = ["Rait Rotšan rait.rotsan@cr14.ee"]
 license = "MIT"
 readme = "readme.md"
 assets = [
-     ["src/execute.bat", "C:\\Users\\user\\Appdata\\Local\\Temp\\execute.bat"],
-     ["src/random.ps1", "C:\\Users\\user\\Appdata\\Local\\Temp\\random.ps1"],
+     ["src/execute.bat", "C:\\Users\\test-user\\Appdata\\Local\\Temp\\execute.bat"],
+     ["src/random.ps1", "C:\\Users\\test-user\\Appdata\\Local\\Temp\\random.ps1"],
 ]
 
 [content]
 type = "condition"
 
 [condition]
-action = "C:\\Users\\user\\Appdata\\Local\\Temp\\execute.bat"
+action = "C:\\Users\\test-user\\Appdata\\Local\\Temp\\execute.bat"
 interval = 3

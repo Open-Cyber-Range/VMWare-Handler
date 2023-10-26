@@ -6,6 +6,7 @@ import (
 	"io"
 	"path"
 
+	log "github.com/sirupsen/logrus"
 	"github.com/vmware/govmomi/govc/importx"
 	"github.com/vmware/govmomi/nfc"
 	"github.com/vmware/govmomi/ovf"
@@ -51,15 +52,18 @@ func (templateDeployment *TemplateDeployment) ImportOVA(filePath string, client 
 
 	resourcePool, err := templateDeployment.Client.GetResourcePool(templateDeployment.Configuration.ResourcePoolPath)
 	if err != nil {
+		log.Errorf("Failed to get resource pool: %v", err)
 		return
 	}
 	datastore, err := templateDeployment.Client.GetDatastore(templateDeployment.Configuration.DatastorePath)
 	if err != nil {
+		log.Errorf("Failed to get datastore: %v", err)
 		return
 	}
 
 	importSpec, err := uploadManager.CreateImportSpec(ctx, string(ovfBytes), resourcePool, datastore, cisp)
 	if err != nil {
+		log.Errorf("Failed to create import spec: %v", err)
 		return
 	}
 	folder, err := templateDeployment.Client.GetTemplateFolder()
@@ -68,6 +72,7 @@ func (templateDeployment *TemplateDeployment) ImportOVA(filePath string, client 
 	}
 	lease, err := resourcePool.ImportVApp(ctx, importSpec.ImportSpec, folder, nil)
 	if err != nil {
+		log.Errorf("Failed to import OVA: %v", err)
 		return
 	}
 

@@ -1,5 +1,5 @@
 [package]
-name = "flag-generator"
+name = "handler-flag-generator"
 description = "Generates a flag file for testing purposes"
 version = "0.3.0"
 authors = ["Rait Rotšan rait.rotsan@cr14.ee"]

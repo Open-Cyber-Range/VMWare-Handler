@@ -1,0 +1,18 @@
+[package]
+name = "handler-test-restarting-service"
+description = "This is a simple echo command package that will also reboot the vm"
+version = "0.6.5"
+authors = ["Rait Rotšan rait.rotsan@cr14.ee"]
+license = "MIT"
+readme = "src/readme.md"
+assets = [
+     ["src/echo.sh", "/usr/bin/test-folder/", "554"],
+]
+
+[content]
+type = "feature"
+
+[feature]
+type = "Service"
+action = "/usr/bin/test-folder/echo.sh"
+restarts = true

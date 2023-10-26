@@ -60,12 +60,13 @@ func creategRPCClient(t *testing.T, serverPath string) template.TemplateServiceC
 
 func createTemplate(t *testing.T, client template.TemplateServiceClient) string {
 
-	uploadError := library.PublishTestPackage("small-ova-package")
+	token := os.Getenv("TEST_DEPUTY_TOKEN")
+	uploadError := library.PublishTestPackage("templater-test-ova", token)
 	if uploadError != nil {
 		t.Fatalf("Failed to upload deputy package: %v", uploadError)
 	}
 	templateSource := &common.Source{
-		Name:    "dsl-image",
+		Name:    "alpine-minimal",
 		Version: "*",
 	}
 

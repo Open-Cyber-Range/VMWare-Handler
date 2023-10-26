@@ -124,13 +124,16 @@ func (templateDeployment *TemplateDeployment) handleTemplateBasedOnType(virtualM
 func (templateDeployment *TemplateDeployment) createTemplate(ctx context.Context, packagePath string) (err error) {
 	packageData, err := library.GetPackageData(packagePath)
 	if err != nil {
+		log.Errorf("Failed to get package data (%v)", err)
 		return
 	}
 	virtualMachine, err := getVirtualMachineInfo(&packageData)
 	if err != nil {
+		log.Errorf("Failed to get virtual machine info (%v)", err)
 		return
 	}
 	if err = templateDeployment.handleTemplateBasedOnType(virtualMachine, packagePath); err != nil {
+		log.Errorf("Failed to handle template based on type (%v)", err)
 		return
 	}
 	_, err = templateDeployment.Client.GetTemplateByName(templateDeployment.templateName)

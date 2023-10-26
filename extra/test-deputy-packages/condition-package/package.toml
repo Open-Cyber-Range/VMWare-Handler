@@ -1,17 +1,17 @@
 [package]
-name = "test-condition"
+name = "handler-test-condition"
 description = "This is a simple condition package that checks if the current time in epoch seconds is fully divisible"
-version = "0.2.0"
+version = "0.3.1"
 authors = ["Rait Rotšan rait.rotsan@cr14.ee"]
 license = "MIT"
 readme = "readme.md"
 assets = [
-     ["src/condition.sh", "/tmp/test-folder/", "755"],
+     ["src/condition.sh", "/usr/bin/test-folder/", "755"],
 ]
 
 [content]
 type = "condition"
 
 [condition]
-action = "/tmp/test-folder/condition.sh"
+action = "/usr/bin/test-folder/condition.sh"
 interval = 3

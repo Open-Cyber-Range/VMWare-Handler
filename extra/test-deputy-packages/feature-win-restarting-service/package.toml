@@ -1,0 +1,18 @@
+[package]
+name = "handler-test-restarting-windows-service"
+description = "This is a simple service feature package for windows"
+version = "0.7.1"
+authors = ["Rait Rotšan rait.rotsan@cr14.ee"]
+license = "MIT"
+readme = "src/readme.md"
+assets = [
+     ["src/date.bat", "C:\\Users\\test-user\\Appdata\\Local\\Temp\\date.bat"],
+]
+
+[content]
+type = "feature"
+
+[feature]
+type = "Service"
+action = "C:\\Users\\test-user\\Appdata\\Local\\Temp\\date.bat"
+restarts = true

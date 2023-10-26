@@ -1,5 +1,5 @@
 [package]
-name = "test-service"
+name = "handler-test-service"
 description = "This is a simple echo command package"
 version = "0.6.0"
 authors = ["Rait Rotšan rait.rotsan@cr14.ee"]
