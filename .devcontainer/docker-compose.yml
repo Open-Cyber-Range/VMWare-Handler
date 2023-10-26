@@ -11,16 +11,6 @@ services:
     ports:
       - 8080:8080
 
-  deputy-package-server:
-    image: nexus.ocr.cr14.net:8003/deputy-package-server:latest
-    volumes:
-      - ./deputy-packages:/var/opt/deputy/deputy-package-server/package
-      - ./deputy-repository:/var/opt/deputy/deputy-package-server/repository
-      - ./development-configs/deputy-package-server-configuration.yml:/etc/opt/deputy/deputy-package-server/config.yml
-
-    environment:
-      - RUST_LOG=debug
-
   vmware-handler-mariadb:
     image: nexus.ocr.cr14.net:8003/mariadb:10.7
     ports:
