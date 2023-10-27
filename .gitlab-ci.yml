@@ -14,6 +14,8 @@ services:
 variables:
   REPO_NAME: code.ocr.cr14.net/open-cyber-range/public/vmware-node-deployer
   GIT_SUBMODULE_STRATEGY: normal
+  FF_NETWORK_PER_BUILD: "true"
+
 
 before_script:
   - mkdir -p "$GOPATH/src/$(dirname $REPO_NAME)"
@@ -41,15 +43,15 @@ before_script:
 #     - master
 #     - merge_requests
 
-build-and-upload-x86-64bit-linux-release-for-ranger-vmware-handlers:
-  stage: build
+#build-and-upload-x86-64bit-linux-release-for-ranger-vmware-handlers:
+#  stage: build
   # needs: ["test"]
-  script:
-    - make build-deb
-    - DEB_FILE=$(find ../ -maxdepth 1 -type f -name "*.deb")
-    - 'curl --fail -u $OCR_DEPLOYMENT_USER:$OCR_DEPLOYMENT_PASSWORD -X POST -H "Content-Type: multipart/form-data" --data-binary "@$DEB_FILE" $OCR_APT_REPOSITORY'
-  only:
-    - master
+#  script:
+#    - make build-deb
+#    - DEB_FILE=$(find ../ -maxdepth 1 -type f -name "*.deb")
+#    - 'curl --fail -u $OCR_DEPLOYMENT_USER:$OCR_DEPLOYMENT_PASSWORD -X POST -H "Content-Type: multipart/form-data" --data-binary "@$DEB_FILE" $OCR_APT_REPOSITORY'
+#  only:
+#    - master
 
 staging:
   stage: deploy
@@ -59,3 +61,19 @@ staging:
     open-cyber-range/internal/support-docker-images
   only:
     - master
+
+sync-to-github:
+  stage: deploy
+  image: $DOCKER_REGISTRY_PULL/ocr-base-deployment-image
+  before_script:
+    - apt update && apt install -y git
+  script:
+    - git remote remove github || echo "No repo found"
+    - git remote add github https://mannyfred:$MANFRED_GITHUB_TOKEN@github.com/Open-Cyber-Range/VMWare-Handler.git
+    - git checkout master
+    - git pull --rebase origin master
+    - git push github master:main --force
+  only:
+    - master
+
+
