@@ -142,7 +142,7 @@ func (server *conditionerServer) Create(ctx context.Context, conditionDeployment
 
 func (server *conditionerServer) Stream(identifier *common.Identifier, stream condition.ConditionService_StreamServer) error {
 	ctx := context.Background()
-	container, err := server.ServerSpecs.Storage.Get(context.Background(), identifier.GetValue())
+	container, err := server.ServerSpecs.Storage.Get(ctx, identifier.GetValue())
 	if err != nil {
 		return err
 	}
