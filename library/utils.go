@@ -311,10 +311,12 @@ func GetPackageData(packagePath string) (packageData map[string]interface{}, err
 		log.Errorf("Deputy inspect command failed, %v", err)
 		return
 	}
-	json.Unmarshal(output, &packageData)
+	if err = json.Unmarshal(output, &packageData); err != nil {
+		return nil, fmt.Errorf("error unmarshalling package data, %v", err)
+	}
 
 	if len(packageData) == 0 {
-		return nil, fmt.Errorf("error unmarshalling package data, result is empty")
+		return nil, fmt.Errorf("unexpected result (is empty)")
 	}
 
 	return
