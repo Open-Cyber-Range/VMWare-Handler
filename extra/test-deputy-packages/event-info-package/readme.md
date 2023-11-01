@@ -1,0 +1,1 @@
+This `event` type package is to test out the Handlers capability of converting a markdown file and its assets into a single html file. It links to a `png` and a `gif` image, a table and other basic markdown formating examples.

@@ -1,0 +1,14 @@
+[package]
+name = "handler-test-event-info"
+description = "A test package for the General handler"
+version = "0.1.4"
+authors = ["Rait Rotšan rait.rotsan@cr14.ee"]
+license = "MIT"
+readme = "readme.md"
+assets = [["src/eventInfo.md", ""]] # Placeholder, assets requirement is removed with the next Deputy release
+
+[content]
+type = "event"
+
+[event]
+action = "src/eventInfo.md" # Path to the main markdown file, is replaced with the next Deputy release
