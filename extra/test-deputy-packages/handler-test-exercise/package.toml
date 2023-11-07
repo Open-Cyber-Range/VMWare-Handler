@@ -1,0 +1,14 @@
+[package]
+name = "handler-test-exercise"
+description = "A test package of type Exercise for the General Handler."
+version = "0.1.0"
+authors = ["Rait Rotšan rait.rotsan@cr14.ee"]
+license = "MIT"
+readme  = "README.md"
+
+[content]
+type = "exercise"
+
+[exercise]
+file_path = "sdl.yml"
+

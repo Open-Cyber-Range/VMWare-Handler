@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/open-cyber-range/vmware-handler/grpc/common"
+	"github.com/open-cyber-range/vmware-handler/grpc/deputy"
 	"github.com/open-cyber-range/vmware-handler/grpc/event"
 	"github.com/open-cyber-range/vmware-handler/library"
 	log "github.com/sirupsen/logrus"
@@ -18,16 +19,17 @@ import (
 )
 
 var testConfiguration = library.Configuration{
-	User:               os.Getenv("TEST_VMWARE_USER"),
-	Password:           os.Getenv("TEST_VMWARE_PASSWORD"),
-	Hostname:           os.Getenv("TEST_VMWARE_HOSTNAME"),
-	Insecure:           true,
-	TemplateFolderPath: os.Getenv("TEST_VMWARE_TEMPLATE_FOLDER_PATH"),
-	ServerAddress:      "127.0.0.1",
-	ResourcePoolPath:   os.Getenv("TEST_VMWARE_RESOURCE_POOL_PATH"),
-	ExerciseRootPath:   os.Getenv("TEST_VMWARE_EXERCISE_ROOT_PATH"),
-	RedisAddress:       os.Getenv("TEST_REDIS_ADDRESS"),
-	RedisPassword:      os.Getenv("TEST_REDIS_PASSWORD"),
+	User:                   os.Getenv("TEST_VMWARE_USER"),
+	Password:               os.Getenv("TEST_VMWARE_PASSWORD"),
+	Hostname:               os.Getenv("TEST_VMWARE_HOSTNAME"),
+	Insecure:               true,
+	TemplateFolderPath:     os.Getenv("TEST_VMWARE_TEMPLATE_FOLDER_PATH"),
+	ServerAddress:          "127.0.0.1",
+	ResourcePoolPath:       os.Getenv("TEST_VMWARE_RESOURCE_POOL_PATH"),
+	ExerciseRootPath:       os.Getenv("TEST_VMWARE_EXERCISE_ROOT_PATH"),
+	RedisAddress:           os.Getenv("TEST_REDIS_ADDRESS"),
+	RedisPassword:          os.Getenv("TEST_REDIS_PASSWORD"),
+	DeputyPackageServerApi: os.Getenv("TEST_DEPUTY_PACKAGE_SERVER_API"),
 }
 
 func startServer(timeout time.Duration) (configuration library.Configuration) {
@@ -58,6 +60,20 @@ func createEventClient(t *testing.T, serverPath string) event.EventInfoServiceCl
 		}
 	})
 	return event.NewEventInfoServiceClient(connection)
+}
+
+func createDeputyQueryClient(t *testing.T, serverPath string) deputy.DeputyQueryServiceClient {
+	connection, connectionError := grpc.Dial(serverPath, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if connectionError != nil {
+		t.Fatalf("Failed to connect to grpc server: %v", connectionError)
+	}
+	t.Cleanup(func() {
+		connectionError := connection.Close()
+		if connectionError != nil {
+			t.Fatalf("Failed to close grpc connection: %v", connectionError)
+		}
+	})
+	return deputy.NewDeputyQueryServiceClient(connection)
 }
 
 func sendEventDeleteRequest(t *testing.T, gRPCClient event.EventInfoServiceClient, identifier *common.Identifier) error {
@@ -156,4 +172,47 @@ func TestStreamEventInfo(t *testing.T) {
 	if err = sendEventDeleteRequest(t, gRPCClient, &common.Identifier{Value: eventInfoResponse.Id}); err != nil {
 		t.Fatalf("Failed to delete event: %v", err)
 	}
+}
+
+func TestGetDeputyPackagesByType(t *testing.T) {
+	ctx := context.Background()
+	configuration := startServer(3 * time.Second)
+	gRPCClient := createDeputyQueryClient(t, configuration.ServerAddress)
+
+	request := &deputy.GetPackagesQuery{PackageType: "condition"}
+	response, err := gRPCClient.GetPackagesByType(ctx, request)
+	if err != nil {
+		t.Fatalf("Test GetPackagesByType request error: %v", err)
+	}
+
+	if len(response.Packages) == 0 {
+		t.Fatalf("GetPackagesByType Received empty response")
+	}
+
+}
+
+func TestGetScenario(t *testing.T) {
+	ctx := context.Background()
+	configuration := startServer(3 * time.Second)
+	gRPCClient := createDeputyQueryClient(t, configuration.ServerAddress)
+
+	request := &common.Source{
+		Name:    "handler-test-exercise",
+		Version: "*",
+	}
+
+	token := os.Getenv("TEST_DEPUTY_TOKEN")
+	if err := library.PublishTestPackage(request.Name, token); err != nil {
+		t.Fatalf("Failed to upload test Exercise package: %v", err)
+	}
+
+	response, err := gRPCClient.GetScenario(ctx, request)
+	if err != nil {
+		t.Fatalf("GetScenario request error: %v", err)
+	}
+
+	if response.Sdl == "" {
+		t.Fatalf("GetScenario: Received empty response")
+	}
+
 }

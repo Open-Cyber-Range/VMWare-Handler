@@ -54,6 +54,7 @@ compile-protobuf:
 	--go_opt=Msrc/condition.proto=github.com/open-cyber-range/vmware-handler/grpc/condition \
 	--go_opt=Msrc/inject.proto=github.com/open-cyber-range/vmware-handler/grpc/inject \
 	--go_opt=Msrc/event.proto=github.com/open-cyber-range/vmware-handler/grpc/event \
+	--go_opt=Msrc/deputy.proto=github.com/open-cyber-range/vmware-handler/grpc/deputy \
 	--go-grpc_opt=Msrc/common.proto=github.com/open-cyber-range/vmware-handler/grpc/common \
 	--go-grpc_opt=Msrc/template.proto=github.com/open-cyber-range/vmware-handler/grpc/template \
 	--go-grpc_opt=Msrc/capability.proto=github.com/open-cyber-range/vmware-handler/grpc/capability  \
@@ -63,9 +64,10 @@ compile-protobuf:
 	--go-grpc_opt=Msrc/condition.proto=github.com/open-cyber-range/vmware-handler/grpc/condition  \
 	--go-grpc_opt=Msrc/inject.proto=github.com/open-cyber-range/vmware-handler/grpc/inject  \
 	--go-grpc_opt=Msrc/event.proto=github.com/open-cyber-range/vmware-handler/grpc/event  \
+	--go-grpc_opt=Msrc/deputy.proto=github.com/open-cyber-range/vmware-handler/grpc/deputy  \
 	--go_opt=module=github.com/open-cyber-range/vmware-handler/grpc \
 	--go-grpc_opt=module=github.com/open-cyber-range/vmware-handler/grpc \
-	--proto_path=grpc/proto src/virtual-machine.proto src/switch.proto src/common.proto src/capability.proto src/template.proto src/feature.proto src/condition.proto src/inject.proto src/event.proto
+	--proto_path=grpc/proto src/virtual-machine.proto src/switch.proto src/common.proto src/capability.proto src/template.proto src/feature.proto src/condition.proto src/inject.proto src/event.proto src/deputy.proto
 
 generate-nsx-t-openapi:
 	java -Dapis=Segments,Connectivity -Dmodels -DsupportingFiles -jar /var/opt/swagger/swagger-codegen-cli.jar generate -DpackageName=nsx_t_openapi -DmodelTests=false -DapiTests=false -DapiDocs=false -DmodelDocs=false -D io.swagger.parser.util.RemoteUrl.trustAll=true -i extra/nsx_policy_api.yaml -l go -o nsx_t_openapi &&\
@@ -107,6 +109,9 @@ test-injects: build-executor
 
 test-general: build-general
 	go test -v -count=1 ./general
+
+test-deputy: build-general
+	go test -v -count=1 ./general -run "(TestGetDeputyPackagesByType|TestGetScenario)"
 
 test-library:
 	go test -v -count=1 ./library

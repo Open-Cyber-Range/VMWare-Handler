@@ -2,8 +2,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"os"
 
 	goredislib "github.com/go-redis/redis/v8"
@@ -12,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/open-cyber-range/vmware-handler/grpc/capability"
 	"github.com/open-cyber-range/vmware-handler/grpc/common"
+	"github.com/open-cyber-range/vmware-handler/grpc/deputy"
 	"github.com/open-cyber-range/vmware-handler/grpc/event"
 	"github.com/open-cyber-range/vmware-handler/library"
 	log "github.com/sirupsen/logrus"
@@ -25,11 +29,45 @@ type eventInfoServer struct {
 	ServerSpecs *serverSpecs
 }
 
+type deputyQueryServer struct {
+	deputy.UnimplementedDeputyQueryServiceServer
+	ServerSpecs *serverSpecs
+}
+
 type serverSpecs struct {
 	Client        *govmomi.Client
 	Configuration *library.Configuration
 	Storage       *library.Storage[library.EventInfoContainer]
 	MutexPool     *library.MutexPool
+}
+
+type PackageVersion struct {
+	Id          string `json:"id"`
+	Version     string `json:"version"`
+	PackageId   string `json:"package_id"`
+	Description string `json:"description"`
+	License     string `json:"license"`
+	IsYanked    bool   `json:"is_yanked"`
+	ReadmeHtml  string `json:"readme_html"`
+	PackageSize uint64 `json:"package_size"`
+	Checksum    string `json:"checksum"`
+	CreatedAt   string `json:"created_at"`
+	UpdatedAt   string `json:"updated_at"`
+	DeletedAt   string `json:"deleted_at,omitempty"`
+}
+
+type PackageWithVersions struct {
+	Id          string           `json:"id"`
+	Name        string           `json:"name"`
+	PackageType string           `json:"package_type"`
+	CreatedAt   string           `json:"created_at"`
+	UpdatedAt   string           `json:"updated_at"`
+	Versions    []PackageVersion `json:"versions"`
+}
+
+type PackagesWithVersionsAndPages struct {
+	Packages   []PackageWithVersions `json:"packages"`
+	TotalPages int                   `json:"total_pages"`
 }
 
 func (server *eventInfoServer) Create(ctx context.Context, source *common.Source) (*event.EventCreateResponse, error) {
@@ -41,10 +79,12 @@ func (server *eventInfoServer) Create(ctx context.Context, source *common.Source
 	if err != nil {
 		log.Errorf("Error getting package metadata: %v", err)
 		return &event.EventCreateResponse{}, err
+	} else if executorPackage.Event.FilePath == "" {
+		log.Errorf("Unexpected Event file path (is empty)")
+		return &event.EventCreateResponse{}, fmt.Errorf("unexpected Event file path (is empty)")
 	}
 
-	// Placeholder, will be replaced in the future Deputy release
-	filePath := packagePath + "/" + executorPackage.GetAction()
+	filePath := packagePath + "/" + executorPackage.Event.FilePath
 	htmlPath, checksum, err := library.ConvertMarkdownToHtml(filePath)
 	if err != nil {
 		log.Errorf("Error converting md to HTML: %v", err)
@@ -131,6 +171,64 @@ func (server *eventInfoServer) Delete(ctx context.Context, identifier *common.Id
 	return &emptypb.Empty{}, nil
 }
 
+func (server *deputyQueryServer) GetPackagesByType(ctx context.Context, query *deputy.GetPackagesQuery) (*deputy.GetPackagesResponse, error) {
+	typeQuery := fmt.Sprintf("?type=%v", query.GetPackageType())
+	getUrl := server.ServerSpecs.Configuration.DeputyPackageServerApi + "/api/v1/package" + typeQuery
+	resp, err := http.Get(getUrl)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var responseObject PackagesWithVersionsAndPages
+	if err = json.Unmarshal(body, &responseObject); err != nil {
+		return nil, fmt.Errorf("error unmarshalling package data, %v", err)
+	}
+
+	var packages []*deputy.Package
+	for _, packageWithVersions := range responseObject.Packages {
+		for _, version := range packageWithVersions.Versions {
+			packages = append(packages, &deputy.Package{
+				Name:    packageWithVersions.Name,
+				Version: version.Version,
+				Type:    packageWithVersions.PackageType})
+		}
+	}
+
+	return &deputy.GetPackagesResponse{
+			Packages: packages,
+		},
+		nil
+}
+
+func (server *deputyQueryServer) GetScenario(ctx context.Context, source *common.Source) (*deputy.GetScenarioResponse, error) {
+	packagePath, executorPackage, err := library.GetPackageMetadata(
+		source.GetName(),
+		source.GetVersion(),
+	)
+	if err != nil {
+		log.Errorf("Error getting package metadata: %v", err)
+		return &deputy.GetScenarioResponse{}, err
+	} else if executorPackage.Exercise.FilePath == "" {
+		log.Errorf("Unexpected Exercise file path (is empty)")
+		return &deputy.GetScenarioResponse{}, fmt.Errorf("unexpected Exercise file path (is empty)")
+	}
+
+	filePath := packagePath + "/" + executorPackage.Exercise.FilePath
+	fileContents, err := os.ReadFile(filePath)
+	if err != nil {
+		log.Errorf("Error reading file: %v", err)
+		return &deputy.GetScenarioResponse{}, err
+	}
+
+	return &deputy.GetScenarioResponse{Sdl: string(fileContents)}, nil
+}
+
 func RealMain(configuration *library.Configuration) {
 	ctx := context.Background()
 	govmomiClient, clientError := configuration.CreateClient(ctx)
@@ -163,6 +261,7 @@ func RealMain(configuration *library.Configuration) {
 		MutexPool:     &mutexPool,
 	}
 	event.RegisterEventInfoServiceServer(grpcServer, &eventInfoServer{ServerSpecs: &serverSpecs})
+	deputy.RegisterDeputyQueryServiceServer(grpcServer, &deputyQueryServer{ServerSpecs: &serverSpecs})
 
 	capabilityServer := library.NewCapabilityServer([]capability.Capabilities_DeployerTypes{
 		*capability.Capabilities_EventInfo.Enum(),

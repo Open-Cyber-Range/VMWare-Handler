@@ -70,7 +70,11 @@ type Inject struct {
 }
 
 type Event struct {
-	Action string `json:"action,omitempty"`
+	FilePath string `json:"file_path"`
+}
+
+type Exercise struct {
+	FilePath string `json:"file_path"`
 }
 
 type PackageBody struct {
@@ -88,6 +92,7 @@ type ExecutorPackage struct {
 	Condition   Condition   `json:"condition,omitempty"`
 	Inject      Inject      `json:"inject,omitempty"`
 	Event       Event       `json:"event,omitempty"`
+	Exercise    Exercise    `json:"exercise,omitempty"`
 }
 
 func (mutexPool MutexPool) GetMutex(ctx context.Context, optionalId ...string) (mutex *Mutex, err error) {
@@ -192,8 +197,6 @@ func (executorPackage ExecutorPackage) GetAction() (action string) {
 		return executorPackage.Condition.Action
 	case parcel.Inject.Action != "":
 		return executorPackage.Inject.Action
-	case parcel.Event.Action != "":
-		return executorPackage.Event.Action
 	default:
 		return
 	}

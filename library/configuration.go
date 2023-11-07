@@ -75,18 +75,19 @@ type ConfigurationVariables struct {
 }
 
 type Configuration struct {
-	User               string                 `yaml:",omitempty"`
-	Password           string                 `yaml:",omitempty"`
-	Hostname           string                 `yaml:",omitempty"`
-	Insecure           bool                   `yaml:",omitempty"`
-	TemplateFolderPath string                 `yaml:"template_folder_path,omitempty"`
-	ServerAddress      string                 `yaml:"server_address,omitempty"`
-	ResourcePoolPath   string                 `yaml:"resource_pool_path,omitempty"`
-	ExerciseRootPath   string                 `yaml:"exercise_root_path,omitempty"`
-	DatastorePath      string                 `yaml:"datastore_path,omitempty"`
-	RedisAddress       string                 `yaml:"redis_address,omitempty"`
-	RedisPassword      string                 `yaml:"redis_password,omitempty"`
-	Variables          ConfigurationVariables `yaml:",inline"`
+	User                   string                 `yaml:",omitempty"`
+	Password               string                 `yaml:",omitempty"`
+	Hostname               string                 `yaml:",omitempty"`
+	Insecure               bool                   `yaml:",omitempty"`
+	TemplateFolderPath     string                 `yaml:"template_folder_path,omitempty"`
+	ServerAddress          string                 `yaml:"server_address,omitempty"`
+	ResourcePoolPath       string                 `yaml:"resource_pool_path,omitempty"`
+	ExerciseRootPath       string                 `yaml:"exercise_root_path,omitempty"`
+	DatastorePath          string                 `yaml:"datastore_path,omitempty"`
+	RedisAddress           string                 `yaml:"redis_address,omitempty"`
+	RedisPassword          string                 `yaml:"redis_password,omitempty"`
+	Variables              ConfigurationVariables `yaml:",inline"`
+	DeputyPackageServerApi string                 `yaml:"deputy_api,omitempty"`
 }
 
 func (configuration *Configuration) Validate(validator *Validator) error {
@@ -116,6 +117,9 @@ func (configuration *Configuration) Validate(validator *Validator) error {
 	}
 	if configuration.RedisPassword == "" {
 		return status.Error(codes.InvalidArgument, "Redis server password not provided")
+	}
+	if configuration.DeputyPackageServerApi == "" {
+		return status.Error(codes.InvalidArgument, "Deputy Package Server server password not provided")
 	}
 	if configuration.Variables.MaxConnections == 0 {
 		configuration.Variables.MaxConnections = DefaultConfigurationVariables.MaxConnections
