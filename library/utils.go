@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -22,6 +23,7 @@ import (
 	"github.com/go-redsync/redsync/v4"
 	"github.com/iancoleman/strcase"
 	"github.com/open-cyber-range/vmware-handler/grpc/capability"
+	"github.com/open-cyber-range/vmware-handler/grpc/deputy"
 	log "github.com/sirupsen/logrus"
 	img64 "github.com/tenkoh/goldmark-img64"
 	"github.com/vmware/govmomi/object"
@@ -541,4 +543,30 @@ func ConvertMarkdownToHtml(markdownFilePath string) (htmlPath string, checksum s
 	}
 
 	return outputFilePath, checksum, nil
+}
+
+func ParseListCommandOutput(commandOutput []byte) (packages []*deputy.Package, err error) {
+	trimmedString := strings.TrimSuffix(string(commandOutput), "\n")
+	packageStringList := strings.Split(trimmedString, "\n")
+	re := regexp.MustCompile(`([^/]+)/([^,]+),\s(.*)`)
+
+	for _, packageString := range packageStringList {
+		matches := re.FindStringSubmatch(packageString)
+		if len(matches) != 4 {
+			return nil, fmt.Errorf("error parsing output of deputy list command, expected 4 matches per line, got %v", len(matches))
+		}
+		packageName, packageType, packageVersion := matches[1], matches[2], matches[3]
+
+		if packageName == "" || packageType == "" || packageVersion == "" {
+			return nil, fmt.Errorf("error parsing output of deputy list command, one of the values was empty")
+		}
+
+		packages = append(packages, &deputy.Package{
+			Name:    packageName,
+			Version: packageVersion,
+			Type:    packageType,
+		})
+	}
+
+	return
 }

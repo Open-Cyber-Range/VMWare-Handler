@@ -2,12 +2,11 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net"
-	"net/http"
 	"os"
+	"os/exec"
 
 	goredislib "github.com/go-redis/redis/v8"
 	"github.com/go-redsync/redsync/v4"
@@ -172,36 +171,21 @@ func (server *eventInfoServer) Delete(ctx context.Context, identifier *common.Id
 }
 
 func (server *deputyQueryServer) GetPackagesByType(ctx context.Context, query *deputy.GetPackagesQuery) (*deputy.GetPackagesResponse, error) {
-	typeQuery := fmt.Sprintf("?type=%v", query.GetPackageType())
-	getUrl := server.ServerSpecs.Configuration.DeputyPackageServerApi + "/api/v1/package" + typeQuery
-	resp, err := http.Get(getUrl)
+	listCommand := exec.Command("deputy", "list", "-t", query.GetPackageType())
+	output, err := listCommand.CombinedOutput()
 	if err != nil {
-		return nil, err
+		log.Errorf("Deputy list command failed, %v", err)
+		return nil, fmt.Errorf("%v (%v)", string(output), err)
 	}
-	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	packageList, err := library.ParseListCommandOutput(output)
 	if err != nil {
+		log.Errorf("Error parsing deputy list command output, %v", err)
 		return nil, err
-	}
-
-	var responseObject PackagesWithVersionsAndPages
-	if err = json.Unmarshal(body, &responseObject); err != nil {
-		return nil, fmt.Errorf("error unmarshalling package data, %v", err)
-	}
-
-	var packages []*deputy.Package
-	for _, packageWithVersions := range responseObject.Packages {
-		for _, version := range packageWithVersions.Versions {
-			packages = append(packages, &deputy.Package{
-				Name:    packageWithVersions.Name,
-				Version: version.Version,
-				Type:    packageWithVersions.PackageType})
-		}
 	}
 
 	return &deputy.GetPackagesResponse{
-			Packages: packages,
+			Packages: packageList,
 		},
 		nil
 }
