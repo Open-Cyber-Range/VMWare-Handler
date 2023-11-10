@@ -19,21 +19,16 @@ import (
 )
 
 var testConfiguration = library.Configuration{
-	User:               os.Getenv("TEST_VMWARE_USER"),
-	Password:           os.Getenv("TEST_VMWARE_PASSWORD"),
-	Hostname:           os.Getenv("TEST_VMWARE_HOSTNAME"),
-	Insecure:           true,
-	TemplateFolderPath: os.Getenv("TEST_VMWARE_TEMPLATE_FOLDER_PATH"),
-	ServerAddress:      "127.0.0.1",
-	ResourcePoolPath:   os.Getenv("TEST_VMWARE_RESOURCE_POOL_PATH"),
-	ExerciseRootPath:   os.Getenv("TEST_VMWARE_EXERCISE_ROOT_PATH"),
-	RedisAddress:       os.Getenv("TEST_REDIS_ADDRESS"),
-	RedisPassword:      os.Getenv("TEST_REDIS_PASSWORD"),
+	ServerAddress: "127.0.0.1",
+	RedisAddress:  os.Getenv("TEST_REDIS_ADDRESS"),
+	RedisPassword: os.Getenv("TEST_REDIS_PASSWORD"),
 }
 
 func startServer(timeout time.Duration) (configuration library.Configuration) {
 	configuration = testConfiguration
-	validator := library.NewValidator().SetRequireExerciseRootPath(true)
+	configuration.SetDefaultConfigurationValues()
+	validator := library.NewValidator()
+	validator.SetRequireRedisConfiguration(true)
 	err := configuration.Validate(validator)
 	if err != nil {
 		log.Fatalf("Failed to validate configuration: %v", err)

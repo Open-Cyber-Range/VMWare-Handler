@@ -17,6 +17,7 @@ import (
 	virtual_machine "github.com/open-cyber-range/vmware-handler/grpc/virtual-machine"
 	"github.com/open-cyber-range/vmware-handler/library"
 	swagger "github.com/open-cyber-range/vmware-handler/nsx_t_openapi"
+	log "github.com/sirupsen/logrus"
 	"github.com/vmware/govmomi/vim25/mo"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -55,6 +56,13 @@ var virtualMachineHardwareConfiguration = &virtual_machine.Configuration{
 
 func startServer(timeout time.Duration) (configuration library.Configuration) {
 	configuration = testConfiguration
+	validator := library.NewValidator()
+	validator.SetRequireExerciseRootPath(true)
+	validator.SetRequireVSphereConfiguration(true)
+	err := configuration.Validate(validator)
+	if err != nil {
+		log.Fatalf("Failed to validate configuration: %v", err)
+	}
 	rand.Seed(time.Now().UnixNano())
 	randomPort := rand.Intn(10000) + 10000
 	configuration.ServerAddress = fmt.Sprintf("%v:%v", configuration.ServerAddress, randomPort)

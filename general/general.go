@@ -8,9 +8,6 @@ import (
 	"os"
 	"os/exec"
 
-	goredislib "github.com/go-redis/redis/v8"
-	"github.com/go-redsync/redsync/v4"
-	"github.com/go-redsync/redsync/v4/redis/goredis/v8"
 	"github.com/google/uuid"
 	"github.com/open-cyber-range/vmware-handler/grpc/capability"
 	"github.com/open-cyber-range/vmware-handler/grpc/common"
@@ -18,7 +15,6 @@ import (
 	"github.com/open-cyber-range/vmware-handler/grpc/event"
 	"github.com/open-cyber-range/vmware-handler/library"
 	log "github.com/sirupsen/logrus"
-	"github.com/vmware/govmomi"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
@@ -34,10 +30,8 @@ type deputyQueryServer struct {
 }
 
 type serverSpecs struct {
-	Client        *govmomi.Client
 	Configuration *library.Configuration
 	Storage       *library.Storage[library.EventInfoContainer]
-	MutexPool     *library.MutexPool
 }
 
 type PackageVersion struct {
@@ -214,12 +208,6 @@ func (server *deputyQueryServer) GetScenario(ctx context.Context, source *common
 }
 
 func RealMain(configuration *library.Configuration) {
-	ctx := context.Background()
-	govmomiClient, clientError := configuration.CreateClient(ctx)
-	if clientError != nil {
-		log.Fatal(clientError)
-	}
-
 	listeningAddress, addressError := net.Listen("tcp", configuration.ServerAddress)
 	if addressError != nil {
 		log.Fatalf("Failed to listen: %v", addressError)
@@ -227,22 +215,10 @@ func RealMain(configuration *library.Configuration) {
 
 	storage := library.NewStorage[library.EventInfoContainer](configuration.RedisAddress, configuration.RedisPassword)
 	grpcServer := grpc.NewServer()
-	redisClient := goredislib.NewClient(&goredislib.Options{
-		Addr:     configuration.RedisAddress,
-		Password: configuration.RedisPassword,
-	})
-	redisPool := goredis.NewPool(redisClient)
-
-	mutexPool, err := library.NewMutexPool(ctx, configuration.Hostname, *redsync.New(redisPool), *redisClient, configuration.Variables)
-	if err != nil {
-		log.Fatal(err)
-	}
 
 	serverSpecs := serverSpecs{
-		Client:        govmomiClient,
 		Configuration: configuration,
 		Storage:       &storage,
-		MutexPool:     &mutexPool,
 	}
 	event.RegisterEventInfoServiceServer(grpcServer, &eventInfoServer{ServerSpecs: &serverSpecs})
 	deputy.RegisterDeputyQueryServiceServer(grpcServer, &deputyQueryServer{ServerSpecs: &serverSpecs})
@@ -254,7 +230,7 @@ func RealMain(configuration *library.Configuration) {
 
 	capability.RegisterCapabilityServer(grpcServer, &capabilityServer)
 
-	log.Printf("Executor listening at %v", listeningAddress.Addr())
+	log.Printf("General listening at %v", listeningAddress.Addr())
 
 	if bindError := grpcServer.Serve(listeningAddress); bindError != nil {
 		log.Fatalf("Failed to serve: %v", bindError)
@@ -262,7 +238,9 @@ func RealMain(configuration *library.Configuration) {
 }
 
 func main() {
-	configuration, configurationError := library.NewValidator().SetRequireExerciseRootPath(true).GetConfiguration()
+	validator := library.NewValidator()
+	validator.SetRequireRedisConfiguration(true)
+	configuration, configurationError := validator.GetConfiguration()
 	if configurationError != nil {
 		log.Fatal(configurationError)
 	}

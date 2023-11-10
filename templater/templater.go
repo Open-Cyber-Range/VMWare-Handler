@@ -316,8 +316,10 @@ func RealMain(configuration library.Configuration) {
 }
 
 func main() {
-	configuration, configurationError := library.NewValidator().SetRequireDatastorePath(true).GetConfiguration()
-
+	validator := library.NewValidator()
+	validator.SetRequireDatastorePath(true)
+	validator.SetRequireVSphereConfiguration(true)
+	configuration, configurationError := validator.GetConfiguration()
 	if configurationError != nil {
 		log.Fatal(configurationError)
 	}
