@@ -375,7 +375,7 @@ func RealMain(configuration *library.Configuration) {
 	condition.RegisterConditionServiceServer(grpcServer, &conditionerServer{ServerSpecs: &serverSpecs})
 	inject.RegisterInjectServiceServer(grpcServer, &injectServer{ServerSpecs: &serverSpecs})
 
-	capabilityServer := library.NewCapabilityServer([]capability.Capabilities_DeployerTypes{
+	capabilityServer := library.NewCapabilityServer([]capability.Capabilities_DeployerType{
 		*capability.Capabilities_Feature.Enum(),
 		*capability.Capabilities_Condition.Enum(),
 		*capability.Capabilities_Inject.Enum(),

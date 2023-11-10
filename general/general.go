@@ -247,7 +247,7 @@ func RealMain(configuration *library.Configuration) {
 	event.RegisterEventInfoServiceServer(grpcServer, &eventInfoServer{ServerSpecs: &serverSpecs})
 	deputy.RegisterDeputyQueryServiceServer(grpcServer, &deputyQueryServer{ServerSpecs: &serverSpecs})
 
-	capabilityServer := library.NewCapabilityServer([]capability.Capabilities_DeployerTypes{
+	capabilityServer := library.NewCapabilityServer([]capability.Capabilities_DeployerType{
 		*capability.Capabilities_EventInfo.Enum(),
 		*capability.Capabilities_DeputyQuery.Enum(),
 	})

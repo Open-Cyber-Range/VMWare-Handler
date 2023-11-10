@@ -250,7 +250,7 @@ func RealMain(configuration *library.Configuration) {
 		Configuration: configuration,
 	})
 
-	capabilityServer := library.NewCapabilityServer([]capability.Capabilities_DeployerTypes{
+	capabilityServer := library.NewCapabilityServer([]capability.Capabilities_DeployerType{
 		*capability.Capabilities_VirtualMachine.Enum(),
 	})
 

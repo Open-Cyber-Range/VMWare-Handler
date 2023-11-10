@@ -165,7 +165,7 @@ func RealMain(serverConfiguration *Configuration) {
 		Configuration: *serverConfiguration,
 	})
 
-	capabilityServer := library.NewCapabilityServer([]capability.Capabilities_DeployerTypes{
+	capabilityServer := library.NewCapabilityServer([]capability.Capabilities_DeployerType{
 		*capability.Capabilities_Switch.Enum(),
 	})
 

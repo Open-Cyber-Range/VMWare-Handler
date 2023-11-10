@@ -303,7 +303,7 @@ func RealMain(configuration library.Configuration) {
 		Client:        client,
 		Configuration: configuration,
 	})
-	capabilityServer := library.NewCapabilityServer([]capability.Capabilities_DeployerTypes{
+	capabilityServer := library.NewCapabilityServer([]capability.Capabilities_DeployerType{
 		*capability.Capabilities_Template.Enum().Enum(),
 	})
 
