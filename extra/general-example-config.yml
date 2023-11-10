@@ -1,0 +1,3 @@
+server_address: "some-address:port"
+redis_address: some-address:port
+redis_password: some-password
