@@ -142,7 +142,7 @@ func (server *conditionerServer) Create(ctx context.Context, conditionDeployment
 
 func (server *conditionerServer) Stream(identifier *common.Identifier, stream condition.ConditionService_StreamServer) error {
 	ctx := context.Background()
-	container, err := server.ServerSpecs.Storage.Get(context.Background(), identifier.GetValue())
+	container, err := server.ServerSpecs.Storage.Get(ctx, identifier.GetValue())
 	if err != nil {
 		return err
 	}
@@ -375,7 +375,7 @@ func RealMain(configuration *library.Configuration) {
 	condition.RegisterConditionServiceServer(grpcServer, &conditionerServer{ServerSpecs: &serverSpecs})
 	inject.RegisterInjectServiceServer(grpcServer, &injectServer{ServerSpecs: &serverSpecs})
 
-	capabilityServer := library.NewCapabilityServer([]capability.Capabilities_DeployerTypes{
+	capabilityServer := library.NewCapabilityServer([]capability.Capabilities_DeployerType{
 		*capability.Capabilities_Feature.Enum(),
 		*capability.Capabilities_Condition.Enum(),
 		*capability.Capabilities_Inject.Enum(),
@@ -392,7 +392,11 @@ func RealMain(configuration *library.Configuration) {
 }
 
 func main() {
-	configuration, configurationError := library.NewValidator().SetRequireExerciseRootPath(true).GetConfiguration()
+	validator := library.NewValidator()
+	validator.SetRequireVSphereConfiguration(true)
+	validator.SetRequireExerciseRootPath(true)
+	validator.SetRequireRedisConfiguration(true)
+	configuration, configurationError := validator.GetConfiguration()
 	if configurationError != nil {
 		log.Fatal(configurationError)
 	}

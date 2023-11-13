@@ -14,7 +14,7 @@ type CapabilityServer struct {
 	capability.UnimplementedCapabilityServer
 }
 
-func NewCapabilityServer(capabilities []capability.Capabilities_DeployerTypes) CapabilityServer {
+func NewCapabilityServer(capabilities []capability.Capabilities_DeployerType) CapabilityServer {
 	return CapabilityServer{
 		wrappedCapabilities: capability.Capabilities{
 			Values: capabilities,

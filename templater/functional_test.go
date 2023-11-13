@@ -12,6 +12,7 @@ import (
 	"github.com/open-cyber-range/vmware-handler/grpc/template"
 	"github.com/open-cyber-range/vmware-handler/library"
 	"github.com/phayes/freeport"
+	log "github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -25,12 +26,17 @@ var testConfiguration = library.Configuration{
 	ResourcePoolPath:   os.Getenv("TEST_VMWARE_RESOURCE_POOL_PATH"),
 	DatastorePath:      os.Getenv("TEST_VMWARE_DATASTORE_PATH"),
 	ServerAddress:      "127.0.0.1",
-	RedisAddress:       os.Getenv("TEST_REDIS_ADDRESS"),
-	RedisPassword:      os.Getenv("TEST_REDIS_PASSWORD"),
 }
 
 func startServer(timeout time.Duration) (configuration library.Configuration, err error) {
 	configuration = testConfiguration
+	validator := library.NewValidator()
+	validator.SetRequireDatastorePath(true)
+	validator.SetRequireVSphereConfiguration(true)
+	err = configuration.Validate(validator)
+	if err != nil {
+		log.Fatalf("Failed to validate configuration: %v", err)
+	}
 	rand.Seed(time.Now().UnixNano())
 	randomPort, err := freeport.GetFreePort()
 	if err != nil {

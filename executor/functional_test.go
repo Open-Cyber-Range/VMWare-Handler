@@ -40,7 +40,11 @@ const WindowsConditionsTestVirtualMachineUUID = "422d4097-5852-be8d-3be7-70e3483
 
 func startServer(timeout time.Duration) (configuration library.Configuration) {
 	configuration = testConfiguration
-	validator := library.NewValidator().SetRequireExerciseRootPath(true)
+	configuration.SetDefaultConfigurationValues()
+	validator := library.NewValidator()
+	validator.SetRequireVSphereConfiguration(true)
+	validator.SetRequireExerciseRootPath(true)
+	validator.SetRequireRedisConfiguration(true)
 	err := configuration.Validate(validator)
 	if err != nil {
 		log.Fatalf("Failed to validate configuration: %v", err)

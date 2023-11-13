@@ -20,6 +20,13 @@ type ExecutorContainer struct {
 	Environment []string
 }
 
+type EventInfoContainer struct {
+	Path     string
+	Name     string
+	Size     int64
+	Checksum string
+}
+
 type Account struct {
 	Name     string `json:"name,omitempty"`
 	Password string `json:"password,omitempty"`

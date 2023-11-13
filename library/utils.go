@@ -1,26 +1,40 @@
 package library
 
 import (
+	"bytes"
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math/rand"
 	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
 
+	chromahtml "github.com/alecthomas/chroma/formatters/html"
 	"github.com/go-redis/redis/v8"
 	"github.com/go-redsync/redsync/v4"
 	"github.com/iancoleman/strcase"
 	"github.com/open-cyber-range/vmware-handler/grpc/capability"
+	"github.com/open-cyber-range/vmware-handler/grpc/deputy"
 	log "github.com/sirupsen/logrus"
+	img64 "github.com/tenkoh/goldmark-img64"
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/types"
+	"github.com/yuin/goldmark"
+	highlighting "github.com/yuin/goldmark-highlighting"
+	"github.com/yuin/goldmark/extension"
+	"github.com/yuin/goldmark/parser"
+	"github.com/yuin/goldmark/renderer"
+	"github.com/yuin/goldmark/renderer/html"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -57,6 +71,14 @@ type Inject struct {
 	Restarts bool   `json:"restarts,omitempty"`
 }
 
+type Event struct {
+	FilePath string `json:"file_path"`
+}
+
+type Exercise struct {
+	FilePath string `json:"file_path"`
+}
+
 type PackageBody struct {
 	Name        string     `json:"name"`
 	Description string     `json:"description"`
@@ -71,6 +93,8 @@ type ExecutorPackage struct {
 	Feature     Feature     `json:"feature,omitempty"`
 	Condition   Condition   `json:"condition,omitempty"`
 	Inject      Inject      `json:"inject,omitempty"`
+	Event       Event       `json:"event,omitempty"`
+	Exercise    Exercise    `json:"exercise,omitempty"`
 }
 
 func (mutexPool MutexPool) GetMutex(ctx context.Context, optionalId ...string) (mutex *Mutex, err error) {
@@ -311,10 +335,12 @@ func GetPackageData(packagePath string) (packageData map[string]interface{}, err
 		log.Errorf("Deputy inspect command failed, %v", err)
 		return
 	}
-	json.Unmarshal(output, &packageData)
+	if err = json.Unmarshal(output, &packageData); err != nil {
+		return nil, fmt.Errorf("error unmarshalling package data, %v", err)
+	}
 
 	if len(packageData) == 0 {
-		return nil, fmt.Errorf("error unmarshalling package data, result is empty")
+		return nil, fmt.Errorf("unexpected result (is empty)")
 	}
 
 	return
@@ -434,5 +460,113 @@ func GetPackageMetadata(packageName string, packageVersion string) (packagePath 
 	if err = json.Unmarshal(infoJson, &executorPackage); err != nil {
 		return "", ExecutorPackage{}, status.Error(codes.Internal, fmt.Sprintf("Error unmarshalling Toml contents: %v", err))
 	}
+	return
+}
+
+func GetMD5Checksum(filePath string) (string, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	hash := md5.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		return "", err
+	}
+
+	hashInBytes := hash.Sum(nil)[:16]
+	return hex.EncodeToString(hashInBytes), nil
+}
+
+func buildMarkdownConverter(markdownFilePath string) goldmark.Markdown {
+	parserOptions := []parser.Option{
+		parser.WithAutoHeadingID(),
+	}
+
+	rendererOptions := []renderer.Option{
+		img64.WithParentPath(filepath.Dir(markdownFilePath)),
+		html.WithXHTML(),
+		html.WithUnsafe(),
+	}
+
+	extensions := []goldmark.Extender{
+		img64.Img64,
+		extension.GFM,
+		extension.DefinitionList,
+		extension.Footnote,
+		extension.Typographer,
+		highlighting.NewHighlighting(
+			highlighting.WithStyle("github"),
+			highlighting.WithFormatOptions(
+				chromahtml.WithClasses(true),
+			),
+		),
+	}
+
+	return goldmark.New(
+		goldmark.WithExtensions(extensions...),
+		goldmark.WithParserOptions(parserOptions...),
+		goldmark.WithRendererOptions(rendererOptions...),
+	)
+}
+
+func ConvertMarkdownToHtml(markdownFilePath string) (htmlPath string, checksum string, err error) {
+	filename := filepath.Base(markdownFilePath)
+	htmlFolderPath, err := createRandomPackagePath()
+	if err != nil {
+		return "", "", fmt.Errorf("error creating tempDir for ConvertMarkdownToHtml: %v", err)
+	}
+
+	outputFilePath := htmlFolderPath + "/" + strings.TrimSuffix(filename, filepath.Ext(filename)) + ".html"
+
+	md, err := os.ReadFile(markdownFilePath)
+	if err != nil {
+		return "", "", fmt.Errorf("error reading file: %v", err)
+	}
+
+	converter := buildMarkdownConverter(markdownFilePath)
+
+	var buff bytes.Buffer
+	if err := converter.Convert(md, &buff); err != nil {
+		return "", "", fmt.Errorf("error converting file: %v", err)
+	}
+
+	err = os.WriteFile(outputFilePath, buff.Bytes(), 0644)
+	if err != nil {
+		return "", "", fmt.Errorf("error writing file: %v", err)
+	}
+
+	checksum, err = GetMD5Checksum(outputFilePath)
+	if err != nil {
+		return "", "", fmt.Errorf("error getting checksum: %v", err)
+	}
+
+	return outputFilePath, checksum, nil
+}
+
+func ParseListCommandOutput(commandOutput []byte) (packages []*deputy.Package, err error) {
+	trimmedString := strings.TrimSuffix(string(commandOutput), "\n")
+	packageStringList := strings.Split(trimmedString, "\n")
+	re := regexp.MustCompile(`([^/]+)/([^,]+),\s(.*)`)
+
+	for _, packageString := range packageStringList {
+		matches := re.FindStringSubmatch(packageString)
+		if len(matches) != 4 {
+			return nil, fmt.Errorf("error parsing output of deputy list command, expected 4 matches per line, got %v", len(matches))
+		}
+		packageName, packageType, packageVersion := matches[1], matches[2], matches[3]
+
+		if packageName == "" || packageType == "" || packageVersion == "" {
+			return nil, fmt.Errorf("error parsing output of deputy list command, one of the values was empty")
+		}
+
+		packages = append(packages, &deputy.Package{
+			Name:    packageName,
+			Version: packageVersion,
+			Type:    packageType,
+		})
+	}
+
 	return
 }

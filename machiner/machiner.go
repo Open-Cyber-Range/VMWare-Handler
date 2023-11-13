@@ -250,7 +250,7 @@ func RealMain(configuration *library.Configuration) {
 		Configuration: configuration,
 	})
 
-	capabilityServer := library.NewCapabilityServer([]capability.Capabilities_DeployerTypes{
+	capabilityServer := library.NewCapabilityServer([]capability.Capabilities_DeployerType{
 		*capability.Capabilities_VirtualMachine.Enum(),
 	})
 
@@ -263,7 +263,10 @@ func RealMain(configuration *library.Configuration) {
 }
 
 func main() {
-	configuration, configurationError := library.NewValidator().SetRequireExerciseRootPath(true).GetConfiguration()
+	validator := library.NewValidator()
+	validator.SetRequireVSphereConfiguration(true)
+	validator.SetRequireExerciseRootPath(true)
+	configuration, configurationError := validator.GetConfiguration()
 	if configurationError != nil {
 		log.Fatal(configurationError)
 	}

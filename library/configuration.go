@@ -18,46 +18,19 @@ import (
 )
 
 type Validator struct {
-	requireExerciseRootPath bool
-	requireDatastorePath    bool
+	requireExerciseRootPath     bool
+	requireDatastorePath        bool
+	requireVSphereConfiguration bool
+	requireRedisConfiguration   bool
 }
 
 func NewValidator() *Validator {
 	return &Validator{
-		requireExerciseRootPath: false,
-		requireDatastorePath:    false,
+		requireExerciseRootPath:     false,
+		requireDatastorePath:        false,
+		requireVSphereConfiguration: false,
+		requireRedisConfiguration:   false,
 	}
-}
-
-func (validator *Validator) SetRequireExerciseRootPath(value bool) *Validator {
-	validator.requireExerciseRootPath = value
-	return validator
-}
-
-func (validator *Validator) SetRequireDatastorePath(value bool) *Validator {
-	validator.requireDatastorePath = value
-	return validator
-}
-
-func (validator *Validator) GetConfiguration() (configuration Configuration, err error) {
-	commandArgs := os.Args
-	if len(commandArgs) < 2 {
-		return configuration, fmt.Errorf("no configuration path provided")
-	}
-	configurationPath := commandArgs[1]
-
-	yamlFile, err := os.ReadFile(configurationPath)
-	if err != nil {
-		return
-	}
-
-	err = yaml.Unmarshal(yamlFile, &configuration)
-	if err != nil {
-		return
-	}
-
-	err = configuration.Validate(validator)
-	return
 }
 
 type ConfigurationVariables struct {
@@ -89,34 +62,91 @@ type Configuration struct {
 	Variables          ConfigurationVariables `yaml:",inline"`
 }
 
+func (validator *Validator) SetRequireExerciseRootPath(value bool) *Validator {
+	validator.requireExerciseRootPath = value
+	return validator
+}
+
+func (validator *Validator) SetRequireDatastorePath(value bool) *Validator {
+	validator.requireDatastorePath = value
+	return validator
+}
+
+func (validator *Validator) SetRequireVSphereConfiguration(value bool) *Validator {
+	validator.requireVSphereConfiguration = value
+	return validator
+}
+
+func (validator *Validator) SetRequireRedisConfiguration(value bool) *Validator {
+	validator.requireRedisConfiguration = value
+	return validator
+}
+
+func (validator *Validator) GetConfiguration() (configuration Configuration, err error) {
+	commandArgs := os.Args
+	if len(commandArgs) < 2 {
+		return configuration, fmt.Errorf("no configuration path provided")
+	}
+	configurationPath := commandArgs[1]
+
+	yamlFile, err := os.ReadFile(configurationPath)
+	if err != nil {
+		return
+	}
+
+	err = yaml.Unmarshal(yamlFile, &configuration)
+	if err != nil {
+		return
+	}
+
+	configuration.SetDefaultConfigurationValues()
+	err = configuration.Validate(validator)
+	return
+}
+
 func (configuration *Configuration) Validate(validator *Validator) error {
-	if configuration.User == "" {
-		return status.Error(codes.InvalidArgument, "Vsphere user name not provided")
-	}
-	if configuration.Password == "" {
-		return status.Error(codes.InvalidArgument, "Vsphere password not provided")
-	}
-	if configuration.Hostname == "" {
-		return status.Error(codes.InvalidArgument, "Vsphere host name not provided")
-	}
-	if configuration.TemplateFolderPath == "" {
-		return status.Error(codes.InvalidArgument, "Vsphere template folder path not provided")
-	}
 	if configuration.ServerAddress == "" {
-		return status.Error(codes.InvalidArgument, "Vsphere server address not provided")
+		return status.Error(codes.InvalidArgument, "Handler address not provided")
 	}
-	if validator.requireExerciseRootPath && configuration.ExerciseRootPath == "" {
-		return status.Error(codes.InvalidArgument, "Vsphere exercise root path not provided")
+
+	if validator.requireVSphereConfiguration {
+		if configuration.User == "" {
+			return status.Error(codes.InvalidArgument, "Vsphere user name not provided")
+		}
+		if configuration.Password == "" {
+			return status.Error(codes.InvalidArgument, "Vsphere password not provided")
+		}
+		if configuration.Hostname == "" {
+			return status.Error(codes.InvalidArgument, "Vsphere host name not provided")
+		}
+		if configuration.TemplateFolderPath == "" {
+			return status.Error(codes.InvalidArgument, "Vsphere template folder path not provided")
+		}
+		if configuration.ResourcePoolPath == "" {
+			return status.Error(codes.InvalidArgument, "Vsphere resource pool path not provided")
+		}
+		if validator.requireExerciseRootPath && configuration.ExerciseRootPath == "" {
+			return status.Error(codes.InvalidArgument, "Vsphere exercise root path not provided")
+		}
+		if validator.requireDatastorePath && configuration.DatastorePath == "" {
+			return status.Error(codes.InvalidArgument, "Vsphere datastore path not provided")
+		}
+
 	}
-	if validator.requireDatastorePath && configuration.DatastorePath == "" {
-		return status.Error(codes.InvalidArgument, "Vsphere datastore path not provided")
+
+	if validator.requireRedisConfiguration {
+		if configuration.RedisAddress == "" {
+			return status.Error(codes.InvalidArgument, "Redis server address not provided")
+		}
+		if configuration.RedisPassword == "" {
+			return status.Error(codes.InvalidArgument, "Redis server password not provided")
+		}
 	}
-	if configuration.RedisAddress == "" {
-		return status.Error(codes.InvalidArgument, "Redis server address not provided")
-	}
-	if configuration.RedisPassword == "" {
-		return status.Error(codes.InvalidArgument, "Redis server password not provided")
-	}
+
+	return nil
+}
+
+func (configuration *Configuration) SetDefaultConfigurationValues() {
 	if configuration.Variables.MaxConnections == 0 {
 		configuration.Variables.MaxConnections = DefaultConfigurationVariables.MaxConnections
 	}
@@ -150,7 +180,6 @@ func (configuration *Configuration) Validate(validator *Validator) error {
 	if configuration.Variables.ExecutorRunRetrySec == 0 {
 		configuration.Variables.ExecutorRunRetrySec = DefaultConfigurationVariables.ExecutorRunRetrySec
 	}
-	return nil
 }
 
 func (configuration *Configuration) CreateClient(ctx context.Context) (*govmomi.Client, error) {
