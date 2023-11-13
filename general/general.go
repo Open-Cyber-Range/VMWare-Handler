@@ -34,37 +34,7 @@ type serverSpecs struct {
 	Storage       *library.Storage[library.EventInfoContainer]
 }
 
-type PackageVersion struct {
-	Id          string `json:"id"`
-	Version     string `json:"version"`
-	PackageId   string `json:"package_id"`
-	Description string `json:"description"`
-	License     string `json:"license"`
-	IsYanked    bool   `json:"is_yanked"`
-	ReadmeHtml  string `json:"readme_html"`
-	PackageSize uint64 `json:"package_size"`
-	Checksum    string `json:"checksum"`
-	CreatedAt   string `json:"created_at"`
-	UpdatedAt   string `json:"updated_at"`
-	DeletedAt   string `json:"deleted_at,omitempty"`
-}
-
-type PackageWithVersions struct {
-	Id          string           `json:"id"`
-	Name        string           `json:"name"`
-	PackageType string           `json:"package_type"`
-	CreatedAt   string           `json:"created_at"`
-	UpdatedAt   string           `json:"updated_at"`
-	Versions    []PackageVersion `json:"versions"`
-}
-
-type PackagesWithVersionsAndPages struct {
-	Packages   []PackageWithVersions `json:"packages"`
-	TotalPages int                   `json:"total_pages"`
-}
-
 func (server *eventInfoServer) Create(ctx context.Context, source *common.Source) (*event.EventCreateResponse, error) {
-
 	packagePath, executorPackage, err := library.GetPackageMetadata(
 		source.GetName(),
 		source.GetVersion(),
