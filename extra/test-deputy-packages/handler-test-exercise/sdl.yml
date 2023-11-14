@@ -1,0 +1,44 @@
+name: example-scenario
+description: some-description
+conditions:
+    test-condition:
+        source: api-health-check
+nodes:
+    user-machine:
+        type: VM
+        resources:
+            ram: 2gib
+            cpu: 1
+        source: debian11
+        roles:
+            admin: 
+                username: "root"
+            user: 
+                username: "user"
+                entities:
+                    - player-1
+        conditions:
+            test-condition: admin
+infrastructure: 
+        user-machine: 1
+metrics:
+    test-metric:
+        type: conditional
+        max-score: 50
+        condition: test-condition
+evaluations:
+    evaluation-1:
+        min-score: 
+            absolute: 50
+        metrics:
+            - test-metric
+tlos:
+    tlo-1:
+        evaluation: evaluation-1
+entities:
+    player-1:
+        name: "Some person"
+        description: "This entity is Blue"
+        role: Blue
+        tlos:
+            - tlo-1

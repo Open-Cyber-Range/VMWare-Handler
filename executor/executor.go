@@ -59,6 +59,7 @@ func (server *conditionerServer) createCondition(ctx context.Context, conditionD
 	var isSourceDeployment bool
 
 	if conditionDeployment.Source != nil && conditionDeployment.Command != "" {
+		log.Errorf("Conflicting deployment info - A Condition deployment cannot have both `Command` and `Source`")
 		return "", 0, nil, status.Error(codes.Internal, fmt.Sprintln("Conflicting deployment info - A Condition deployment cannot have both `Command` and `Source`"))
 	} else if conditionDeployment.Source != nil && conditionDeployment.Command == "" {
 		isSourceDeployment = true
@@ -70,6 +71,7 @@ func (server *conditionerServer) createCondition(ctx context.Context, conditionD
 			conditionDeployment.GetSource().GetVersion(),
 		)
 		if err != nil {
+			log.Errorf("Error getting Condition package metadata: %v", err)
 			return "", 0, nil, err
 		}
 
@@ -78,9 +80,11 @@ func (server *conditionerServer) createCondition(ctx context.Context, conditionD
 
 		assetFilePaths, err = guestManager.CopyAssetsToVM(ctx, packageMetadata.PackageBody.Assets, packagePath)
 		if err != nil {
+			log.Errorf("Error copying Condition assets to VM: %v", err)
 			return "", 0, nil, err
 		}
 		if err = library.CleanupTempPackage(packagePath); err != nil {
+			log.Errorf("Error during temp Condition package cleanup: %v", err)
 			return "", 0, nil, status.Error(codes.Internal, fmt.Sprintf("Error during temp Condition package cleanup (%v)", err))
 		}
 	} else {
@@ -99,9 +103,11 @@ func (server *conditionerServer) Create(ctx context.Context, conditionDeployment
 	vmwareClient := library.NewVMWareClient(server.ServerSpecs.Client, server.ServerSpecs.Configuration.TemplateFolderPath, server.ServerSpecs.Configuration.Variables)
 	guestManager, err := vmwareClient.CreateGuestManagers(ctx, conditionDeployment.GetVirtualMachineId(), vmAuthentication)
 	if err != nil {
+		log.Errorf("Error creating Condition: %v", err)
 		return nil, err
 	}
-	if _, err = library.CheckVMStatus(ctx, guestManager.VirtualMachine); err != nil {
+	if err = library.AwaitVMToolsToComeOnline(ctx, guestManager.VirtualMachine, server.ServerSpecs.Configuration.Variables); err != nil {
+		log.Errorf("Error awaiting VMTools to come online: %v", err)
 		return nil, err
 	}
 	mutex, err := server.ServerSpecs.MutexPool.GetMutex(ctx, conditionDeployment.GetVirtualMachineId())
@@ -136,7 +142,7 @@ func (server *conditionerServer) Create(ctx context.Context, conditionDeployment
 
 func (server *conditionerServer) Stream(identifier *common.Identifier, stream condition.ConditionService_StreamServer) error {
 	ctx := context.Background()
-	container, err := server.ServerSpecs.Storage.Get(context.Background(), identifier.GetValue())
+	container, err := server.ServerSpecs.Storage.Get(ctx, identifier.GetValue())
 	if err != nil {
 		return err
 	}
@@ -146,10 +152,10 @@ func (server *conditionerServer) Stream(identifier *common.Identifier, stream co
 	if err != nil {
 		return err
 	}
-	if _, err = library.CheckVMStatus(ctx, guestManager.VirtualMachine); err != nil {
-		return err
-	}
 	for {
+		if err = library.AwaitVMToolsToComeOnline(ctx, guestManager.VirtualMachine, server.ServerSpecs.Configuration.Variables); err != nil {
+			return err
+		}
 		mutex, err := server.ServerSpecs.MutexPool.GetMutex(ctx, container.VMID)
 		if err != nil {
 			return err
@@ -162,7 +168,7 @@ func (server *conditionerServer) Stream(identifier *common.Identifier, stream co
 			return err
 		}
 		if executeErr != nil {
-			return err
+			return executeErr
 		}
 		conditionValue, err := strconv.ParseFloat(commandReturnValue, 32)
 		if err != nil {
@@ -283,6 +289,14 @@ func installPackage(ctx context.Context, vmWareTarget *vmWareTarget, serverSpecs
 		}
 	}
 
+	if packageMetadata.Feature.Restarts || packageMetadata.Inject.Restarts {
+		log.Infof("Restarting VM %v as requested by package %v", guestManager.VirtualMachine.UUID(ctx), packageMetadata.PackageBody.Name)
+		if err = guestManager.Reboot(ctx); err != nil {
+			log.Errorf("Failed to reboot VM %v: %v", guestManager.VirtualMachine.UUID(ctx), err)
+			return nil, err
+		}
+	}
+
 	return &common.ExecutorResponse{
 		Identifier: &common.Identifier{
 			Value: fmt.Sprintf("%v", vmPackageUuid),
@@ -296,7 +310,19 @@ func uninstallPackage(ctx context.Context, serverSpecs *serverSpecs, identifier 
 	if err != nil {
 		return new(emptypb.Empty), err
 	}
+
 	vmwareClient := library.NewVMWareClient(serverSpecs.Client, serverSpecs.Configuration.TemplateFolderPath, serverSpecs.Configuration.Variables)
+
+	virtualMachine, err := vmwareClient.GetVirtualMachineByUUID(ctx, executorContainer.VMID)
+	if err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Error getting VM by UUID, %v", err))
+	}
+
+	err = library.AwaitVMToolsToComeOnline(ctx, virtualMachine, serverSpecs.Configuration.Variables)
+	if err != nil {
+		return nil, err
+	}
+
 	mutex, err := serverSpecs.MutexPool.GetMutex(ctx, executorContainer.VMID)
 	if err != nil {
 		return new(emptypb.Empty), err
@@ -349,7 +375,7 @@ func RealMain(configuration *library.Configuration) {
 	condition.RegisterConditionServiceServer(grpcServer, &conditionerServer{ServerSpecs: &serverSpecs})
 	inject.RegisterInjectServiceServer(grpcServer, &injectServer{ServerSpecs: &serverSpecs})
 
-	capabilityServer := library.NewCapabilityServer([]capability.Capabilities_DeployerTypes{
+	capabilityServer := library.NewCapabilityServer([]capability.Capabilities_DeployerType{
 		*capability.Capabilities_Feature.Enum(),
 		*capability.Capabilities_Condition.Enum(),
 		*capability.Capabilities_Inject.Enum(),
@@ -366,7 +392,11 @@ func RealMain(configuration *library.Configuration) {
 }
 
 func main() {
-	configuration, configurationError := library.NewValidator().SetRequireExerciseRootPath(true).GetConfiguration()
+	validator := library.NewValidator()
+	validator.SetRequireVSphereConfiguration(true)
+	validator.SetRequireExerciseRootPath(true)
+	validator.SetRequireRedisConfiguration(true)
+	configuration, configurationError := validator.GetConfiguration()
 	if configurationError != nil {
 		log.Fatal(configurationError)
 	}
