@@ -1,3 +1,9 @@
+ranger-vmware-handlers (5.0.1) stretch; urgency=medium
+
+  * Remove large testing files
+
+ -- Rait Rotšan <developers@cr14.ee>  Tue, 14 Nov 2023 10:36:15 +0300 
+
 ranger-vmware-handlers (5.0.0) stretch; urgency=medium
 
   * Add General Handler. It handles Event and Exercise packages and deputy package list endpoints
