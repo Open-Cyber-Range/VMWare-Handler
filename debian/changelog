@@ -1,3 +1,13 @@
+ranger-vmware-handlers (5.0.0) stretch; urgency=medium
+
+  * Add General Handler. It handles Event and Exercise packages and deputy package list endpoints
+  * Configuration validation is now more granular per handler
+  * Adapted to deputy-cli 3.5.0
+  * Handle Feature and Inject package host restart requests for Executor
+  * Streaming Conditions should now survive unplanned host VM restarts
+
+ -- Rait Rotšan <developers@cr14.ee>  Tue, 14 Nov 2023 10:36:15 +0300 
+
 ranger-vmware-handlers (4.3.2) stretch; urgency=medium
 
   * Fix inspect command path
