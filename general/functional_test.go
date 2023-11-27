@@ -154,7 +154,7 @@ func TestStreamEventInfo(t *testing.T) {
 		file.Write(chunkResponse.Chunk)
 	}
 
-	receivedFileChecksum, err := library.GetMD5Checksum(receivedFilePath)
+	receivedFileChecksum, err := library.GetSha256Checksum(receivedFilePath)
 	if err != nil {
 		t.Fatalf("Failed to get checksum of received file: %v", err)
 	}

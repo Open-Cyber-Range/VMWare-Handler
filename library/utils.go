@@ -3,7 +3,7 @@ package library
 import (
 	"bytes"
 	"context"
-	"crypto/md5"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -463,19 +463,19 @@ func GetPackageMetadata(packageName string, packageVersion string) (packagePath 
 	return
 }
 
-func GetMD5Checksum(filePath string) (string, error) {
+func GetSha256Checksum(filePath string) (string, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
 		return "", err
 	}
 	defer file.Close()
 
-	hash := md5.New()
+	hash := sha256.New()
 	if _, err := io.Copy(hash, file); err != nil {
 		return "", err
 	}
 
-	hashInBytes := hash.Sum(nil)[:16]
+	hashInBytes := hash.Sum(nil)
 	return hex.EncodeToString(hashInBytes), nil
 }
 
@@ -537,7 +537,7 @@ func ConvertMarkdownToHtml(markdownFilePath string) (htmlPath string, checksum s
 		return "", "", fmt.Errorf("error writing file: %v", err)
 	}
 
-	checksum, err = GetMD5Checksum(outputFilePath)
+	checksum, err = GetSha256Checksum(outputFilePath)
 	if err != nil {
 		return "", "", fmt.Errorf("error getting checksum: %v", err)
 	}
