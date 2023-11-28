@@ -1,8 +1,14 @@
+ranger-vmware-handlers (5.1.1) stretch; urgency=medium
+
+  * Use Sha3 checksum for Event Info package
+
+ -- Rait Rotšan <developers@cr14.ee>  Tue, 28 Nov 2023 13:55:44 +0300 
+
 ranger-vmware-handlers (5.1.0) stretch; urgency=medium
 
   * Change Event Info package checksum format to Sha256
 
- -- Rait Rotšan <developers@cr14.ee>  Tue, 27 Nov 2023 11:12:00 +0300 
+ -- Rait Rotšan <developers@cr14.ee>  Mon, 27 Nov 2023 11:12:00 +0300 
 
 ranger-vmware-handlers (5.0.1) stretch; urgency=medium
 

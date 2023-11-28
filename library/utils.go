@@ -3,7 +3,6 @@ package library
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -35,6 +34,7 @@ import (
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/renderer"
 	"github.com/yuin/goldmark/renderer/html"
+	"golang.org/x/crypto/sha3"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -470,7 +470,7 @@ func GetSha256Checksum(filePath string) (string, error) {
 	}
 	defer file.Close()
 
-	hash := sha256.New()
+	hash := sha3.New256()
 	if _, err := io.Copy(hash, file); err != nil {
 		return "", err
 	}
