@@ -7,11 +7,13 @@ import (
 	"os"
 	"time"
 
+	log "github.com/sirupsen/logrus"
 	"github.com/vmware/govmomi"
 	"github.com/vmware/govmomi/session"
-	"github.com/vmware/govmomi/session/keepalive"
 	"github.com/vmware/govmomi/vim25"
+	"github.com/vmware/govmomi/vim25/methods"
 	"github.com/vmware/govmomi/vim25/soap"
+	"github.com/vmware/govmomi/vim25/types"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"gopkg.in/yaml.v2"
@@ -182,6 +184,16 @@ func (configuration *Configuration) SetDefaultConfigurationValues() {
 	}
 }
 
+func isNotAuthenticated(err error) bool {
+	if soap.IsSoapFault(err) {
+		switch soap.ToSoapFault(err).VimFault().(type) {
+		case types.NotAuthenticated:
+			return true
+		}
+	}
+	return false
+}
+
 func (configuration *Configuration) CreateClient(ctx context.Context) (*govmomi.Client, error) {
 	hostURL, parseError := url.Parse("https://" + configuration.Hostname + "/sdk")
 
@@ -196,7 +208,6 @@ func (configuration *Configuration) CreateClient(ctx context.Context) (*govmomi.
 		return nil, fmt.Errorf("failed to create new client: %s", vimClientError)
 	}
 
-	vimClient.RoundTripper = keepalive.NewHandlerSOAP(vimClient.RoundTripper, time.Duration(10)*time.Minute, nil)
 	sessionManager := session.NewManager(vimClient)
 	client := &govmomi.Client{
 		Client:         vimClient,
@@ -207,6 +218,28 @@ func (configuration *Configuration) CreateClient(ctx context.Context) (*govmomi.
 	if clientError != nil {
 		return nil, fmt.Errorf("failed to setup the client: %s", clientError)
 	}
+
+	vimClient.RoundTripper = session.KeepAliveHandler(vimClient, time.Duration(10)*time.Minute,
+		func(roundTripper soap.RoundTripper) error {
+			_, err := methods.GetCurrentTime(ctx, roundTripper)
+			if err == nil {
+				return nil
+			}
+
+			log.Warnf("session keepalive error: %s", err)
+
+			if isNotAuthenticated(err) {
+
+				if err = client.Login(ctx, hostURL.User); err != nil {
+					log.Fatalf("session keepalive failed to re-authenticate: %s", err)
+				} else {
+					log.Info("session keepalive re-authenticated")
+				}
+			}
+
+			return nil
+		},
+	)
 
 	return client, nil
 }
