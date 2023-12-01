@@ -214,11 +214,16 @@ func (configuration *Configuration) CreateClient(ctx context.Context) (*govmomi.
 		SessionManager: sessionManager,
 	}
 
-	clientError := client.Login(ctx, hostURL.User)
+	login := func(ctx context.Context) error {
+		return client.Login(ctx, hostURL.User)
+	}
+
+	clientError := login(ctx)
 	if clientError != nil {
 		return nil, fmt.Errorf("failed to setup the client: %s", clientError)
 	}
 
+	keepaliveCtx := context.Background()
 	vimClient.RoundTripper = session.KeepAliveHandler(vimClient, time.Duration(10)*time.Minute,
 		func(roundTripper soap.RoundTripper) error {
 			_, err := methods.GetCurrentTime(ctx, roundTripper)
@@ -230,7 +235,7 @@ func (configuration *Configuration) CreateClient(ctx context.Context) (*govmomi.
 
 			if isNotAuthenticated(err) {
 
-				if err = client.Login(ctx, hostURL.User); err != nil {
+				if err = login(keepaliveCtx); err != nil {
 					log.Fatalf("session keepalive failed to re-authenticate: %s", err)
 				} else {
 					log.Info("session keepalive re-authenticated")
