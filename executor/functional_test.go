@@ -1,11 +1,16 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"math/rand"
 	"os"
+	"os/exec"
+	"path"
+	"strings"
 	"testing"
 	"time"
 
@@ -120,7 +125,25 @@ func createInjectClient(t *testing.T, serverPath string) inject.InjectServiceCli
 	return inject.NewInjectServiceClient(connection)
 }
 
-func createFeatureDeploymentRequest(t *testing.T, deployment *feature.Feature, packageName string) (executorResponse *common.ExecutorResponse, err error) {
+func sendFeatureDeleteMessage(t *testing.T, gRPCClient feature.FeatureServiceClient, identifier *common.Identifier) (err error) {
+	ctx := context.Background()
+	_, err = gRPCClient.Delete(ctx, identifier)
+	if err != nil {
+		return err
+	}
+
+	return
+}
+
+func createFeatureDeleteRequest(t *testing.T, identifier *common.Identifier) (err error) {
+	configuration := startServer(3 * time.Second)
+	gRPCClient := createFeatureClient(t, configuration.ServerAddress)
+	err = sendFeatureDeleteMessage(t, gRPCClient, identifier)
+
+	return
+}
+
+func createFeatureDeploymentRequest(t *testing.T, deployment *feature.Feature, packageName string, cleanup bool) (executorResponse *common.ExecutorResponse, err error) {
 	configuration := startServer(3 * time.Second)
 	ctx := context.Background()
 	gRPCClient := createFeatureClient(t, configuration.ServerAddress)
@@ -135,11 +158,13 @@ func createFeatureDeploymentRequest(t *testing.T, deployment *feature.Feature, p
 	}
 
 	log.Infof("Feature Create finished, id: %v", executorResponse.Identifier.GetValue())
-	_, err = gRPCClient.Delete(ctx, executorResponse.Identifier)
-	if err != nil {
-		t.Fatalf("Test Delete request error: %v", err)
+
+	if cleanup {
+		if err = sendFeatureDeleteMessage(t, gRPCClient, executorResponse.Identifier); err != nil {
+			t.Fatalf("Test Delete request error: %v", err)
+		}
+		log.Infof("Feature delete finished")
 	}
-	log.Infof("Feature delete finished")
 
 	if deployment.FeatureType == feature.FeatureType_service {
 		if executorResponse.VmLog == "" {
@@ -236,6 +261,29 @@ func createConditionerDeploymentRequest(t *testing.T, deployment *condition.Cond
 	}
 }
 
+func getAssetsListFromPackage(t *testing.T, packageFolderName string) (assets [][]string) {
+	workingDirectory, err := os.Getwd()
+	if err != nil {
+		return
+	}
+	packagePath := path.Join(workingDirectory, "..", "extra", "test-deputy-packages", packageFolderName)
+	packageData, err := library.GetPackageData(packagePath)
+	if err != nil {
+		return
+	}
+
+	infoJson, err := json.Marshal(&packageData)
+	if err != nil {
+		t.Fatalf("Error marshalling Toml contents: %v", err)
+	}
+	executorPackage := library.ExecutorPackage{}
+	if err = json.Unmarshal(infoJson, &executorPackage); err != nil {
+		t.Fatalf("Error unmarshalling Toml contents: %v", err)
+	}
+
+	return executorPackage.PackageBody.Assets
+}
+
 func TestConditionerWithCommand(t *testing.T) {
 
 	deployment := &condition.Condition{
@@ -321,7 +369,7 @@ func TestFeatureServiceDeploymentAndDeletionOnLinux(t *testing.T) {
 		},
 		Account: &common.Account{Username: "root", Password: "password"},
 	}
-	response, err := createFeatureDeploymentRequest(t, deployment, packageFolderName)
+	response, err := createFeatureDeploymentRequest(t, deployment, packageFolderName, true)
 	if err != nil {
 		t.Fatalf("Error creating Test Feature Deployment: %v", err)
 	}
@@ -344,7 +392,7 @@ func TestFeaturePackageWithALotOfFiles(t *testing.T) {
 		},
 		Account: &common.Account{Username: "root", Password: "password"},
 	}
-	_, err := createFeatureDeploymentRequest(t, deployment, packageFolderName)
+	_, err := createFeatureDeploymentRequest(t, deployment, packageFolderName, true)
 	if err != nil {
 		t.Fatalf("Error creating Test Feature Deployment: %v", err)
 	}
@@ -364,7 +412,7 @@ func TestFeatureConfigurationDeploymentAndDeletionOnLinux(t *testing.T) {
 		},
 		Account: &common.Account{Username: "root", Password: "password"},
 	}
-	_, err := createFeatureDeploymentRequest(t, deployment, packageFolderName)
+	_, err := createFeatureDeploymentRequest(t, deployment, packageFolderName, true)
 	if err != nil {
 		t.Fatalf("Error creating Test Feature Deployment: %v", err)
 	}
@@ -384,7 +432,7 @@ func TestFeatureServiceDeploymentAndDeletionOnWindows(t *testing.T) {
 		},
 		Account: &common.Account{Username: "test-user", Password: "Passw0rd"},
 	}
-	response, err := createFeatureDeploymentRequest(t, deployment, packageFolderName)
+	response, err := createFeatureDeploymentRequest(t, deployment, packageFolderName, true)
 	if err != nil {
 		t.Fatalf("Error creating Test Feature Deployment: %v", err)
 	}
@@ -426,7 +474,7 @@ func TestRebootingFeatureOnLinux(t *testing.T) {
 		},
 		Account: &common.Account{Username: "root", Password: "password"},
 	}
-	_, err := createFeatureDeploymentRequest(t, deployment, packageFolderName)
+	_, err := createFeatureDeploymentRequest(t, deployment, packageFolderName, true)
 	if err != nil {
 		t.Fatalf("Error creating Test Feature Deployment: %v", err)
 	}
@@ -443,7 +491,7 @@ func TestRebootingFeatureOnLinux(t *testing.T) {
 		},
 		Account: &common.Account{Username: "root", Password: "password"},
 	}
-	_, err = createFeatureDeploymentRequest(t, deployment, packageFolderName)
+	_, err = createFeatureDeploymentRequest(t, deployment, packageFolderName, true)
 	if err != nil {
 		t.Fatalf("Error creating second Test Feature Deployment after reboot: %v", err)
 	}
@@ -464,7 +512,7 @@ func TestRebootingFeatureOnWindows(t *testing.T) {
 		},
 		Account: &common.Account{Username: "test-user", Password: "Passw0rd"},
 	}
-	_, err := createFeatureDeploymentRequest(t, deployment, packageFolderName)
+	_, err := createFeatureDeploymentRequest(t, deployment, packageFolderName, true)
 	if err != nil {
 		t.Fatalf("Error creating Test Feature Deployment: %v", err)
 	}
@@ -481,7 +529,7 @@ func TestRebootingFeatureOnWindows(t *testing.T) {
 		},
 		Account: &common.Account{Username: "test-user", Password: "Passw0rd"},
 	}
-	_, err = createFeatureDeploymentRequest(t, deployment, packageFolderName)
+	_, err = createFeatureDeploymentRequest(t, deployment, packageFolderName, true)
 	if err != nil {
 		t.Fatalf("Error creating second Test Feature Deployment after reboot: %v", err)
 	}
@@ -530,4 +578,101 @@ func TestConditionRebootWhileStreamingOnWindows(t *testing.T) {
 	}
 
 	createConditionerDeploymentRequest(t, deployment, true)
+}
+
+func getDeployedAssetPermissions(t *testing.T, virtualMachineUUID string, vmAuthentication types.NamePasswordAuthentication, assets [][]string) (deployedFilePermissions []string) {
+	ctx := context.Background()
+	configuration := testConfiguration
+	govmomiClient, clientError := configuration.CreateClient(ctx)
+	if clientError != nil {
+		log.Fatal(clientError)
+	}
+
+	vmwareClient := library.NewVMWareClient(govmomiClient, configuration.TemplateFolderPath, configuration.Variables)
+	guestManager, err := vmwareClient.CreateGuestManagers(ctx, virtualMachineUUID, &vmAuthentication)
+	if err != nil {
+		log.Fatalf("Failed to create guest managers, %v", err)
+	}
+
+	for _, asset := range assets {
+		sourcePath := asset[0]
+		destinationPath := asset[1]
+
+		if strings.HasSuffix(destinationPath, "/") {
+			destinationPath = strings.Join([]string{destinationPath, path.Base(sourcePath)}, "")
+		}
+
+		spec := []string{"stat", "-c", "'%a'", destinationPath}
+		stdoutBuffer := new(bytes.Buffer)
+		stderrBuffer := new(bytes.Buffer)
+
+		cmd := &exec.Cmd{
+			Path:   spec[0],
+			Stdout: stdoutBuffer,
+			Stderr: stderrBuffer,
+			Args:   spec[1:],
+		}
+
+		if err = guestManager.Toolbox.Run(ctx, cmd); err != nil || stderrBuffer.Len() > 0 {
+			log.Fatalf("Failed to run command. Err: %v, StdErr: %v", err, stderrBuffer.String())
+		}
+
+		deployedFilePermission := strings.TrimSpace(stdoutBuffer.String())
+		deployedFilePermissions = append(deployedFilePermissions, deployedFilePermission)
+
+	}
+
+	if err != nil {
+		log.Fatalf("Failed to list files, %v", err)
+	}
+
+	return deployedFilePermissions
+}
+
+func TestFeatureFilePermissionsOnLinux(t *testing.T) {
+	packageFolderName := "feature-service-package"
+
+	username := "root"
+	password := "password"
+	deployment := &feature.Feature{
+		Name:             "test-feature",
+		VirtualMachineId: LinuxTestVirtualMachineUUID,
+		FeatureType:      feature.FeatureType_service,
+		Source: &common.Source{
+			Name:    "handler-test-service",
+			Version: "*",
+		},
+		Account: &common.Account{Username: username, Password: password},
+	}
+
+	response, err := createFeatureDeploymentRequest(t, deployment, packageFolderName, false)
+	if err != nil {
+		t.Fatalf("Error creating Test Feature Deployment: %v", err)
+	}
+	defer func() {
+		if err = createFeatureDeleteRequest(t, response.Identifier); err != nil {
+			t.Fatalf("Error deleting Test Feature Deployment: %v", err)
+		}
+	}()
+
+	auth := types.NamePasswordAuthentication{Username: username, Password: password}
+	assets := getAssetsListFromPackage(t, packageFolderName)
+	deployedFilePermissions := getDeployedAssetPermissions(t, LinuxTestVirtualMachineUUID, auth, assets)
+
+	for index, asset := range assets {
+		originalFilePermission := asset[2]
+		deployedFilePermission := deployedFilePermissions[index]
+
+		if len(originalFilePermission) == 4 && strings.HasPrefix(originalFilePermission, "0") {
+			originalFilePermission = strings.TrimPrefix(originalFilePermission, "0")
+		}
+
+		if originalFilePermission != deployedFilePermission {
+			log.Fatalf("File permissions do not match. Original: %v, Deployed: %v", originalFilePermission, deployedFilePermission)
+		} else {
+			log.Infof("File permissions match. Original: %v, Deployed: %v", originalFilePermission, deployedFilePermission)
+		}
+	}
+
+	log.Infof("Feature output: %#v", response.VmLog)
 }
