@@ -532,11 +532,22 @@ func (guestManager *GuestManager) ExecutePackageAction(ctx context.Context, acti
 	stderrBuffer := new(bytes.Buffer)
 
 	var tries = int(guestManager.configuration.ExecutorRunTimeoutSec / guestManager.configuration.ExecutorRunRetrySec)
+	var printEnvCmdPath string
+	if strings.Contains(strings.ToLower(vmManagedObject.Guest.GuestFullName), "windows") {
+		printEnvCmdPath = "set"
+	} else {
+		printEnvCmdPath = "printenv"
+	}
 	for tries > 0 {
 		tries -= 1
 
 		stdoutBuffer = new(bytes.Buffer)
 		stderrBuffer = new(bytes.Buffer)
+		printEnvCmd := &exec.Cmd{
+			Path:   printEnvCmdPath,
+			Stdout: stdoutBuffer,
+			Stderr: stderrBuffer,
+		}
 
 		cmd := &exec.Cmd{
 			Path:   action,
@@ -566,7 +577,7 @@ func (guestManager *GuestManager) ExecutePackageAction(ctx context.Context, acti
 			}
 		}()
 
-		runErr := guestManager.Toolbox.Run(ctx, cmd)
+		runErr := guestManager.Toolbox.Run(ctx, printEnvCmd)
 		if runErr != nil {
 			var isAllowedError bool
 			for _, allowedError := range PotentialRebootErrorList {
@@ -591,6 +602,21 @@ func (guestManager *GuestManager) ExecutePackageAction(ctx context.Context, acti
 			log.Errorf(logMessage)
 			return "", status.Error(codes.Internal, logMessage)
 		}
+
+		vmEnvironment := strings.Split(stdoutBuffer.String(), "\n")
+		for i, line := range vmEnvironment {
+			vmEnvironment[i] = strings.TrimSpace(line)
+		}
+
+		stdoutBuffer.Reset()
+		stderrBuffer.Reset()
+		cmd.Env = append(cmd.Env, vmEnvironment...)
+		if runErr = guestManager.Toolbox.Run(ctx, cmd); runErr != nil {
+			logMessage := fmt.Sprintf("Error executing command:\nError: %v\nStdout: %v\nStderr: %v", runErr, stdoutBuffer.String(), stderrBuffer.String())
+			log.Errorf(logMessage)
+			return "", status.Error(codes.Internal, logMessage)
+		}
+
 		break
 	}
 
