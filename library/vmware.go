@@ -586,7 +586,10 @@ func (guestManager *GuestManager) ExecutePackageAction(ctx context.Context, acti
 				stderrBuffer.Reset()
 				continue
 			}
-			return "", status.Error(codes.Internal, fmt.Sprintf("Error executing command, %v", runErr))
+
+			logMessage := fmt.Sprintf("Error executing command:\nError: %v\nStdout: %v\nStderr: %v", runErr, stdoutBuffer.String(), stderrBuffer.String())
+			log.Errorf(logMessage)
+			return "", status.Error(codes.Internal, logMessage)
 		}
 		break
 	}
