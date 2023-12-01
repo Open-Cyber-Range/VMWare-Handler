@@ -1,4 +1,4 @@
-.PHONY: all clean install compile-protobuf build build-machiner build-switcher build-templater build-executor build-general test test-machiner test-switcher test-templater test-executor test-general run-machiner run-switcher run-executor run-general test-injects test-and-build build-deb generate-nsx-t-openapi
+.PHONY: all clean install compile-protobuf build build-machiner build-switcher build-templater build-executor build-general test test-machiner test-switcher test-templater test-executor test-general test-permissions run-machiner run-switcher run-executor run-general test-injects test-and-build build-deb generate-nsx-t-openapi
 
 all: build
 
@@ -106,6 +106,9 @@ test-executor: build-executor
 	
 test-injects: build-executor
 	go test -v -count=1 ./executor -run TestInjectDeploymentAndDeletionOnLinux
+
+test-permissions: build-executor
+	go test -v -count=1 ./executor -run TestFeatureFilePermissionsOnLinux
 
 test-general: build-general
 	go test -v -count=1 ./general

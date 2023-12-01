@@ -1,12 +1,12 @@
 [package]
 name = "handler-test-service"
 description = "This is a simple echo command package"
-version = "0.6.0"
+version = "0.6.3"
 authors = ["Rait Rotšan rait.rotsan@cr14.ee"]
 license = "MIT"
 readme = "src/readme.md"
 assets = [
-     ["src/echo.sh", "/tmp/test-folder/", "554"],
+     ["src/echo.sh", "/tmp/test-folder/", "0774"],
 ]
 
 [content]
