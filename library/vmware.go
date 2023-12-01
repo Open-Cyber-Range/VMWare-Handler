@@ -393,12 +393,13 @@ func createFileAttributesByOsFamily(guestOsFamily GuestOSFamily, filePermissions
 		if filePermissions == "" {
 			fileAttributes = &types.GuestPosixFileAttributes{}
 		} else {
-			permissionsInt, err := strconv.Atoi(filePermissions)
+			permissionsInt, err := strconv.ParseInt(filePermissions, 8, 64)
 			if err != nil {
-				return nil, status.Error(codes.Internal, fmt.Sprintf("Error converting str to int, %v", err))
+				log.Errorf("Error parsing file permission str to int: %v", err)
+				return nil, status.Error(codes.Internal, fmt.Sprintf("Error parsing file permissions: %v", err))
 			}
 			fileAttributes = &types.GuestPosixFileAttributes{
-				Permissions: int64(permissionsInt),
+				Permissions: permissionsInt,
 			}
 		}
 
