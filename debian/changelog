@@ -1,3 +1,9 @@
+ranger-vmware-handlers (5.1.2) stretch; urgency=medium
+
+  * Fix file permission parsing for Executor
+
+ -- Rait Rotšan <developers@cr14.ee>  Fri, 01 Dec 2023 13:21:12 +0300 
+
 ranger-vmware-handlers (5.1.1) stretch; urgency=medium
 
   * Use Sha3 checksum for Event Info package
