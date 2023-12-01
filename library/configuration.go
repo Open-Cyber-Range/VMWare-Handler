@@ -226,7 +226,7 @@ func (configuration *Configuration) CreateClient(ctx context.Context) (*govmomi.
 	keepaliveCtx := context.Background()
 	vimClient.RoundTripper = session.KeepAliveHandler(vimClient, time.Duration(10)*time.Minute,
 		func(roundTripper soap.RoundTripper) error {
-			_, err := methods.GetCurrentTime(ctx, roundTripper)
+			_, err := methods.GetCurrentTime(keepaliveCtx, roundTripper)
 			if err == nil {
 				return nil
 			}
