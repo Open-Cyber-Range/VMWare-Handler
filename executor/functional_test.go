@@ -69,7 +69,10 @@ func rebootVirtualMachine(t *testing.T, virtualMachineUUID string, configuration
 		log.Fatal(clientError)
 	}
 
-	vmwareClient := library.NewVMWareClient(govmomiClient, configuration.TemplateFolderPath, configuration.Variables)
+	vmwareClient, loginError := library.NewVMWareClient(ctx, govmomiClient, configuration)
+	if loginError != nil {
+		log.Fatal(loginError)
+	}
 	guestManager, err := vmwareClient.CreateGuestManagers(ctx, virtualMachineUUID, &vmAuthentication)
 	if err != nil {
 		log.Fatalf("Failed to create guest managers, %v", err)
@@ -588,7 +591,10 @@ func getDeployedAssetPermissions(t *testing.T, virtualMachineUUID string, vmAuth
 		log.Fatal(clientError)
 	}
 
-	vmwareClient := library.NewVMWareClient(govmomiClient, configuration.TemplateFolderPath, configuration.Variables)
+	vmwareClient, loginError := library.NewVMWareClient(ctx, govmomiClient, configuration)
+	if loginError != nil {
+		log.Fatal(loginError)
+	}
 	guestManager, err := vmwareClient.CreateGuestManagers(ctx, virtualMachineUUID, &vmAuthentication)
 	if err != nil {
 		log.Fatalf("Failed to create guest managers, %v", err)

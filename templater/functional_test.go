@@ -88,7 +88,10 @@ func TestTemplateCreation(t *testing.T) {
 	if govmomiClientError != nil {
 		t.Fatalf("Failed to create govmomi client: %v", govmomiClientError)
 	}
-	vmwareClient := library.NewVMWareClient(govmomiClient, testConfiguration.TemplateFolderPath, testConfiguration.Variables)
+	vmwareClient, loginError := library.NewVMWareClient(ctx, govmomiClient, testConfiguration)
+	if loginError != nil {
+		t.Fatalf("Failed to login: %v", loginError)
+	}
 	serverConfiguration, err := startServer(time.Second * 3)
 	gRPCClient := creategRPCClient(t, serverConfiguration.ServerAddress)
 	uuid := createTemplate(t, gRPCClient)

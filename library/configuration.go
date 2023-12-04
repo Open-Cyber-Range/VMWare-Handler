@@ -194,6 +194,10 @@ func isNotAuthenticated(err error) bool {
 	return false
 }
 
+func (configuration *Configuration) CreateLoginUserInfo() *url.Userinfo {
+	return url.UserPassword(configuration.User, configuration.Password)
+}
+
 func (configuration *Configuration) CreateClient(ctx context.Context) (*govmomi.Client, error) {
 	hostURL, parseError := url.Parse("https://" + configuration.Hostname + "/sdk")
 

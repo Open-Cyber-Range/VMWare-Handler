@@ -12,6 +12,7 @@ binary:
 	strip --strip-all debian/ranger-vmware-handlers/var/opt/ranger/bin/ranger-vmware-switcher
 	strip --strip-all debian/ranger-vmware-handlers/var/opt/ranger/bin/ranger-vmware-templater
 	strip --strip-all debian/ranger-vmware-handlers/var/opt/ranger/bin/ranger-vmware-executor
+	strip --strip-all debian/ranger-vmware-handlers/var/opt/ranger/bin/ranger-vmware-general
 	dh_makeshlibs
 	dh_gencontrol
 	dh_builddeb

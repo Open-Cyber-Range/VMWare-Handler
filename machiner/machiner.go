@@ -161,7 +161,11 @@ type virtualMachineServer struct {
 }
 
 func (server *virtualMachineServer) Create(ctx context.Context, virtualMachineDeployment *virtual_machine.DeployVirtualMachine) (*common.Identifier, error) {
-	vmwareClient := library.NewVMWareClient(server.Client, server.Configuration.TemplateFolderPath, server.Configuration.Variables)
+	vmwareClient, loginError := library.NewVMWareClient(ctx, server.Client, *server.Configuration)
+	if loginError != nil {
+		log.Errorf("Login error (%v)", loginError)
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Login error (%v)", loginError))
+	}
 	deployment := Deployment{
 		Client:         &vmwareClient,
 		Configuration:  server.Configuration,
@@ -207,7 +211,11 @@ func (server *virtualMachineServer) Create(ctx context.Context, virtualMachineDe
 }
 
 func (server *virtualMachineServer) Delete(ctx context.Context, identifier *common.Identifier) (*emptypb.Empty, error) {
-	vmwareClient := library.NewVMWareClient(server.Client, server.Configuration.TemplateFolderPath, server.Configuration.Variables)
+	vmwareClient, loginError := library.NewVMWareClient(ctx, server.Client, *server.Configuration)
+	if loginError != nil {
+		log.Errorf("Login error (%v)", loginError)
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Login error (%v)", loginError))
+	}
 	uuid := identifier.GetValue()
 	deployment := Deployment{
 		Client:        &vmwareClient,
