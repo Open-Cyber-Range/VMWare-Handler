@@ -1,5 +1,11 @@
 ranger-vmware-handlers (5.1.3) stretch; urgency=medium
 
+  * Fix login timeout issues for vmware clients
+
+  -- Kaarel Allemann <developers@cr14.ee>  Mon, 04 Dec 2023 09:22:43 +0200
+
+ranger-vmware-handlers (5.1.3) stretch; urgency=medium
+
   * Update govmomi client keepalive
   * Append existing VM environment to Executor commands
 
