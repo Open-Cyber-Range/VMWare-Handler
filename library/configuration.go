@@ -194,18 +194,21 @@ func isNotAuthenticated(err error) bool {
 	return false
 }
 
-func (configuration *Configuration) CreateLoginUserInfo() *url.Userinfo {
-	return url.UserPassword(configuration.User, configuration.Password)
-}
-
-func (configuration *Configuration) CreateClient(ctx context.Context) (*govmomi.Client, error) {
+func (configuration *Configuration) CreateLoginURL() (*url.URL, error) {
 	hostURL, parseError := url.Parse("https://" + configuration.Hostname + "/sdk")
-
 	if parseError != nil {
 		return nil, fmt.Errorf("failed to parse url: %s", parseError)
 	}
-
 	hostURL.User = url.UserPassword(configuration.User, configuration.Password)
+
+	return hostURL, nil
+}
+
+func (configuration *Configuration) CreateClient(ctx context.Context) (*govmomi.Client, error) {
+	hostURL, loginUrlError := configuration.CreateLoginURL()
+	if loginUrlError != nil {
+		return nil, fmt.Errorf("failed to create a login url: %s", loginUrlError)
+	}
 	soapClient := soap.NewClient(hostURL, configuration.Insecure)
 	vimClient, vimClientError := vim25.NewClient(ctx, soapClient)
 	if vimClientError != nil {
