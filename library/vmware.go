@@ -24,6 +24,7 @@ import (
 	"github.com/vmware/govmomi/guest"
 	"github.com/vmware/govmomi/guest/toolbox"
 	"github.com/vmware/govmomi/object"
+	"github.com/vmware/govmomi/session"
 	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/soap"
 	"github.com/vmware/govmomi/vim25/types"
@@ -67,13 +68,29 @@ func parseOsFamily(vmOsFamily string) (family GuestOSFamily, success bool) {
 }
 
 func NewVMWareClient(ctx context.Context, client *govmomi.Client, configuration Configuration) (VMWareClient, error) {
-	err := client.Login(ctx, configuration.CreateLoginUserInfo())
+	sessionManager := session.NewManager(client.Client)
+	userSession, userSessionError := sessionManager.UserSession(ctx)
+	if userSessionError != nil {
+		return VMWareClient{}, userSessionError
+	}
+
+	if userSession == nil {
+		client.Logout(ctx)
+		hostUrl, hostError := configuration.CreateLoginURL()
+		if hostError != nil {
+			return VMWareClient{}, hostError
+		}
+		loginError := client.Login(ctx, hostUrl.User)
+		if loginError != nil {
+			return VMWareClient{}, loginError
+		}
+	}
 
 	return VMWareClient{
 		Client:        client,
 		templatePath:  configuration.TemplateFolderPath,
 		configuration: configuration.Variables,
-	}, err
+	}, nil
 }
 
 var packageActionRetryFlag struct {
