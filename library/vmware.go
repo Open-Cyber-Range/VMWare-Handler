@@ -69,11 +69,13 @@ func parseOsFamily(vmOsFamily string) (family GuestOSFamily, success bool) {
 
 func NewVMWareClient(ctx context.Context, client *govmomi.Client, configuration Configuration) (VMWareClient, error) {
 	sessionManager := session.NewManager(client.Client)
-	sessionActive, sessionError := sessionManager.SessionIsActive(ctx)
-	if sessionError != nil {
-		return VMWareClient{}, sessionError
+	userSession, userSessionError := sessionManager.UserSession(ctx)
+	if userSessionError != nil {
+		return VMWareClient{}, userSessionError
 	}
-	if !sessionActive {
+
+	if userSession == nil {
+		client.Logout(ctx)
 		hostUrl, hostError := configuration.CreateLoginURL()
 		if hostError != nil {
 			return VMWareClient{}, hostError
