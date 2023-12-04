@@ -100,7 +100,10 @@ func (server *conditionerServer) Create(ctx context.Context, conditionDeployment
 		Username: conditionDeployment.GetAccount().GetUsername(),
 		Password: conditionDeployment.GetAccount().GetPassword(),
 	}
-	vmwareClient := library.NewVMWareClient(server.ServerSpecs.Client, server.ServerSpecs.Configuration.TemplateFolderPath, server.ServerSpecs.Configuration.Variables)
+	vmwareClient, loginError := library.NewVMWareClient(ctx, server.ServerSpecs.Client, *server.ServerSpecs.Configuration)
+	if loginError != nil {
+		return nil, loginError
+	}
 	guestManager, err := vmwareClient.CreateGuestManagers(ctx, conditionDeployment.GetVirtualMachineId(), vmAuthentication)
 	if err != nil {
 		log.Errorf("Error creating Condition: %v", err)
@@ -147,7 +150,10 @@ func (server *conditionerServer) Stream(identifier *common.Identifier, stream co
 		return err
 	}
 
-	vmwareClient := library.NewVMWareClient(server.ServerSpecs.Client, server.ServerSpecs.Configuration.TemplateFolderPath, server.ServerSpecs.Configuration.Variables)
+	vmwareClient, loginError := library.NewVMWareClient(ctx, server.ServerSpecs.Client, *server.ServerSpecs.Configuration)
+	if loginError != nil {
+		return loginError
+	}
 	guestManager, err := vmwareClient.CreateGuestManagers(ctx, container.VMID, &container.Auth)
 	if err != nil {
 		return err
@@ -261,7 +267,10 @@ func installPackage(ctx context.Context, vmWareTarget *vmWareTarget, serverSpecs
 		Username: vmWareTarget.VmAccount.Name,
 		Password: vmWareTarget.VmAccount.Password,
 	}
-	vmwareClient := library.NewVMWareClient(serverSpecs.Client, serverSpecs.Configuration.TemplateFolderPath, serverSpecs.Configuration.Variables)
+	vmwareClient, loginError := library.NewVMWareClient(ctx, serverSpecs.Client, *serverSpecs.Configuration)
+	if loginError != nil {
+		return nil, loginError
+	}
 	guestManager, err := vmwareClient.CreateGuestManagers(ctx, vmWareTarget.VmID, vmAuthentication)
 	if err != nil {
 		return nil, err
@@ -311,7 +320,10 @@ func uninstallPackage(ctx context.Context, serverSpecs *serverSpecs, identifier 
 		return new(emptypb.Empty), err
 	}
 
-	vmwareClient := library.NewVMWareClient(serverSpecs.Client, serverSpecs.Configuration.TemplateFolderPath, serverSpecs.Configuration.Variables)
+	vmwareClient, loginError := library.NewVMWareClient(ctx, serverSpecs.Client, *serverSpecs.Configuration)
+	if loginError != nil {
+		return new(emptypb.Empty), status.Error(codes.Internal, fmt.Sprintf("Failed to login: %v", loginError))
+	}
 
 	virtualMachine, err := vmwareClient.GetVirtualMachineByUUID(ctx, executorContainer.VMID)
 	if err != nil {

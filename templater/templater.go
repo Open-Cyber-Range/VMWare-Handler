@@ -185,7 +185,11 @@ func getVMAccounts(packagePath string) ([]*common.Account, error) {
 func (server *templaterServer) Create(ctx context.Context, source *common.Source) (*template.TemplateResponse, error) {
 	log.Infof("Received template package: %v, version: %v", source.Name, source.Version)
 
-	vmwareClient := library.NewVMWareClient(server.Client, server.Configuration.TemplateFolderPath, server.Configuration.Variables)
+	vmwareClient, loginError := library.NewVMWareClient(ctx, server.Client, server.Configuration)
+	if loginError != nil {
+		log.Errorf("Failed to login to VSphere (%v)", loginError)
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to login to VSphere (%v)", loginError))
+	}
 	checksum, checksumError := library.GetPackageChecksum(source.Name, source.Version)
 	if checksumError != nil {
 		log.Errorf("Error getting package checksum: %v", checksumError)
@@ -261,7 +265,11 @@ func (server *templaterServer) Create(ctx context.Context, source *common.Source
 }
 
 func (server *templaterServer) Delete(ctx context.Context, identifier *common.Identifier) (*emptypb.Empty, error) {
-	vmwareClient := library.NewVMWareClient(server.Client, server.Configuration.TemplateFolderPath, server.Configuration.Variables)
+	vmwareClient, loginError := library.NewVMWareClient(ctx, server.Client, server.Configuration)
+	if loginError != nil {
+		log.Errorf("Failed to login to VSphere (%v)", loginError)
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to login to VSphere (%v)", loginError))
+	}
 	uuid := identifier.GetValue()
 
 	virtualMachine, virtualMachineError := vmwareClient.GetVirtualMachineByUUID(ctx, uuid)

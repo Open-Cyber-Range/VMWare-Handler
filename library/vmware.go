@@ -66,12 +66,14 @@ func parseOsFamily(vmOsFamily string) (family GuestOSFamily, success bool) {
 	return
 }
 
-func NewVMWareClient(client *govmomi.Client, templatePath string, configuration ConfigurationVariables) VMWareClient {
+func NewVMWareClient(ctx context.Context, client *govmomi.Client, configuration Configuration) (VMWareClient, error) {
+	err := client.Login(ctx, configuration.CreateLoginUserInfo())
+
 	return VMWareClient{
 		Client:        client,
-		templatePath:  templatePath,
-		configuration: configuration,
-	}
+		templatePath:  configuration.TemplateFolderPath,
+		configuration: configuration.Variables,
+	}, err
 }
 
 var packageActionRetryFlag struct {
