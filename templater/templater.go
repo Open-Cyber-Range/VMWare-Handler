@@ -318,6 +318,8 @@ func RealMain(configuration library.Configuration) {
 	capability.RegisterCapabilityServer(server, &capabilityServer)
 
 	log.Infof("Templater listening at %v", listeningAddress.Addr())
+	log.Printf("Version: %v", library.Version)
+
 	if bindError := server.Serve(listeningAddress); bindError != nil {
 		log.Fatalf("Failed to serve: %v", bindError)
 	}

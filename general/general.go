@@ -201,6 +201,7 @@ func RealMain(configuration *library.Configuration) {
 	capability.RegisterCapabilityServer(grpcServer, &capabilityServer)
 
 	log.Printf("General listening at %v", listeningAddress.Addr())
+	log.Printf("Version: %v", library.Version)
 
 	if bindError := grpcServer.Serve(listeningAddress); bindError != nil {
 		log.Fatalf("Failed to serve: %v", bindError)

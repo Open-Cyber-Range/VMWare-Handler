@@ -172,6 +172,8 @@ func RealMain(serverConfiguration *Configuration) {
 	capability.RegisterCapabilityServer(server, &capabilityServer)
 
 	log.Infof("Switcher listening at %v", listeningAddress.Addr())
+	log.Printf("Version: %v", library.Version)
+
 	if bindError := server.Serve(listeningAddress); bindError != nil {
 		log.Fatalf("Failed to serve: %v", bindError)
 	}
