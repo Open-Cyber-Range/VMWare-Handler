@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	goredislib "github.com/go-redis/redis/v8"
 	"github.com/open-cyber-range/vmware-handler/grpc/common"
 	"github.com/open-cyber-range/vmware-handler/grpc/condition"
 	"github.com/open-cyber-range/vmware-handler/grpc/feature"
@@ -167,6 +168,10 @@ func createFeatureDeploymentRequest(t *testing.T, deployment *feature.Feature, p
 			t.Fatalf("Test Delete request error: %v", err)
 		}
 		log.Infof("Feature delete finished")
+		if err = cleanupRedis(); err != nil {
+			t.Fatalf("Test Redis cleanup error: %v", err)
+		}
+
 	}
 
 	if deployment.FeatureType == feature.FeatureType_service {
@@ -197,6 +202,7 @@ func createInjectDeploymentRequest(t *testing.T, deployment *inject.Inject, pack
 		t.Fatalf("Test Delete request error: %v", err)
 	}
 	log.Infof("Inject delete finished")
+	err = cleanupRedis()
 
 	return
 }
@@ -235,6 +241,7 @@ func createConditionerDeploymentRequest(t *testing.T, deployment *condition.Cond
 			}
 			if err != nil {
 				log.Fatalf("Test Stream Receive error: %v", err)
+				return
 			}
 
 			if rebootFlag && responses > 1 {
@@ -262,6 +269,9 @@ func createConditionerDeploymentRequest(t *testing.T, deployment *condition.Cond
 		}
 		log.Infof("Condition Source deleted")
 	}
+	if err = cleanupRedis(); err != nil {
+		log.Fatalf("Test Redis cleanup error: %v", err)
+	}
 }
 
 func getAssetsListFromPackage(t *testing.T, packageFolderName string) (assets [][]string) {
@@ -285,6 +295,19 @@ func getAssetsListFromPackage(t *testing.T, packageFolderName string) (assets []
 	}
 
 	return executorPackage.PackageBody.Assets
+}
+
+func cleanupRedis() error {
+	ctx := context.Background()
+	configuration := testConfiguration
+	redisClient := goredislib.NewClient(&goredislib.Options{
+		Addr:     configuration.RedisAddress,
+		Password: configuration.RedisPassword,
+	})
+
+	status, err := redisClient.FlushDB(ctx).Result()
+	log.Infof("Redis flush status: %v", status)
+	return err
 }
 
 func TestConditionerWithCommand(t *testing.T) {
@@ -371,6 +394,30 @@ func TestFeatureServiceDeploymentAndDeletionOnLinux(t *testing.T) {
 			Version: "*",
 		},
 		Account: &common.Account{Username: "root", Password: "password"},
+	}
+	response, err := createFeatureDeploymentRequest(t, deployment, packageFolderName, true)
+	if err != nil {
+		t.Fatalf("Error creating Test Feature Deployment: %v", err)
+	}
+
+	log.Infof("Feature output: %#v", response.VmLog)
+
+}
+
+func TestFeatureServiceDeploymentWithEnvironmentOnLinux(t *testing.T) {
+
+	packageFolderName := "feature-service-package"
+
+	deployment := &feature.Feature{
+		Name:             "test-feature",
+		VirtualMachineId: LinuxTestVirtualMachineUUID,
+		FeatureType:      feature.FeatureType_service,
+		Source: &common.Source{
+			Name:    "environment-test",
+			Version: "*",
+		},
+		Account:     &common.Account{Username: "root", Password: "password"},
+		Environment: []string{"TEST_ENV1=hello", "TEST_ENV2=world"},
 	}
 	response, err := createFeatureDeploymentRequest(t, deployment, packageFolderName, true)
 	if err != nil {
