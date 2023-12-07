@@ -1,3 +1,11 @@
+ranger-vmware-handlers (5.1.6) stretch; urgency=medium
+
+  * Improve Environment variable handling for Executor
+  * Add extra logging for Environment variable handling for Executor
+  * Add version printout on server start
+
+  -- Rait Rotšan <developers@cr14.ee>  Thu, 07 Dec 2023 13:22:00 +0200
+
 ranger-vmware-handlers (5.1.5) stretch; urgency=medium
 
   * Improve vmware session management
