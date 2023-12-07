@@ -396,6 +396,7 @@ func RealMain(configuration *library.Configuration) {
 	capability.RegisterCapabilityServer(grpcServer, &capabilityServer)
 
 	log.Printf("Executor listening at %v", listeningAddress.Addr())
+	log.Printf("Version: %v", library.Version)
 	log.Printf("Max Connections: %v", mutexPool.Configuration.MaxConnections)
 
 	if bindError := grpcServer.Serve(listeningAddress); bindError != nil {

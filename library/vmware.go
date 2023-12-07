@@ -543,6 +543,45 @@ func (guestManager *GuestManager) AwaitProcessWithTimeout(ctx context.Context, p
 	return nil
 }
 
+func (guestManager *GuestManager) getVMEnvironment(ctx context.Context, vmManagedObject mo.VirtualMachine) (vmEnvironmentMap map[string]string, err error) {
+	var printEnvCmdPath string
+	if strings.Contains(strings.ToLower(vmManagedObject.Guest.GuestFullName), "windows") {
+		printEnvCmdPath = "set"
+	} else {
+		printEnvCmdPath = "printenv"
+	}
+
+	stdoutBuffer := new(bytes.Buffer)
+	stderrBuffer := new(bytes.Buffer)
+	printEnvCmd := &exec.Cmd{
+		Path:   printEnvCmdPath,
+		Stdout: stdoutBuffer,
+		Stderr: stderrBuffer,
+	}
+	if err = guestManager.Toolbox.Run(ctx, printEnvCmd); err != nil {
+		log.Errorf("Error getting initial VM environment: %v", err)
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Error creating VM directories, %v", err))
+	}
+
+	vmEnvironment := strings.Split(stdoutBuffer.String(), "\n")
+	for i, line := range vmEnvironment {
+		vmEnvironment[i] = strings.TrimSpace(line)
+	}
+
+	vmEnvironmentMap = ConvertEnvArrayToMap(vmEnvironment)
+
+	return
+}
+
+func isRebootRelatedError(err error) bool {
+	for _, rebootError := range PotentialRebootErrorList {
+		if strings.Contains(err.Error(), rebootError) {
+			return true
+		}
+	}
+	return false
+}
+
 func (guestManager *GuestManager) ExecutePackageAction(ctx context.Context, action string, environment []string) (commandOutput string, err error) {
 	var vmManagedObject mo.VirtualMachine
 	guestManager.VirtualMachine.Properties(ctx, guestManager.VirtualMachine.Reference(), []string{}, &vmManagedObject)
@@ -551,29 +590,9 @@ func (guestManager *GuestManager) ExecutePackageAction(ctx context.Context, acti
 	stderrBuffer := new(bytes.Buffer)
 
 	var tries = int(guestManager.configuration.ExecutorRunTimeoutSec / guestManager.configuration.ExecutorRunRetrySec)
-	var printEnvCmdPath string
-	if strings.Contains(strings.ToLower(vmManagedObject.Guest.GuestFullName), "windows") {
-		printEnvCmdPath = "set"
-	} else {
-		printEnvCmdPath = "printenv"
-	}
+
 	for tries > 0 {
 		tries -= 1
-
-		stdoutBuffer = new(bytes.Buffer)
-		stderrBuffer = new(bytes.Buffer)
-		printEnvCmd := &exec.Cmd{
-			Path:   printEnvCmdPath,
-			Stdout: stdoutBuffer,
-			Stderr: stderrBuffer,
-		}
-
-		cmd := &exec.Cmd{
-			Path:   action,
-			Env:    environment,
-			Stdout: stdoutBuffer,
-			Stderr: stderrBuffer,
-		}
 
 		defer func() {
 			if panicLog := recover(); panicLog != nil {
@@ -596,44 +615,46 @@ func (guestManager *GuestManager) ExecutePackageAction(ctx context.Context, acti
 			}
 		}()
 
-		runErr := guestManager.Toolbox.Run(ctx, printEnvCmd)
+		vmEnvironmentMap, envErr := guestManager.getVMEnvironment(ctx, vmManagedObject)
+		if envErr != nil {
+			if !isRebootRelatedError(envErr) {
+				logMessage := fmt.Sprintf("Error executing command:\nError: %v\nStdout: %v\nStderr: %v", envErr, stdoutBuffer.String(), stderrBuffer.String())
+				log.Errorf(logMessage)
+				return "", status.Error(codes.Internal, logMessage)
+			}
+
+			log.Infof("Retrying action %v, err: %v", action, envErr)
+			if err = AwaitVMToolsToComeOnline(ctx, guestManager.VirtualMachine, guestManager.configuration); err != nil {
+				return "", err
+			}
+			time.Sleep(time.Duration(guestManager.configuration.ExecutorRunRetrySec) * time.Second)
+			envErr = nil
+			continue
+		}
+
+		inputEnvironmentMap := ConvertEnvArrayToMap(environment)
+		for key, value := range inputEnvironmentMap {
+			vmEnvironmentMap[key] = value
+		}
+		combinedEnvironment := ConvertEnvMapToArray(vmEnvironmentMap)
+
+		stdoutBuffer = new(bytes.Buffer)
+		stderrBuffer = new(bytes.Buffer)
+
+		cmd := &exec.Cmd{
+			Path:   action,
+			Env:    combinedEnvironment,
+			Stdout: stdoutBuffer,
+			Stderr: stderrBuffer,
+		}
+
+		log.Infof("Executing Action: %v, Input environment: %v, Final Environment: %v", action, environment, combinedEnvironment)
+		runErr := guestManager.Toolbox.Run(ctx, cmd)
 		if runErr != nil {
-			var isAllowedError bool
-			for _, allowedError := range PotentialRebootErrorList {
-				if strings.Contains(runErr.Error(), allowedError) {
-					isAllowedError = true
-					break
-				}
-			}
-			if isAllowedError {
-				log.Infof("Retrying action %v, err: %v", action, runErr)
-				if err = AwaitVMToolsToComeOnline(ctx, guestManager.VirtualMachine, guestManager.configuration); err != nil {
-					return "", err
-				}
-				time.Sleep(time.Duration(guestManager.configuration.ExecutorRunRetrySec) * time.Second)
-				runErr = nil
-				stdoutBuffer.Reset()
-				stderrBuffer.Reset()
-				continue
-			}
-
-			logMessage := fmt.Sprintf("Error executing command:\nError: %v\nStdout: %v\nStderr: %v", runErr, stdoutBuffer.String(), stderrBuffer.String())
-			log.Errorf(logMessage)
-			return "", status.Error(codes.Internal, logMessage)
-		}
-
-		vmEnvironment := strings.Split(stdoutBuffer.String(), "\n")
-		for i, line := range vmEnvironment {
-			vmEnvironment[i] = strings.TrimSpace(line)
-		}
-
-		stdoutBuffer.Reset()
-		stderrBuffer.Reset()
-		cmd.Env = append(cmd.Env, vmEnvironment...)
-		if runErr = guestManager.Toolbox.Run(ctx, cmd); runErr != nil {
-			logMessage := fmt.Sprintf("Error executing command:\nError: %v\nStdout: %v\nStderr: %v", runErr, stdoutBuffer.String(), stderrBuffer.String())
-			log.Errorf(logMessage)
-			return "", status.Error(codes.Internal, logMessage)
+			log.Errorf(fmt.Sprintf("Error executing command. Error: %v. ", runErr))
+			log.Errorf(fmt.Sprintf("Stdout: %v", stdoutBuffer.String()))
+			log.Errorf(fmt.Sprintf("Stderr: %v", stderrBuffer.String()))
+			return "", status.Error(codes.Internal, fmt.Sprintf("Error executing command. Error: %v. Stdout: %v. Stderr: %v", runErr, stdoutBuffer.String(), stderrBuffer.String()))
 		}
 
 		break

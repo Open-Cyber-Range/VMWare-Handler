@@ -1,4 +1,4 @@
-.PHONY: all clean install compile-protobuf build build-machiner build-switcher build-templater build-executor build-general test test-machiner test-switcher test-templater test-executor test-general test-permissions run-machiner run-switcher run-executor run-general test-injects test-and-build build-deb generate-nsx-t-openapi
+.PHONY: all clean install compile-protobuf build build-machiner build-switcher build-templater build-executor build-general test test-machiner test-switcher test-templater test-executor test-general test-permissions test-environment test-windows run-machiner run-switcher run-executor run-general test-injects test-and-build build-deb generate-nsx-t-openapi
 
 all: build
 
@@ -109,6 +109,12 @@ test-injects: build-executor
 
 test-permissions: build-executor
 	go test -v -count=1 ./executor -run TestFeatureFilePermissionsOnLinux
+
+test-windows: build-executor
+	go test -v -count=1 ./executor -run "(TestConditionerWithSourcePackageOnWindows|TestFeatureServiceDeploymentAndDeletionOnWindows|TestRebootingFeatureOnWindows|TestConditionRebootWhileStreamingOnWindows)"
+
+test-environment: build-executor
+	go test -v -count=1 ./executor -run "(TestFeatureServiceDeploymentWithEnvironmentOnLinux|TestConditionerWithCommandAndEnvironment)"
 
 test-general: build-general
 	go test -v -count=1 ./general
