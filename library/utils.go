@@ -570,3 +570,23 @@ func ParseListCommandOutput(commandOutput []byte) (packages []*deputy.Package, e
 
 	return
 }
+
+func ConvertEnvArrayToMap(environment []string) (environmentMap map[string]string) {
+	environmentMap = make(map[string]string)
+	for _, line := range environment {
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) == 2 {
+			key := strings.TrimSpace(parts[0])
+			value := strings.TrimSpace(parts[1])
+			environmentMap[key] = value
+		}
+	}
+	return
+}
+
+func ConvertEnvMapToArray(environmentMap map[string]string) (environment []string) {
+	for key, value := range environmentMap {
+		environment = append(environment, fmt.Sprintf("%s=%s", key, value))
+	}
+	return
+}
