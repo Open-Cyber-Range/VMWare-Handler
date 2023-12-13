@@ -84,6 +84,7 @@ func (storage *Storage[T]) Create(ctx context.Context, itemKey string) error {
 }
 
 func (storage *Storage[T]) Get(ctx context.Context, itemKey string) (T, error) {
+	var container T
 
 	result, err := storage.RedisClient.HGet(ctx, itemKey, hashField()).Result()
 	if err != nil {
@@ -92,10 +93,10 @@ func (storage *Storage[T]) Get(ctx context.Context, itemKey string) (T, error) {
 		return *new(T), status.Error(codes.Internal, fmt.Sprintf("Redis entry not found, %v", err))
 	}
 
-	if err = UnmarshalBinary([]byte(result), &storage.Container); err != nil {
+	if err = UnmarshalBinary([]byte(result), &container); err != nil {
 		return *new(T), err
 	}
-	return storage.Container, nil
+	return container, nil
 }
 
 func (storage *Storage[T]) Update(ctx context.Context, featureID string) error {

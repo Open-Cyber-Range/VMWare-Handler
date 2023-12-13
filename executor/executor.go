@@ -169,6 +169,12 @@ func (server *conditionerServer) Stream(identifier *common.Identifier, stream co
 		if err = mutex.Lock(ctx); err != nil {
 			return err
 		}
+		defer func() {
+			if err := mutex.Unlock(ctx); err != nil {
+				log.Errorf("Failed to unlock mutex: %v", err)
+			}
+		}()
+
 		commandReturnValue, executeErr := guestManager.ExecutePackageAction(ctx, container.Command, container.Environment)
 		if err := mutex.Unlock(ctx); err != nil {
 			return err
@@ -182,14 +188,19 @@ func (server *conditionerServer) Stream(identifier *common.Identifier, stream co
 		}
 		log.Tracef("Condition ID '%v' returned '%v'", identifier.GetValue(), conditionValue)
 
-		err = stream.Send(&condition.ConditionStreamResponse{
+		message := &condition.ConditionStreamResponse{
 			Response:           identifier.GetValue(),
 			CommandReturnValue: float32(conditionValue),
-		})
-		if err != nil {
-			return status.Error(codes.Internal, fmt.Sprintf("Error sending Condition stream: %v", err))
 		}
 
+		if ctx.Err() != nil {
+			log.Errorf("Context canceled before sending stream for Condition ID '%v' due to: %v", identifier.GetValue(), ctx.Err())
+			return status.Error(codes.Internal, fmt.Sprintf("Error sending Condition stream: %v", ctx.Err()))
+		}
+		if err = stream.Send(message); err != nil {
+			log.Errorf("Error sending Condition stream: %v", err)
+			return status.Error(codes.Internal, fmt.Sprintf("Error sending Condition stream: %v", err))
+		}
 		time.Sleep(time.Second * time.Duration(container.Interval))
 	}
 }
