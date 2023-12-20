@@ -175,7 +175,7 @@ func createFeatureDeploymentRequest(t *testing.T, deployment *feature.Feature, p
 	}
 
 	if deployment.FeatureType == feature.FeatureType_service {
-		if executorResponse.VmLog == "" {
+		if executorResponse.Stdout == "" && executorResponse.Stderr == "" {
 			t.Fatalf("Test Feature Service produced no logs and was likely not executed")
 		}
 	}
@@ -400,7 +400,7 @@ func TestFeatureServiceDeploymentAndDeletionOnLinux(t *testing.T) {
 		t.Fatalf("Error creating Test Feature Deployment: %v", err)
 	}
 
-	log.Infof("Feature output: %#v", response.VmLog)
+	log.Infof("Feature stdout: %#v. Stderr: %#v", response.Stdout, response.Stderr)
 
 }
 
@@ -424,7 +424,7 @@ func TestFeatureServiceDeploymentWithEnvironmentOnLinux(t *testing.T) {
 		t.Fatalf("Error creating Test Feature Deployment: %v", err)
 	}
 
-	log.Infof("Feature output: %#v", response.VmLog)
+	log.Infof("Feature stdout: %#v. Stderr: %#v", response.Stdout, response.Stderr)
 
 }
 
@@ -487,7 +487,7 @@ func TestFeatureServiceDeploymentAndDeletionOnWindows(t *testing.T) {
 		t.Fatalf("Error creating Test Feature Deployment: %v", err)
 	}
 
-	log.Infof("Feature output: %v", response.VmLog)
+	log.Infof("Feature stdout: %#v. Stderr: %#v", response.Stdout, response.Stderr)
 }
 
 func TestInjectDeploymentAndDeletionOnLinux(t *testing.T) {
@@ -507,7 +507,7 @@ func TestInjectDeploymentAndDeletionOnLinux(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error creating Test Inject Deployment: %v", err)
 	}
-	log.Infof("Inject output: %v", response.VmLog)
+	log.Infof("Inject stdout: %#v. Stderr: %#v", response.Stdout, response.Stderr)
 }
 
 func TestRebootingFeatureOnLinux(t *testing.T) {
@@ -727,5 +727,5 @@ func TestFeatureFilePermissionsOnLinux(t *testing.T) {
 		}
 	}
 
-	log.Infof("Feature output: %#v", response.VmLog)
+	log.Infof("Feature stdout: %#v. Stderr: %#v", response.Stdout, response.Stderr)
 }
