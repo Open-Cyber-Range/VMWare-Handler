@@ -582,7 +582,7 @@ func isRebootRelatedError(err error) bool {
 	return false
 }
 
-func (guestManager *GuestManager) ExecutePackageAction(ctx context.Context, action string, environment []string) (commandOutput string, err error) {
+func (guestManager *GuestManager) ExecutePackageAction(ctx context.Context, action string, environment []string) (stdout string, stderr string, err error) {
 	var vmManagedObject mo.VirtualMachine
 	guestManager.VirtualMachine.Properties(ctx, guestManager.VirtualMachine.Reference(), []string{}, &vmManagedObject)
 
@@ -607,7 +607,7 @@ func (guestManager *GuestManager) ExecutePackageAction(ctx context.Context, acti
 					err = AwaitVMToolsToComeOnline(ctx, guestManager.VirtualMachine, guestManager.configuration)
 					log.Warnf("Retrying function after panic: %v", action)
 					packageActionRetryFlag.flag = true
-					commandOutput, err = guestManager.ExecutePackageAction(ctx, action, environment)
+					stdout, stderr, err = guestManager.ExecutePackageAction(ctx, action, environment)
 					return
 				}
 				log.Warnf("Repeating panic by %v, err: %v", action, panicLog)
@@ -620,12 +620,12 @@ func (guestManager *GuestManager) ExecutePackageAction(ctx context.Context, acti
 			if !isRebootRelatedError(envErr) {
 				logMessage := fmt.Sprintf("Error executing command:\nError: %v\nStdout: %v\nStderr: %v", envErr, stdoutBuffer.String(), stderrBuffer.String())
 				log.Errorf(logMessage)
-				return "", status.Error(codes.Internal, logMessage)
+				return "", "", status.Error(codes.Internal, logMessage)
 			}
 
 			log.Infof("Retrying action %v, err: %v", action, envErr)
 			if err = AwaitVMToolsToComeOnline(ctx, guestManager.VirtualMachine, guestManager.configuration); err != nil {
-				return "", err
+				return "", "", err
 			}
 			time.Sleep(time.Duration(guestManager.configuration.ExecutorRunRetrySec) * time.Second)
 			envErr = nil
@@ -654,15 +654,14 @@ func (guestManager *GuestManager) ExecutePackageAction(ctx context.Context, acti
 			log.Errorf(fmt.Sprintf("Error executing command. Error: %v. ", runErr))
 			log.Errorf(fmt.Sprintf("Stdout: %v", stdoutBuffer.String()))
 			log.Errorf(fmt.Sprintf("Stderr: %v", stderrBuffer.String()))
-			return "", status.Error(codes.Internal, fmt.Sprintf("Error executing command. Error: %v. Stdout: %v. Stderr: %v", runErr, stdoutBuffer.String(), stderrBuffer.String()))
+			return "", "", status.Error(codes.Internal, fmt.Sprintf("Error executing command. Error: %v. Stdout: %v. Stderr: %v", runErr, stdoutBuffer.String(), stderrBuffer.String()))
 		}
 
 		break
 	}
 
-	stdout := strings.TrimSpace(stdoutBuffer.String())
-	stderr := strings.TrimSpace(stderrBuffer.String())
-	commandOutput = stdout + stderr
+	stdout = strings.TrimSpace(stdoutBuffer.String())
+	stderr = strings.TrimSpace(stderrBuffer.String())
 	return
 }
 
