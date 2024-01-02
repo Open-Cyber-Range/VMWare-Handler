@@ -175,14 +175,14 @@ func (server *conditionerServer) Stream(identifier *common.Identifier, stream co
 			}
 		}()
 
-		commandReturnValue, executeErr := guestManager.ExecutePackageAction(ctx, container.Command, container.Environment)
+		stdout, _, executeErr := guestManager.ExecutePackageAction(ctx, container.Command, container.Environment)
 		if err := mutex.Unlock(ctx); err != nil {
 			return err
 		}
 		if executeErr != nil {
 			return executeErr
 		}
-		conditionValue, err := strconv.ParseFloat(commandReturnValue, 32)
+		conditionValue, err := strconv.ParseFloat(stdout, 32)
 		if err != nil {
 			return status.Error(codes.Internal, fmt.Sprintf("Error converting Condition return value to float: %v", err))
 		}
@@ -301,9 +301,10 @@ func installPackage(ctx context.Context, vmWareTarget *vmWareTarget, serverSpecs
 		return nil, err
 	}
 	packageAction := packageMetadata.GetAction()
-	var vmLog string
+	var stdout string
+	var stderr string
 	if packageAction != "" {
-		vmLog, err = guestManager.ExecutePackageAction(ctx, packageAction, vmWareTarget.Environment)
+		stdout, stderr, err = guestManager.ExecutePackageAction(ctx, packageAction, vmWareTarget.Environment)
 		if err != nil {
 			return nil, err
 		}
@@ -321,7 +322,8 @@ func installPackage(ctx context.Context, vmWareTarget *vmWareTarget, serverSpecs
 		Identifier: &common.Identifier{
 			Value: fmt.Sprintf("%v", vmPackageUuid),
 		},
-		VmLog: vmLog,
+		Stdout: stdout,
+		Stderr: stderr,
 	}, nil
 }
 
