@@ -1,3 +1,3 @@
 package library
 
-const Version = "5.1.6"
+const Version = "5.2.0"

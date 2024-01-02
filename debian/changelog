@@ -1,3 +1,10 @@
+ranger-vmware-handlers (5.2.0) stretch; urgency=medium
+
+  * Separates executor vm_log to stdout and stderr
+  * Updates gRPC dependency to latest version
+
+  -- Rait Rotšan <developers@cr14.ee>  Tue, 02 Dec 2024 16:58:00 +0200
+
 ranger-vmware-handlers (5.1.7) stretch; urgency=medium
 
   * Fix shared Environment variable bug for Executor
