@@ -42,10 +42,10 @@ type injectServer struct {
 }
 
 type serverSpecs struct {
-	Client        *govmomi.Client
-	Configuration *library.Configuration
-	Storage       *library.Storage[library.ExecutorContainer]
-	MutexPool     *library.MutexPool
+	Client           *govmomi.Client
+	Configuration    *library.Configuration
+	Storage          *library.Storage[library.ExecutorContainer]
+	MutexDistributor *library.MutexDistributor
 }
 
 type vmWareTarget struct {
@@ -113,7 +113,9 @@ func (server *conditionerServer) Create(ctx context.Context, conditionDeployment
 		log.Errorf("Error awaiting VMTools to come online: %v", err)
 		return nil, err
 	}
-	mutex, err := server.ServerSpecs.MutexPool.GetMutex(ctx, conditionDeployment.GetVirtualMachineId())
+
+	mutexOptions := library.NewMutexOptions(conditionDeployment.GetVirtualMachineId(), conditionDeployment.Name, int(conditionDeployment.Interval))
+	mutex, err := server.ServerSpecs.MutexDistributor.GetMutex(ctx, mutexOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +123,7 @@ func (server *conditionerServer) Create(ctx context.Context, conditionDeployment
 		return nil, err
 	}
 	commandAction, interval, assetFilePaths, createErr := server.createCondition(ctx, conditionDeployment, *guestManager)
-	if err := mutex.Unlock(ctx); err != nil {
+	if err := mutex.Unlock(); err != nil {
 		return nil, err
 	}
 	if createErr != nil {
@@ -158,25 +160,22 @@ func (server *conditionerServer) Stream(identifier *common.Identifier, stream co
 	if err != nil {
 		return err
 	}
+	mutexOptions := library.NewMutexOptions(container.VMID, identifier.GetValue(), int(container.Interval))
+
 	for {
 		if err = library.AwaitVMToolsToComeOnline(ctx, guestManager.VirtualMachine, server.ServerSpecs.Configuration.Variables); err != nil {
 			return err
 		}
-		mutex, err := server.ServerSpecs.MutexPool.GetMutex(ctx, container.VMID)
+		mutex, err := server.ServerSpecs.MutexDistributor.GetMutex(ctx, mutexOptions)
 		if err != nil {
 			return err
 		}
 		if err = mutex.Lock(ctx); err != nil {
 			return err
 		}
-		defer func() {
-			if err := mutex.Unlock(ctx); err != nil {
-				log.Errorf("Failed to unlock mutex: %v", err)
-			}
-		}()
 
 		stdout, _, executeErr := guestManager.ExecutePackageAction(ctx, container.Command, container.Environment)
-		if err := mutex.Unlock(ctx); err != nil {
+		if err := mutex.Unlock(); err != nil {
 			return err
 		}
 		if executeErr != nil {
@@ -193,10 +192,6 @@ func (server *conditionerServer) Stream(identifier *common.Identifier, stream co
 			CommandReturnValue: float32(conditionValue),
 		}
 
-		if ctx.Err() != nil {
-			log.Errorf("Context canceled before sending stream for Condition ID '%v' due to: %v", identifier.GetValue(), ctx.Err())
-			return status.Error(codes.Internal, fmt.Sprintf("Error sending Condition stream: %v", ctx.Err()))
-		}
 		if err = stream.Send(message); err != nil {
 			log.Errorf("Error sending Condition stream: %v", err)
 			return status.Error(codes.Internal, fmt.Sprintf("Error sending Condition stream: %v", err))
@@ -219,7 +214,9 @@ func (server *featurerServer) Create(ctx context.Context, featureDeployment *fea
 		VmID:          featureDeployment.GetVirtualMachineId(),
 		Environment:   featureDeployment.GetEnvironment(),
 	}
-	mutex, err := server.ServerSpecs.MutexPool.GetMutex(ctx, featureDeployment.GetVirtualMachineId())
+	mutexOptions := library.NewMutexOptions(featureDeployment.GetVirtualMachineId(), featureDeployment.GetName())
+
+	mutex, err := server.ServerSpecs.MutexDistributor.GetMutex(ctx, mutexOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -227,7 +224,7 @@ func (server *featurerServer) Create(ctx context.Context, featureDeployment *fea
 		return nil, err
 	}
 	executorResponse, installErr := installPackage(ctx, &vmWareTarget, server.ServerSpecs)
-	if err := mutex.Unlock(ctx); err != nil {
+	if err := mutex.Unlock(); err != nil {
 		return nil, err
 	}
 	if installErr != nil {
@@ -251,7 +248,9 @@ func (server *injectServer) Create(ctx context.Context, injectDeployment *inject
 		PackageSource: injectDeployment.GetSource(),
 		Environment:   injectDeployment.GetEnvironment(),
 	}
-	mutex, err := server.ServerSpecs.MutexPool.GetMutex(ctx, injectDeployment.GetVirtualMachineId())
+	mutexOptions := library.NewMutexOptions(injectDeployment.VirtualMachineId, injectDeployment.Name)
+
+	mutex, err := server.ServerSpecs.MutexDistributor.GetMutex(ctx, mutexOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -259,7 +258,7 @@ func (server *injectServer) Create(ctx context.Context, injectDeployment *inject
 		return nil, err
 	}
 	executorResponse, installErr := installPackage(ctx, &vmWareTarget, server.ServerSpecs)
-	if err := mutex.Unlock(ctx); err != nil {
+	if err := mutex.Unlock(); err != nil {
 		return nil, err
 	}
 	if installErr != nil {
@@ -348,7 +347,9 @@ func uninstallPackage(ctx context.Context, serverSpecs *serverSpecs, identifier 
 		return nil, err
 	}
 
-	mutex, err := serverSpecs.MutexPool.GetMutex(ctx, executorContainer.VMID)
+	mutexOptions := library.NewMutexOptions(executorContainer.VMID, identifier.GetValue(), int(executorContainer.Interval))
+
+	mutex, err := serverSpecs.MutexDistributor.GetMutex(ctx, mutexOptions)
 	if err != nil {
 		return new(emptypb.Empty), err
 	}
@@ -356,7 +357,7 @@ func uninstallPackage(ctx context.Context, serverSpecs *serverSpecs, identifier 
 		return new(emptypb.Empty), err
 	}
 	deleteErr := vmwareClient.DeleteUploadedFiles(ctx, &executorContainer)
-	if err := mutex.Unlock(ctx); err != nil {
+	if err := mutex.Unlock(); err != nil {
 		return new(emptypb.Empty), err
 	}
 	if deleteErr != nil {
@@ -385,16 +386,16 @@ func RealMain(configuration *library.Configuration) {
 	})
 	redisPool := goredis.NewPool(redisClient)
 
-	mutexPool, err := library.NewMutexPool(ctx, configuration.Hostname, *redsync.New(redisPool), *redisClient, configuration.Variables)
+	mutexDistributor, err := library.NewMutexDistributor(ctx, configuration.Hostname, *redsync.New(redisPool), *redisClient, configuration.Variables.MaxConnections)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	serverSpecs := serverSpecs{
-		Client:        govmomiClient,
-		Configuration: configuration,
-		Storage:       &storage,
-		MutexPool:     &mutexPool,
+		Client:           govmomiClient,
+		Configuration:    configuration,
+		Storage:          &storage,
+		MutexDistributor: &mutexDistributor,
 	}
 	feature.RegisterFeatureServiceServer(grpcServer, &featurerServer{ServerSpecs: &serverSpecs})
 	condition.RegisterConditionServiceServer(grpcServer, &conditionerServer{ServerSpecs: &serverSpecs})
@@ -410,7 +411,7 @@ func RealMain(configuration *library.Configuration) {
 
 	log.Printf("Executor listening at %v", listeningAddress.Addr())
 	log.Printf("Version: %v", library.Version)
-	log.Printf("Max Connections: %v", mutexPool.Configuration.MaxConnections)
+	log.Printf("Max Connections: %v", mutexDistributor.MaxConnections)
 
 	if bindError := grpcServer.Serve(listeningAddress); bindError != nil {
 		log.Fatalf("Failed to serve: %v", bindError)

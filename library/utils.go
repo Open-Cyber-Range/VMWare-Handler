@@ -18,8 +18,6 @@ import (
 	"time"
 
 	chromahtml "github.com/alecthomas/chroma/formatters/html"
-	"github.com/go-redis/redis/v8"
-	"github.com/go-redsync/redsync/v4"
 	"github.com/iancoleman/strcase"
 	"github.com/open-cyber-range/vmware-handler/grpc/capability"
 	"github.com/open-cyber-range/vmware-handler/grpc/deputy"
@@ -41,20 +39,6 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-type MutexPool struct {
-	Id            string
-	Redsync       *redsync.Redsync
-	RedisClient   *redis.Client
-	Configuration ConfigurationVariables
-}
-type Mutex struct {
-	PoolId           string
-	Mutex            *redsync.Mutex
-	RedisClient      *redis.Client
-	RetryIntervalMax int
-	RetryIntervalMin int
-	Timeout          int
-}
 type Feature struct {
 	Type     string `json:"type"`
 	Action   string `json:"action,omitempty"`
@@ -95,100 +79,6 @@ type ExecutorPackage struct {
 	Inject      Inject      `json:"inject,omitempty"`
 	Event       Event       `json:"event,omitempty"`
 	Exercise    Exercise    `json:"exercise,omitempty"`
-}
-
-func (mutexPool MutexPool) GetMutex(ctx context.Context, optionalId ...string) (mutex *Mutex, err error) {
-	identifier := "general-mutex"
-	if len(optionalId) != 0 {
-		identifier = "vm-mutex-" + optionalId[len(optionalId)-1]
-	}
-
-	currentConnections, err := mutexPool.RedisClient.HLen(ctx, mutexPool.Id).Result()
-	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Error getting Redis entry, %v", err))
-	}
-	lockAlreadyExists, err := mutexPool.RedisClient.HExists(ctx, mutexPool.Id, identifier).Result()
-	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Error checking existence of Redis entry, %v", err))
-	}
-	if currentConnections >= mutexPool.Configuration.MaxConnections || lockAlreadyExists {
-		time.Sleep(time.Duration(rand.Intn(mutexPool.Configuration.MutexPoolMaxRetryMillis)+mutexPool.Configuration.MutexPoolMinRetryMillis) * time.Millisecond)
-		return mutexPool.GetMutex(ctx, optionalId...)
-	}
-	_, err = mutexPool.RedisClient.HSet(ctx, mutexPool.Id, identifier, 0).Result()
-	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Error setting Redis entry, %v", err))
-	}
-
-	return &Mutex{
-		PoolId:      mutexPool.Id,
-		Mutex:       mutexPool.Redsync.NewMutex(identifier),
-		RedisClient: mutexPool.RedisClient,
-		Timeout:     mutexPool.Configuration.MutexTimeoutSec,
-	}, nil
-}
-
-func (mutex *Mutex) Lock(ctx context.Context) (err error) {
-	successChannel := make(chan bool)
-	errorChannel := make(chan error)
-
-	go func() {
-		err = mutex.Mutex.Lock()
-		if err != nil {
-			if strings.HasPrefix(err.Error(), "lock already taken") {
-				log.Tracef("Mutex lock taken, trying again")
-				time.Sleep(time.Millisecond * (time.Duration(rand.Intn(100) + 50)))
-
-				if err = mutex.Lock(ctx); err != nil {
-					successChannel <- false
-					errorChannel <- err
-				}
-			} else {
-				successChannel <- false
-				errorChannel <- err
-			}
-		}
-		successChannel <- true
-		errorChannel <- nil
-	}()
-	select {
-
-	case isSuccess := <-successChannel:
-		if !isSuccess {
-			err := <-errorChannel
-			if err != nil {
-				return err
-			}
-		}
-
-	case <-time.After(time.Duration(mutex.Timeout) * time.Second):
-		return status.Error(codes.Internal, fmt.Sprintf("Mutex lock timed out after %v seconds: %v", mutex.Timeout, err))
-	}
-
-	return nil
-}
-
-func (mutex *Mutex) Unlock(ctx context.Context) (err error) {
-	mutex.Mutex.Unlock()
-	_, err = mutex.RedisClient.HDel(ctx, mutex.PoolId, mutex.Mutex.Name()).Result()
-	if err != nil {
-		return status.Error(codes.Internal, fmt.Sprintf("Error deleting Redis entry, %v", err))
-	}
-	return
-}
-
-func NewMutexPool(ctx context.Context, poolIdentifier string, redsync redsync.Redsync, redisClient redis.Client, configuration ConfigurationVariables) (mutexPool MutexPool, err error) {
-	mutexPool = MutexPool{
-		Id:            poolIdentifier,
-		Redsync:       &redsync,
-		RedisClient:   &redisClient,
-		Configuration: configuration,
-	}
-	_, err = redisClient.Del(ctx, poolIdentifier).Result()
-	if err != nil {
-		return MutexPool{}, status.Error(codes.Internal, fmt.Sprintf("Error cleaning up MutexPool, %v", err))
-	}
-	return mutexPool, nil
 }
 
 func (executorPackage ExecutorPackage) GetAction() (action string) {
