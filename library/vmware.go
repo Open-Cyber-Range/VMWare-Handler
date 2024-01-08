@@ -67,6 +67,62 @@ func parseOsFamily(vmOsFamily string) (family GuestOSFamily, success bool) {
 	return
 }
 
+func CheckVMStatus(ctx context.Context, virtualMachine *object.VirtualMachine) (bool, error) {
+	var vmProperties mo.VirtualMachine
+	virtualMachine.Properties(ctx, virtualMachine.Reference(), []string{}, &vmProperties)
+
+	if vmProperties.Name == "" {
+		return false, status.Error(codes.Internal, "VM does not exist, likely deleted")
+	}
+
+	vmPowerState := vmProperties.Runtime.PowerState
+	if vmPowerState == types.VirtualMachinePowerStatePoweredOff {
+		return false, nil
+	} else {
+		vmToolsStatus := vmProperties.Guest.ToolsRunningStatus
+		guestHeartBeatStatus := vmProperties.GuestHeartbeatStatus
+
+		log.Debugf("%v: %v, Heartbeat: %v", vmProperties.Config.Uuid, vmToolsStatus, guestHeartBeatStatus)
+		if vmToolsStatus == string(types.VirtualMachineToolsRunningStatusGuestToolsRunning) &&
+			guestHeartBeatStatus == types.ManagedEntityStatusGreen {
+			return true, nil
+		} else {
+			return false, nil
+		}
+	}
+}
+
+func AwaitVMToolsToComeOnline(ctx context.Context, virtualMachine *object.VirtualMachine, configuration ConfigurationVariables) (err error) {
+	var tries = int(configuration.VmToolsTimeoutSec / configuration.VmToolsRetrySec)
+	defer func() {
+		if panicLog := recover(); panicLog != nil {
+			log.Warnf("AwaitVMToolsToComeOnline recovered from panic: %v", panicLog)
+			err = status.Error(codes.Internal, "VM was likely deleted during health check")
+		}
+	}()
+
+	if virtualMachine == nil {
+		log.Errorf("Virtual machine is nil, likely deleted")
+		return status.Error(codes.Internal, "Virtual machine is nil, likely deleted")
+	}
+	vmId := virtualMachine.UUID(ctx)
+
+	for tries > 0 {
+		tries -= 1
+		isToolsRunning, err := CheckVMStatus(ctx, virtualMachine)
+		if err != nil {
+			return err
+		}
+		if isToolsRunning {
+			return nil
+		}
+
+		time.Sleep(time.Second * time.Duration(configuration.VmToolsRetrySec))
+	}
+
+	return status.Error(codes.Internal, fmt.Sprintf("Timeout (%v sec) waiting for VMTools to come online on %v", configuration.VmToolsRetrySec, vmId))
+}
+
 func NewVMWareClient(ctx context.Context, client *govmomi.Client, configuration Configuration) (VMWareClient, error) {
 	sessionManager := session.NewManager(client.Client)
 	userSession, userSessionError := sessionManager.UserSession(ctx)
