@@ -134,10 +134,10 @@ func GetPackageChecksum(name string, version string) (checksum string, err error
 
 func GetPackageData(packagePath string) (packageData map[string]interface{}, err error) {
 	inspectCommand := exec.Command("deputy", "inspect", "-p", packagePath)
-	output, err := inspectCommand.Output()
+	output, err := inspectCommand.CombinedOutput()
 	if err != nil {
-		log.Errorf("Deputy inspect command failed, %v", err)
-		return
+		log.Errorf("Deputy inspect command failed for package '%v': %v: %s", packagePath, err, output)
+		return nil, fmt.Errorf("deputy inspect command failed for package '%v': %v: %s", packagePath, err, output)
 	}
 	if err = json.Unmarshal(output, &packageData); err != nil {
 		return nil, fmt.Errorf("error unmarshalling package data, %v", err)
