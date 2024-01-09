@@ -105,8 +105,8 @@ type VirtualMachine struct {
 	Accounts        []library.Account `json:"accounts,omitempty"`
 }
 
-func getVirtualMachineInfo(packegeDataMap *map[string]interface{}) (virtualMachine VirtualMachine, err error) {
-	virtualMachineInfo := (*packegeDataMap)["virtual-machine"]
+func getVirtualMachineInfo(packageDataMap *map[string]interface{}) (virtualMachine VirtualMachine, err error) {
+	virtualMachineInfo := (*packageDataMap)["virtual-machine"]
 	infoJson, _ := json.Marshal(virtualMachineInfo)
 	json.Unmarshal(infoJson, &virtualMachine)
 
