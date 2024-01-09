@@ -138,7 +138,7 @@ func (templateDeployment *TemplateDeployment) createTemplate(ctx context.Context
 	}
 	_, err = templateDeployment.Client.GetTemplateByName(templateDeployment.templateName)
 	if err != nil {
-		return status.Error(codes.Internal, fmt.Sprintf("Failed to get deployed template (%v)", err))
+		return fmt.Errorf("failed to get deployed template (%v)", err)
 	}
 
 	return

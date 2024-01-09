@@ -28,9 +28,6 @@ import (
 	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/soap"
 	"github.com/vmware/govmomi/vim25/types"
-	"google.golang.org/grpc/codes"
-
-	"google.golang.org/grpc/status"
 )
 
 type VMWareClient struct {
@@ -72,7 +69,7 @@ func CheckVMStatus(ctx context.Context, virtualMachine *object.VirtualMachine) (
 	virtualMachine.Properties(ctx, virtualMachine.Reference(), []string{}, &vmProperties)
 
 	if vmProperties.Name == "" {
-		return false, status.Error(codes.Internal, "VM does not exist, likely deleted")
+		return false, fmt.Errorf("VM does not exist, likely deleted")
 	}
 
 	vmPowerState := vmProperties.Runtime.PowerState
@@ -97,13 +94,13 @@ func AwaitVMToolsToComeOnline(ctx context.Context, virtualMachine *object.Virtua
 	defer func() {
 		if panicLog := recover(); panicLog != nil {
 			log.Warnf("AwaitVMToolsToComeOnline recovered from panic: %v", panicLog)
-			err = status.Error(codes.Internal, "VM was likely deleted during health check")
+			err = fmt.Errorf("VM was likely deleted during health check")
 		}
 	}()
 
 	if virtualMachine == nil {
 		log.Errorf("Virtual machine is nil, likely deleted")
-		return status.Error(codes.Internal, "Virtual machine is nil, likely deleted")
+		return fmt.Errorf("virtual machine is nil, likely deleted")
 	}
 	vmId := virtualMachine.UUID(ctx)
 
@@ -120,7 +117,7 @@ func AwaitVMToolsToComeOnline(ctx context.Context, virtualMachine *object.Virtua
 		time.Sleep(time.Second * time.Duration(configuration.VmToolsRetrySec))
 	}
 
-	return status.Error(codes.Internal, fmt.Sprintf("Timeout (%v sec) waiting for VMTools to come online on %v", configuration.VmToolsRetrySec, vmId))
+	return fmt.Errorf("timeout (%v sec) waiting for VMTools to come online on %v", configuration.VmToolsRetrySec, vmId)
 }
 
 func NewVMWareClient(ctx context.Context, client *govmomi.Client, configuration Configuration) (VMWareClient, error) {
@@ -157,7 +154,7 @@ var packageActionRetryFlag struct {
 func (vmwareClient *VMWareClient) CreateGuestManagers(ctx context.Context, vmId string, auth *types.NamePasswordAuthentication) (*GuestManager, error) {
 	virtualMachine, err := vmwareClient.GetVirtualMachineByUUID(ctx, vmId)
 	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Error getting VM by UUID, %v", err))
+		return nil, fmt.Errorf("error getting VM by UUID, %v", err)
 	}
 
 	isVmToolsRunning, err := CheckVMStatus(ctx, virtualMachine)
@@ -173,19 +170,19 @@ func (vmwareClient *VMWareClient) CreateGuestManagers(ctx context.Context, vmId 
 	operationsManager := guest.NewOperationsManager(virtualMachine.Client(), virtualMachine.Reference())
 	fileManager, err := operationsManager.FileManager(ctx)
 	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Error creating FileManager, %v", err))
+		return nil, fmt.Errorf("error creating FileManager, %v", err)
 	}
 
 	processManager, err := operationsManager.ProcessManager(ctx)
 	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Error creating a process manager, %v", err))
+		return nil, fmt.Errorf("error creating a process manager, %v", err)
 	}
 
 	var vmManagedObject mo.VirtualMachine
 	virtualMachine.Properties(ctx, virtualMachine.Reference(), []string{}, &vmManagedObject)
 	toolboxClient, err := toolbox.NewClient(ctx, processManager.Client(), vmManagedObject.Reference(), auth)
 	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Error creating Toolbox Client' %v", err))
+		return nil, fmt.Errorf("error creating Toolbox Client' %v", err)
 	}
 
 	guestManager := &GuestManager{
@@ -406,18 +403,18 @@ func (client *VMWareClient) CheckVMLinks(ctx context.Context, vmNetworks []types
 func (vmwareClient *VMWareClient) DeleteUploadedFiles(ctx context.Context, executorContainer *ExecutorContainer) error {
 	virtualMachine, err := vmwareClient.GetVirtualMachineByUUID(ctx, executorContainer.VMID)
 	if err != nil {
-		return status.Error(codes.Internal, fmt.Sprintf("Error getting VM by UUID: %v", err))
+		return fmt.Errorf("error getting VM by UUID: %v", err)
 	}
 	operationsManager := guest.NewOperationsManager(virtualMachine.Client(), virtualMachine.Reference())
 
 	fileManager, err := operationsManager.FileManager(ctx)
 	if err != nil {
-		return status.Error(codes.Internal, fmt.Sprintf("Error creating FileManager: %v", err))
+		return fmt.Errorf("error creating FileManager: %v", err)
 	}
 
 	for _, targetFile := range executorContainer.FilePaths {
 		if err = fileManager.DeleteFile(ctx, &executorContainer.Auth, string(targetFile)); err != nil {
-			return status.Error(codes.Internal, fmt.Sprintf("Error deleting file: %v", err))
+			return fmt.Errorf("error deleting file: %v", err)
 		}
 		log.Infof("Deleted %v", targetFile)
 	}
@@ -440,7 +437,7 @@ func normalizePackageTargetPath(sourcePath string, destinationPath string) strin
 func receiveFileFromVM(url string) (logPath string, err error) {
 	out, err := os.CreateTemp("", "executor.log")
 	if err != nil {
-		return "", status.Error(codes.Internal, fmt.Sprintf("Error creating file, %v", err))
+		return "", fmt.Errorf("error creating file, %v", err)
 	}
 
 	logPath = out.Name()
@@ -450,7 +447,7 @@ func receiveFileFromVM(url string) (logPath string, err error) {
 	client := http.Client{Transport: transport, Timeout: 30 * time.Second}
 	resp, err := client.Get(url)
 	if err != nil {
-		return "", status.Error(codes.Internal, fmt.Sprintf("Error sending HTTP request, %v", err))
+		return "", fmt.Errorf("error sending HTTP request, %v", err)
 	}
 	defer resp.Body.Close()
 
@@ -471,7 +468,7 @@ func createFileAttributesByOsFamily(guestOsFamily GuestOSFamily, filePermissions
 			permissionsInt, err := strconv.ParseInt(filePermissions, 8, 64)
 			if err != nil {
 				log.Errorf("Error parsing file permission str to int: %v", err)
-				return nil, status.Error(codes.Internal, fmt.Sprintf("Error parsing file permissions: %v", err))
+				return nil, fmt.Errorf("error parsing file permissions: %v", err)
 			}
 			fileAttributes = &types.GuestPosixFileAttributes{
 				Permissions: permissionsInt,
@@ -492,7 +489,7 @@ func (guestManager *GuestManager) FindGuestOSFamily(ctx context.Context) (GuestO
 	for tries = 0; tries < guestManager.configuration.VmPropertiesTimeoutSec; tries++ {
 		err := guestManager.VirtualMachine.Properties(ctx, guestManager.VirtualMachine.Reference(), []string{}, &vmProperties)
 		if err != nil {
-			return 0, status.Error(codes.Internal, fmt.Sprintf("Error retrieving VM properties, %v", err))
+			return 0, fmt.Errorf("error retrieving VM properties, %v", err)
 		}
 		if vmProperties.Guest.GuestFamily == "" || vmProperties.Guest.GuestFamily == "0" {
 			log.Debugf("Awaiting VM properties to be populated for VM %v", guestManager.VirtualMachine.UUID(ctx))
@@ -514,14 +511,14 @@ func (guestManager *GuestManager) FindGuestOSFamily(ctx context.Context) (GuestO
 	if successful_match {
 		return matchedFamily, nil
 	} else {
-		return 0, status.Errorf(codes.Internal, "Guest OS Family not supported: %v", matchedFamily)
+		return 0, fmt.Errorf("guest OS Family not supported: %v", matchedFamily)
 	}
 }
 
 func (guestManager *GuestManager) GetVMLogContents(ctx context.Context, vmLogPath string) (output string, err error) {
 	transferInfo, err := guestManager.FileManager.InitiateFileTransferFromGuest(ctx, guestManager.Auth, vmLogPath)
 	if err != nil {
-		return "", status.Error(codes.Internal, fmt.Sprintf("Error retrieving execution log from guest, %v", err))
+		return "", fmt.Errorf("error retrieving execution log from guest, %v", err)
 	}
 
 	filePath, err := receiveFileFromVM(transferInfo.Url)
@@ -531,14 +528,14 @@ func (guestManager *GuestManager) GetVMLogContents(ctx context.Context, vmLogPat
 
 	logContentBytes, err := os.ReadFile(filePath)
 	if err != nil {
-		return "", status.Error(codes.Internal, fmt.Sprintf("Error opening log file, %v", err))
+		return "", fmt.Errorf("error opening log file, %v", err)
 	}
 	logContent := string(logContentBytes)
 	logContent = strings.TrimSuffix(logContent, "\n")
 	logContent = strings.TrimSuffix(logContent, "\r")
 
 	if err = guestManager.FileManager.DeleteFile(ctx, guestManager.Auth, vmLogPath); err != nil {
-		return "", status.Error(codes.Internal, fmt.Sprintf("Error deleting log file: %v", err))
+		return "", fmt.Errorf("error deleting log file: %v", err)
 	}
 	if err = os.Remove(filePath); err != nil {
 		return "", err
@@ -552,14 +549,14 @@ func (guestManager *GuestManager) AwaitProcessCompletion(ctx context.Context, pr
 
 		active_process, err := guestManager.ProcessManager.ListProcesses(ctx, guestManager.Auth, []int64{processID})
 		if err != nil {
-			return false, status.Error(codes.Internal, fmt.Sprintf("Error listing VM process' %v", err))
+			return false, fmt.Errorf("error listing VM process' %v", err)
 		}
 
 		vmUUID := guestManager.VirtualMachine.UUID(ctx)
 		exitCode := active_process[0].ExitCode
 		regexFail, _ := regexp.Compile("[1-9]+")
 		if regexFail.MatchString(string(exitCode)) {
-			return false, status.Error(codes.Internal, fmt.Sprintf("Error: VM UUID: `%v` PID: `%v` exit code: %v", vmUUID, processID, exitCode))
+			return false, fmt.Errorf("error: VM UUID: `%v` PID: `%v` exit code: %v", vmUUID, processID, exitCode)
 
 		}
 
@@ -616,7 +613,7 @@ func (guestManager *GuestManager) getVMEnvironment(ctx context.Context, vmManage
 	}
 	if err = guestManager.Toolbox.Run(ctx, printEnvCmd); err != nil {
 		log.Errorf("Error getting initial VM environment: %v", err)
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Error creating VM directories, %v", err))
+		return nil, fmt.Errorf("error creating VM directories, %v", err)
 	}
 
 	vmEnvironment := strings.Split(stdoutBuffer.String(), "\n")
@@ -667,7 +664,7 @@ func (guestManager *GuestManager) ExecutePackageAction(ctx context.Context, acti
 					return
 				}
 				log.Warnf("Repeating panic by %v, err: %v", action, panicLog)
-				err = status.Error(codes.Internal, fmt.Sprintf("Repeating panic by %v, err: %v", action, panicLog))
+				err = fmt.Errorf("repeating panic by %v, err: %v", action, panicLog)
 			}
 		}()
 
@@ -676,7 +673,7 @@ func (guestManager *GuestManager) ExecutePackageAction(ctx context.Context, acti
 			if !isRebootRelatedError(envErr) {
 				logMessage := fmt.Sprintf("Error executing command:\nError: %v\nStdout: %v\nStderr: %v", envErr, stdoutBuffer.String(), stderrBuffer.String())
 				log.Errorf(logMessage)
-				return "", "", status.Error(codes.Internal, logMessage)
+				return "", "", fmt.Errorf(logMessage)
 			}
 
 			log.Infof("Retrying action %v, err: %v", action, envErr)
@@ -707,10 +704,8 @@ func (guestManager *GuestManager) ExecutePackageAction(ctx context.Context, acti
 		log.Infof("Executing Action: %v, Input environment: %v, Final Environment: %v", action, environment, combinedEnvironment)
 		runErr := guestManager.Toolbox.Run(ctx, cmd)
 		if runErr != nil {
-			log.Errorf(fmt.Sprintf("Error executing command. Error: %v. ", runErr))
-			log.Errorf(fmt.Sprintf("Stdout: %v", stdoutBuffer.String()))
-			log.Errorf(fmt.Sprintf("Stderr: %v", stderrBuffer.String()))
-			return "", "", status.Error(codes.Internal, fmt.Sprintf("Error executing command. Error: %v. Stdout: %v. Stderr: %v", runErr, stdoutBuffer.String(), stderrBuffer.String()))
+			log.Errorf("Error executing command. Error: %v. Stdout: %v. Stderr: %v", runErr, stdoutBuffer.String(), stderrBuffer.String())
+			return "", "", fmt.Errorf("error executing command. Error: %v. Stdout: %v. Stderr: %v", runErr, stdoutBuffer.String(), stderrBuffer.String())
 		}
 
 		break
@@ -767,16 +762,16 @@ func (guestManager *GuestManager) CopyAssetsToVM(ctx context.Context, assets [][
 		log.Debugf("Creating Directory %s", path.Dir(normalizedTargetPath))
 		err = guestManager.FileManager.MakeDirectory(ctx, guestManager.Auth, path.Dir(normalizedTargetPath), true)
 		if err != nil && !strings.HasSuffix(err.Error(), "already exists") {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("Error creating VM directories, %v", err))
+			return nil, fmt.Errorf("error creating VM directories, %v", err)
 		}
 		file, err := os.Open(sourcePath)
 		if err != nil {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("Error reading source file, %v", err))
+			return nil, fmt.Errorf("error reading source file, %v", err)
 		}
 		log.Debugf("Uploading file %s to %s", sourcePath, normalizedTargetPath)
 		err = guestManager.Toolbox.Upload(ctx, file, normalizedTargetPath, httpPutRequest, fileAttributes, true)
 		if err != nil {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("Error Uploading file to VM %v", err))
+			return nil, fmt.Errorf("error Uploading file to VM %v", err)
 		}
 
 		splitFilepath := strings.Split(normalizedTargetPath, "/")
@@ -810,7 +805,7 @@ func (guestManager *GuestManager) UploadPackageContents(ctx context.Context, sou
 		return ExecutorPackage{}, nil, err
 	}
 	if err = CleanupTempPackage(packagePath); err != nil {
-		return ExecutorPackage{}, nil, status.Error(codes.Internal, fmt.Sprintf("Error during temp Feature package cleanup (%v)", err))
+		return ExecutorPackage{}, nil, fmt.Errorf("error during temp package cleanup (%v)", err)
 	}
 
 	return executorPackage, assetFilePaths, nil
