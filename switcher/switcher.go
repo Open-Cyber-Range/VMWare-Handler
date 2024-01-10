@@ -36,9 +36,9 @@ type switchServer struct {
 }
 
 type DeploySwitch struct {
-	DeploymentMessge *switch_grpc.DeploySwitch
-	Configuration    Configuration
-	APIClient        *swagger.APIClient
+	DeploymentMessage *switch_grpc.DeploySwitch
+	Configuration     Configuration
+	APIClient         *swagger.APIClient
 }
 
 func (deploySwitch *DeploySwitch) getTransportZone(ctx context.Context) (transportZone *swagger.PolicyTransportZone, err error) {
@@ -54,7 +54,7 @@ func (deploySwitch *DeploySwitch) getTransportZone(ctx context.Context) (transpo
 			return &transportZone, nil
 		}
 	}
-	return nil, status.Error(codes.Internal, fmt.Sprintln("getTransportZone: could not find transportzone"))
+	return nil, fmt.Errorf("getTransportZone: could not find transport zone")
 }
 
 func (deploySwitch *DeploySwitch) createNetworkSegment(ctx context.Context) (*swagger.Segment, error) {
@@ -63,18 +63,16 @@ func (deploySwitch *DeploySwitch) createNetworkSegment(ctx context.Context) (*sw
 		return nil, err
 	}
 	var segment = swagger.Segment{
-		Id:                library.SanitizeToCompatibleName(deploySwitch.DeploymentMessge.MetaInfo.GetExerciseName() + "_" + deploySwitch.DeploymentMessge.MetaInfo.GetDeploymentName() + "_" + deploySwitch.DeploymentMessge.Switch.GetName()),
+		Id:                library.SanitizeToCompatibleName(deploySwitch.DeploymentMessage.MetaInfo.GetExerciseName() + "_" + deploySwitch.DeploymentMessage.MetaInfo.GetDeploymentName() + "_" + deploySwitch.DeploymentMessage.Switch.GetName()),
 		TransportZonePath: transportZone.Path,
 	}
 	segmentApiService := deploySwitch.APIClient.SegmentsApi
 	segmentResponse, httpResponse, err := segmentApiService.CreateOrReplaceInfraSegment(ctx, segment.Id, segment)
 	if err != nil {
-		err = status.Error(codes.Internal, fmt.Sprintf("CreateSegment: API request (%v)", err))
-		return nil, err
+		return nil, fmt.Errorf("CreateSegment: API request (%v)", err)
 	}
 	if httpResponse.StatusCode != http.StatusOK {
-		err = status.Error(codes.Internal, fmt.Sprintf("CreateSegment: Segment not created (%v)", httpResponse.Status))
-		return nil, err
+		return nil, fmt.Errorf("CreateSegment: Segment not created (%v)", httpResponse.Status)
 	}
 	return &segmentResponse, nil
 }
@@ -122,15 +120,15 @@ func (switchServer *switchServer) deleteAndVerifyInfraSegment(ctx context.Contex
 
 func (server *switchServer) Create(ctx context.Context, switchDeployment *switch_grpc.DeploySwitch) (identifier *common.Identifier, err error) {
 	var deploySwitch = DeploySwitch{
-		DeploymentMessge: switchDeployment,
-		Configuration:    server.Configuration,
-		APIClient:        server.APIClient,
+		DeploymentMessage: switchDeployment,
+		Configuration:     server.Configuration,
+		APIClient:         server.APIClient,
 	}
-	log.Printf("received request for switch creation: %v\n", deploySwitch.DeploymentMessge.Switch.GetName())
+	log.Infof("received request for switch creation: %v\n", deploySwitch.DeploymentMessage.Switch.GetName())
 	segment, err := deploySwitch.createNetworkSegment(ctx)
 	if err != nil {
-		log.Printf("virtual segment creation failed: %v", err)
-		return
+		log.Errorf("virtual segment creation failed: %v", err)
+		return nil, status.Error(codes.Internal, fmt.Sprintf("virtual segment creation failed: %v", err))
 	}
 	log.Infof("Virtual segment: %v created in transport zone: %v", segment.Id, segment.TransportZonePath)
 	return &common.Identifier{
@@ -139,8 +137,7 @@ func (server *switchServer) Create(ctx context.Context, switchDeployment *switch
 }
 
 func (server *switchServer) Delete(ctx context.Context, identifier *common.Identifier) (*emptypb.Empty, error) {
-
-	log.Infof("Received segment for deleting: UUID: %v", identifier.GetValue())
+	log.Infof("Received request to delete segment: %v", identifier.GetValue())
 
 	err := server.deleteAndVerifyInfraSegment(ctx, identifier.GetValue())
 	if err != nil {
@@ -149,7 +146,6 @@ func (server *switchServer) Delete(ctx context.Context, identifier *common.Ident
 	}
 	log.Infof("Deleted segment: %v", identifier.GetValue())
 	return new(emptypb.Empty), nil
-
 }
 
 func RealMain(serverConfiguration *Configuration) {

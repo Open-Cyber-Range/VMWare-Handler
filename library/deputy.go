@@ -12,8 +12,6 @@ import (
 
 	"github.com/open-cyber-range/vmware-handler/grpc/deputy"
 	log "github.com/sirupsen/logrus"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 type Feature struct {
@@ -158,6 +156,7 @@ func GetPackageTomlContents(packageName string, packageVersion string) (packageP
 	packageTomlContent, err = GetPackageData(packagePath)
 	if err != nil {
 		log.Errorf("Failed to get package data, %v", err)
+		return "", nil, err
 	}
 	return
 }
@@ -165,14 +164,14 @@ func GetPackageTomlContents(packageName string, packageVersion string) (packageP
 func GetPackageMetadata(packageName string, packageVersion string) (packagePath string, executorPackage ExecutorPackage, err error) {
 	packagePath, packageTomlContent, err := GetPackageTomlContents(packageName, packageVersion)
 	if err != nil {
-		return "", ExecutorPackage{}, status.Error(codes.NotFound, fmt.Sprintf("Failed to download package: %v", err))
+		return "", ExecutorPackage{}, fmt.Errorf("failed to download package: %v", err)
 	}
 	infoJson, err := json.Marshal(&packageTomlContent)
 	if err != nil {
-		return "", ExecutorPackage{}, status.Error(codes.Internal, fmt.Sprintf("Error marshalling Toml contents: %v", err))
+		return "", ExecutorPackage{}, fmt.Errorf("error marshalling Toml contents: %v", err)
 	}
 	if err = json.Unmarshal(infoJson, &executorPackage); err != nil {
-		return "", ExecutorPackage{}, status.Error(codes.Internal, fmt.Sprintf("Error unmarshalling Toml contents: %v", err))
+		return "", ExecutorPackage{}, fmt.Errorf("error unmarshalling Toml contents: %v", err)
 	}
 	return
 }
