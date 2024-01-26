@@ -142,7 +142,7 @@ func (server *eventInfoServer) Delete(ctx context.Context, identifier *common.Id
 }
 
 func (server *deputyQueryServer) GetPackagesByType(ctx context.Context, query *deputy.GetPackagesQuery) (*deputy.GetPackagesResponse, error) {
-	listCommand := exec.Command("deputy", "list", "-t", query.GetPackageType())
+	listCommand := exec.Command("deputy", "list", "-t", query.GetPackageType(), "-a")
 	output, err := listCommand.CombinedOutput()
 	if err != nil {
 		log.Errorf("Deputy list command failed, %v", err)
