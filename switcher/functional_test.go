@@ -10,7 +10,7 @@ import (
 
 	"github.com/open-cyber-range/vmware-handler/grpc/capability"
 	"github.com/open-cyber-range/vmware-handler/grpc/common"
-	swithc_grpc "github.com/open-cyber-range/vmware-handler/grpc/switch"
+	switch_grpc "github.com/open-cyber-range/vmware-handler/grpc/switch"
 	"github.com/open-cyber-range/vmware-handler/library"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -25,13 +25,13 @@ var testConfiguration = Configuration{
 	Insecure:          true,
 }
 
-func createNodeDeploymentOfTypeSwitch() *swithc_grpc.DeploySwitch {
-	switchDeployment := &swithc_grpc.DeploySwitch{
+func createNodeDeploymentOfTypeSwitch() *switch_grpc.DeploySwitch {
+	switchDeployment := &switch_grpc.DeploySwitch{
 		MetaInfo: &common.MetaInfo{
 			DeploymentName: library.CreateRandomString(10),
 			ExerciseName:   library.CreateRandomString(10),
 		},
-		Switch: &swithc_grpc.Switch{
+		Switch: &switch_grpc.Switch{
 			Name: fmt.Sprintf("test-virtual-switch-%v", library.CreateRandomString(5)),
 		},
 	}
@@ -84,14 +84,14 @@ func TestSegmentCreationAndDeletion(t *testing.T) {
 	serverConfiguration := startServer(time.Second * 3)
 	apiClient := createAPIClient(&serverConfiguration)
 	var nsxtNodeServer = switchServer{
-		UnimplementedSwitchServiceServer: swithc_grpc.UnimplementedSwitchServiceServer{},
+		UnimplementedSwitchServiceServer: switch_grpc.UnimplementedSwitchServiceServer{},
 		APIClient:                        apiClient,
 		Configuration:                    serverConfiguration,
 	}
 	var deploySwitch = DeploySwitch{
-		DeploymentMessge: switchDeployment,
-		APIClient:        apiClient,
-		Configuration:    serverConfiguration,
+		DeploymentMessage: switchDeployment,
+		APIClient:         apiClient,
+		Configuration:     serverConfiguration,
 	}
 	segment, err := deploySwitch.createNetworkSegment(ctx)
 	if err != nil {

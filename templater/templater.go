@@ -105,8 +105,8 @@ type VirtualMachine struct {
 	Accounts        []library.Account `json:"accounts,omitempty"`
 }
 
-func getVirtualMachineInfo(packegeDataMap *map[string]interface{}) (virtualMachine VirtualMachine, err error) {
-	virtualMachineInfo := (*packegeDataMap)["virtual-machine"]
+func getVirtualMachineInfo(packageDataMap *map[string]interface{}) (virtualMachine VirtualMachine, err error) {
+	virtualMachineInfo := (*packageDataMap)["virtual-machine"]
 	infoJson, _ := json.Marshal(virtualMachineInfo)
 	json.Unmarshal(infoJson, &virtualMachine)
 
@@ -138,7 +138,7 @@ func (templateDeployment *TemplateDeployment) createTemplate(ctx context.Context
 	}
 	_, err = templateDeployment.Client.GetTemplateByName(templateDeployment.templateName)
 	if err != nil {
-		return status.Error(codes.Internal, fmt.Sprintf("Failed to get deployed template (%v)", err))
+		return fmt.Errorf("failed to get deployed template (%v)", err)
 	}
 
 	return

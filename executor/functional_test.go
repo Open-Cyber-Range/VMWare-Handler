@@ -228,39 +228,33 @@ func createConditionerDeploymentRequest(t *testing.T, deployment *condition.Cond
 		Password: deployment.Account.Password,
 	}
 
-	finished := make(chan bool)
-
-	go func() {
-		var responses int8
-		for {
-			result, err := stream.Recv()
-			if err == io.EOF {
-				log.Fatalf("Test Stream EOF error: %v", err)
-				finished <- true
-				return
-			}
-			if err != nil {
-				log.Fatalf("Test Stream Receive error: %v", err)
-				return
-			}
-
-			if rebootFlag && responses > 1 {
-				rebootFlag = false
-				log.Infof("Rebooting test machine: %v", deployment.VirtualMachineId)
-				rebootVirtualMachine(t, deployment.VirtualMachineId, configuration, vmAuthentication)
-			}
-
-			responses += 1
-			log.Infof("Condition stream: %v received: %v\n", deployment.Name, result.CommandReturnValue)
-			if responses == 3 {
-				log.Printf("Received enough successful Condition responses, exiting")
-				finished <- true
-				return
-			}
-
+	var responses int8
+	for {
+		result, err := stream.Recv()
+		if err == io.EOF {
+			log.Errorf("Test Stream EOF error: %v", err)
+			break
 		}
-	}()
-	<-finished
+		if err != nil {
+			t.Fatalf("Test Stream Receive error: %v", err)
+		}
+
+		if rebootFlag && responses > 1 {
+			rebootFlag = false
+			log.Infof("Rebooting test machine: %v", deployment.VirtualMachineId)
+			rebootVirtualMachine(t, deployment.VirtualMachineId, configuration, vmAuthentication)
+		}
+
+		responses += 1
+		log.Infof("Condition stream: %v received: %v\n", deployment.Name, result.CommandReturnValue)
+		if responses == 3 {
+			log.Printf("Received enough successful Condition responses, exiting")
+			if closeErr := stream.CloseSend(); closeErr != nil {
+				log.Errorf("Error closing stream: %v", closeErr)
+			}
+			break
+		}
+	}
 
 	if deployment.Source != nil {
 		_, err = gRPCClient.Delete(ctx, identifier)

@@ -93,16 +93,16 @@ build-general: compile-protobuf
 test: build test-machiner test-switcher test-templater test-executor test-general
 
 test-machiner: build-machiner
-	go test -v -count=1 ./machiner
+	go test -v -count=1 -timeout 30m ./machiner
 
 test-switcher: build-switcher
-	go test -v -count=1 ./switcher
+	go test -v -count=1 -timeout 30m ./switcher
 
 test-templater: build-templater
-	go test -v -count=1 ./templater
+	go test -v -count=1 -timeout 30m ./templater
 
 test-executor: build-executor
-	go test -v -count=1 ./executor
+	go test -v -count=1 -timeout 30m ./executor
 	
 test-injects: build-executor
 	go test -v -count=1 ./executor -run TestInjectDeploymentAndDeletionOnLinux

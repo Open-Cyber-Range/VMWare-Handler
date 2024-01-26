@@ -94,14 +94,14 @@ func (deployment *Deployment) create() (err error) {
 		vmConfiguration.MemoryMB = ramBytesAsMegabytes
 	}
 
-	cloneSpesifcation := types.VirtualMachineCloneSpec{
+	cloneSpecification := types.VirtualMachineCloneSpec{
 		PowerOn: true,
 		Config:  &vmConfiguration,
 		Location: types.VirtualMachineRelocateSpec{
 			Pool: &resourcePoolReference,
 		},
 	}
-	task, err := template.Clone(context.Background(), deploymentFolder, deployment.VirtualMachine.Name, cloneSpesifcation)
+	task, err := template.Clone(context.Background(), deploymentFolder, deployment.VirtualMachine.Name, cloneSpecification)
 	if err != nil {
 		return
 	}

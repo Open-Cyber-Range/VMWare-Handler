@@ -16,6 +16,8 @@ import (
 	"github.com/open-cyber-range/vmware-handler/library"
 	log "github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -41,23 +43,23 @@ func (server *eventInfoServer) Create(ctx context.Context, source *common.Source
 	)
 	if err != nil {
 		log.Errorf("Error getting package metadata: %v", err)
-		return &event.EventCreateResponse{}, err
+		return &event.EventCreateResponse{}, status.Error(codes.Internal, fmt.Sprintf("Error getting package metadata: %v", err))
 	} else if executorPackage.Event.FilePath == "" {
 		log.Errorf("Unexpected Event file path (is empty)")
-		return &event.EventCreateResponse{}, fmt.Errorf("unexpected Event file path (is empty)")
+		return &event.EventCreateResponse{}, status.Error(codes.Internal, "Unexpected Event file path (is empty)")
 	}
 
 	filePath := packagePath + "/" + executorPackage.Event.FilePath
 	htmlPath, checksum, err := library.ConvertMarkdownToHtml(filePath)
 	if err != nil {
 		log.Errorf("Error converting md to HTML: %v", err)
-		return &event.EventCreateResponse{}, err
+		return &event.EventCreateResponse{}, status.Error(codes.Internal, fmt.Sprintf("Error converting md to HTML: %v", err))
 	}
 
 	fileMetadata, err := os.Stat(htmlPath)
 	if err != nil {
 		log.Errorf("Error getting file metadata: %v", err)
-		return &event.EventCreateResponse{}, err
+		return &event.EventCreateResponse{}, status.Error(codes.Internal, fmt.Sprintf("Error getting file metadata: %v", err))
 	}
 
 	log.Infof("Converted md to HTML: %v, %v, %v bytes", htmlPath, checksum, fileMetadata.Size())
@@ -71,7 +73,8 @@ func (server *eventInfoServer) Create(ctx context.Context, source *common.Source
 
 	eventId := uuid.New().String()
 	if err = server.ServerSpecs.Storage.Create(ctx, eventId); err != nil {
-		return nil, err
+		log.Errorf("Error creating package metadata storage: %v", err)
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Error creating package metadata storage: %v", err))
 	}
 
 	return &event.EventCreateResponse{
@@ -87,13 +90,14 @@ func (server *eventInfoServer) Stream(identifier *common.Identifier, stream even
 
 	eventInfoContainer, err := server.ServerSpecs.Storage.Get(ctx, identifier.GetValue())
 	if err != nil {
-		log.Errorf("Error getting file path from storage: %v", err)
-		return err
+		log.Errorf("Error getting package metadata from storage: %v", err)
+		return status.Error(codes.Internal, fmt.Sprintf("Error getting package metadata from storage: %v", err))
 	}
 
 	file, err := os.Open(eventInfoContainer.Path)
 	if err != nil {
-		return err
+		log.Errorf("Error opening event package file: %v", err)
+		return status.Error(codes.Internal, fmt.Sprintf("Error opening event package file: %v", err))
 	}
 	defer file.Close()
 
@@ -105,8 +109,8 @@ func (server *eventInfoServer) Stream(identifier *common.Identifier, stream even
 		readBytes, err = file.Read(chunk)
 		if err != nil {
 			if err != io.EOF {
-				log.Errorf("Error reading chunk: %v", err)
-				return err
+				log.Errorf("Error reading event file chunk: %v", err)
+				return status.Error(codes.Internal, fmt.Sprintf("Error reading event file chunk: %v", err))
 			}
 			break
 		}
@@ -114,8 +118,8 @@ func (server *eventInfoServer) Stream(identifier *common.Identifier, stream even
 		response := &event.EventStreamResponse{Chunk: chunk[:readBytes]}
 
 		if err := stream.Send(response); err != nil {
-			log.Errorf("Error sending chunk: %v", err)
-			return err
+			log.Errorf("Error streaming event chunk: %v", err)
+			return status.Error(codes.Internal, fmt.Sprintf("Error streaming event chunk: %v", err))
 		}
 	}
 	return nil
@@ -127,25 +131,28 @@ func (server *eventInfoServer) Delete(ctx context.Context, identifier *common.Id
 
 	if err := os.Remove(filePath); err != nil {
 		log.Errorf("Error deleting file: %v", err)
-		return &emptypb.Empty{}, err
+		return &emptypb.Empty{}, status.Error(codes.Internal, fmt.Sprintf("Error deleting file: %v", err))
 	}
 
-	server.ServerSpecs.Storage.Delete(ctx, identifier.GetValue())
+	if err := server.ServerSpecs.Storage.Delete(ctx, identifier.GetValue()); err != nil {
+		log.Errorf("Error deleting package metadata from storage: %v", err)
+		return &emptypb.Empty{}, status.Error(codes.Internal, fmt.Sprintf("Error deleting package metadata from storage: %v", err))
+	}
 	return &emptypb.Empty{}, nil
 }
 
 func (server *deputyQueryServer) GetPackagesByType(ctx context.Context, query *deputy.GetPackagesQuery) (*deputy.GetPackagesResponse, error) {
-	listCommand := exec.Command("deputy", "list", "-t", query.GetPackageType())
+	listCommand := exec.Command("deputy", "list", "-t", query.GetPackageType(), "-a")
 	output, err := listCommand.CombinedOutput()
 	if err != nil {
 		log.Errorf("Deputy list command failed, %v", err)
-		return nil, fmt.Errorf("%v (%v)", string(output), err)
+		return nil, status.Error(codes.Internal, fmt.Sprintf("%v (%v)", string(output), err))
 	}
 
 	packageList, err := library.ParseListCommandOutput(output)
 	if err != nil {
 		log.Errorf("Error parsing deputy list command output, %v", err)
-		return nil, err
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Error parsing deputy list command output, %v", err))
 	}
 
 	return &deputy.GetPackagesResponse{
@@ -161,17 +168,17 @@ func (server *deputyQueryServer) GetScenario(ctx context.Context, source *common
 	)
 	if err != nil {
 		log.Errorf("Error getting package metadata: %v", err)
-		return &deputy.GetScenarioResponse{}, err
+		return &deputy.GetScenarioResponse{}, status.Error(codes.Internal, fmt.Sprintf("Error getting package metadata: %v", err))
 	} else if executorPackage.Exercise.FilePath == "" {
 		log.Errorf("Unexpected Exercise file path (is empty)")
-		return &deputy.GetScenarioResponse{}, fmt.Errorf("unexpected Exercise file path (is empty)")
+		return &deputy.GetScenarioResponse{}, status.Error(codes.Internal, "Unexpected Exercise file path (is empty)")
 	}
 
 	filePath := packagePath + "/" + executorPackage.Exercise.FilePath
 	fileContents, err := os.ReadFile(filePath)
 	if err != nil {
-		log.Errorf("Error reading file: %v", err)
-		return &deputy.GetScenarioResponse{}, err
+		log.Errorf("Error reading scenario file: %v", err)
+		return &deputy.GetScenarioResponse{}, status.Error(codes.Internal, fmt.Sprintf("Error reading scenario file: %v", err))
 	}
 
 	return &deputy.GetScenarioResponse{Sdl: string(fileContents)}, nil

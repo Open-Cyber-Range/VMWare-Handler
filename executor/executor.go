@@ -42,10 +42,10 @@ type injectServer struct {
 }
 
 type serverSpecs struct {
-	Client        *govmomi.Client
-	Configuration *library.Configuration
-	Storage       *library.Storage[library.ExecutorContainer]
-	MutexPool     *library.MutexPool
+	Client           *govmomi.Client
+	Configuration    *library.Configuration
+	Storage          *library.Storage[library.ExecutorContainer]
+	MutexDistributor *library.MutexDistributor
 }
 
 type vmWareTarget struct {
@@ -55,12 +55,12 @@ type vmWareTarget struct {
 	Environment   []string
 }
 
-func (server *conditionerServer) createCondition(ctx context.Context, conditionDeployment *condition.Condition, guestManager library.GuestManager) (commandAction string, interval int32, assetFilePaths []string, err error) {
+func (server *conditionerServer) deployConditionToVm(ctx context.Context, conditionDeployment *condition.Condition, guestManager library.GuestManager) (commandAction string, interval int32, assetFilePaths []string, err error) {
 	var isSourceDeployment bool
 
 	if conditionDeployment.Source != nil && conditionDeployment.Command != "" {
 		log.Errorf("Conflicting deployment info - A Condition deployment cannot have both `Command` and `Source`")
-		return "", 0, nil, status.Error(codes.Internal, fmt.Sprintln("Conflicting deployment info - A Condition deployment cannot have both `Command` and `Source`"))
+		return "", 0, nil, fmt.Errorf("conflicting deployment info - A Condition deployment cannot have both `Command` and `Source`")
 	} else if conditionDeployment.Source != nil && conditionDeployment.Command == "" {
 		isSourceDeployment = true
 	}
@@ -85,7 +85,7 @@ func (server *conditionerServer) createCondition(ctx context.Context, conditionD
 		}
 		if err = library.CleanupTempPackage(packagePath); err != nil {
 			log.Errorf("Error during temp Condition package cleanup: %v", err)
-			return "", 0, nil, status.Error(codes.Internal, fmt.Sprintf("Error during temp Condition package cleanup (%v)", err))
+			return "", 0, nil, err
 		}
 	} else {
 		commandAction = conditionDeployment.GetCommand()
@@ -102,30 +102,37 @@ func (server *conditionerServer) Create(ctx context.Context, conditionDeployment
 	}
 	vmwareClient, loginError := library.NewVMWareClient(ctx, server.ServerSpecs.Client, *server.ServerSpecs.Configuration)
 	if loginError != nil {
-		return nil, loginError
+		log.Errorf("Error creating vmwareClient %v", loginError)
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Error creating vmwareClient (%v)", loginError))
 	}
 	guestManager, err := vmwareClient.CreateGuestManagers(ctx, conditionDeployment.GetVirtualMachineId(), vmAuthentication)
 	if err != nil {
-		log.Errorf("Error creating Condition: %v", err)
-		return nil, err
+		log.Errorf("Error creating guest managers: %v", err)
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Error creating guest managers: %v", err))
 	}
 	if err = library.AwaitVMToolsToComeOnline(ctx, guestManager.VirtualMachine, server.ServerSpecs.Configuration.Variables); err != nil {
 		log.Errorf("Error awaiting VMTools to come online: %v", err)
-		return nil, err
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Error awaiting VMTools to come online: %v", err))
 	}
-	mutex, err := server.ServerSpecs.MutexPool.GetMutex(ctx, conditionDeployment.GetVirtualMachineId())
+
+	mutexOptions := library.NewMutexOptions(conditionDeployment.GetVirtualMachineId(), conditionDeployment.Name, int(conditionDeployment.Interval))
+	mutex, err := server.ServerSpecs.MutexDistributor.GetMutex(ctx, mutexOptions)
 	if err != nil {
-		return nil, err
+		log.Errorf("Error getting mutex: %v", err)
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Error getting mutex: %v", err))
 	}
 	if err = mutex.Lock(ctx); err != nil {
-		return nil, err
+		log.Errorf("Error locking mutex: %v", err)
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Error locking mutex: %v", err))
 	}
-	commandAction, interval, assetFilePaths, createErr := server.createCondition(ctx, conditionDeployment, *guestManager)
-	if err := mutex.Unlock(ctx); err != nil {
-		return nil, err
+	commandAction, interval, assetFilePaths, createErr := server.deployConditionToVm(ctx, conditionDeployment, *guestManager)
+	if err := mutex.Unlock(); err != nil {
+		log.Errorf("Error unlocking mutex: %v", err)
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Error unlocking mutex: %v", err))
 	}
 	if createErr != nil {
-		return nil, createErr
+		log.Errorf("Error deploying condition to vm: %v", err)
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Error deploying condition to vm: %v", createErr))
 	}
 	server.ServerSpecs.Storage.Container = library.ExecutorContainer{
 		VMID:        conditionDeployment.GetVirtualMachineId(),
@@ -137,7 +144,8 @@ func (server *conditionerServer) Create(ctx context.Context, conditionDeployment
 	}
 	conditionId := uuid.New().String()
 	if err = server.ServerSpecs.Storage.Create(ctx, conditionId); err != nil {
-		return nil, err
+		log.Errorf("Error creating package metadata storage: %v", err)
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Error creating package metadata storage: %v", err))
 	}
 
 	return &common.Identifier{Value: conditionId}, nil
@@ -147,44 +155,50 @@ func (server *conditionerServer) Stream(identifier *common.Identifier, stream co
 	ctx := context.Background()
 	container, err := server.ServerSpecs.Storage.Get(ctx, identifier.GetValue())
 	if err != nil {
-		return err
+		log.Errorf("Error getting package metadata from storage: %v", err)
+		return status.Error(codes.Internal, fmt.Sprintf("Error getting package metadata from storage: %v", err))
 	}
 
 	vmwareClient, loginError := library.NewVMWareClient(ctx, server.ServerSpecs.Client, *server.ServerSpecs.Configuration)
 	if loginError != nil {
-		return loginError
+		log.Errorf("Error logging into VMWare client: %v", err)
+		return status.Error(codes.Internal, fmt.Sprintf("Error logging into VMWare client: %v", loginError))
 	}
 	guestManager, err := vmwareClient.CreateGuestManagers(ctx, container.VMID, &container.Auth)
 	if err != nil {
-		return err
+		log.Errorf("Error creating guest managers: %v", err)
+		return status.Error(codes.Internal, fmt.Sprintf("Error creating guest managers: %v", err))
 	}
+	mutexOptions := library.NewMutexOptions(container.VMID, identifier.GetValue(), int(container.Interval))
+
 	for {
 		if err = library.AwaitVMToolsToComeOnline(ctx, guestManager.VirtualMachine, server.ServerSpecs.Configuration.Variables); err != nil {
-			return err
+			log.Errorf("Error waiting for VM tools to come online: %v", err)
+			return status.Error(codes.Internal, fmt.Sprintf("Error waiting for VM tools to come online: %v", err))
 		}
-		mutex, err := server.ServerSpecs.MutexPool.GetMutex(ctx, container.VMID)
+		mutex, err := server.ServerSpecs.MutexDistributor.GetMutex(ctx, mutexOptions)
 		if err != nil {
-			return err
+			log.Errorf("Error getting mutex: %v", err)
+			return status.Error(codes.Internal, fmt.Sprintf("Error getting mutex: %v", err))
 		}
 		if err = mutex.Lock(ctx); err != nil {
-			return err
+			log.Errorf("Error locking mutex: %v", err)
+			return status.Error(codes.Internal, fmt.Sprintf("Error locking mutex: %v", err))
 		}
-		defer func() {
-			if err := mutex.Unlock(ctx); err != nil {
-				log.Errorf("Failed to unlock mutex: %v", err)
-			}
-		}()
 
 		stdout, _, executeErr := guestManager.ExecutePackageAction(ctx, container.Command, container.Environment)
-		if err := mutex.Unlock(ctx); err != nil {
-			return err
+		if err := mutex.Unlock(); err != nil {
+			log.Errorf("Error unlocking mutex: %v", err)
+			return status.Error(codes.Internal, fmt.Sprintf("Error unlocking mutex: %v", err))
 		}
 		if executeErr != nil {
-			return executeErr
+			log.Errorf("Error executing condition package action %v", err)
+			return status.Error(codes.Internal, fmt.Sprintf("Error executing condition package action: %v", executeErr))
 		}
 		conditionValue, err := strconv.ParseFloat(stdout, 32)
 		if err != nil {
-			return status.Error(codes.Internal, fmt.Sprintf("Error converting Condition return value to float: %v", err))
+			log.Errorf("Error parsing condition return value %v. Error: %v", stdout, err)
+			return status.Error(codes.Internal, fmt.Sprintf("Error parsing condition return value %v. Error: %v", stdout, err))
 		}
 		log.Tracef("Condition ID '%v' returned '%v'", identifier.GetValue(), conditionValue)
 
@@ -193,10 +207,6 @@ func (server *conditionerServer) Stream(identifier *common.Identifier, stream co
 			CommandReturnValue: float32(conditionValue),
 		}
 
-		if ctx.Err() != nil {
-			log.Errorf("Context canceled before sending stream for Condition ID '%v' due to: %v", identifier.GetValue(), ctx.Err())
-			return status.Error(codes.Internal, fmt.Sprintf("Error sending Condition stream: %v", ctx.Err()))
-		}
 		if err = stream.Send(message); err != nil {
 			log.Errorf("Error sending Condition stream: %v", err)
 			return status.Error(codes.Internal, fmt.Sprintf("Error sending Condition stream: %v", err))
@@ -206,7 +216,13 @@ func (server *conditionerServer) Stream(identifier *common.Identifier, stream co
 }
 
 func (server *conditionerServer) Delete(ctx context.Context, identifier *common.Identifier) (*emptypb.Empty, error) {
-	return uninstallPackage(ctx, server.ServerSpecs, identifier)
+	empty, err := uninstallPackage(ctx, server.ServerSpecs, identifier)
+	if err != nil {
+		log.Errorf("Error deleting condition package: %v", err)
+		return empty, status.Error(codes.Internal, fmt.Sprintf("Error deleting condition: %v", err))
+	}
+
+	return empty, nil
 }
 
 func (server *featurerServer) Create(ctx context.Context, featureDeployment *feature.Feature) (*common.ExecutorResponse, error) {
@@ -219,26 +235,38 @@ func (server *featurerServer) Create(ctx context.Context, featureDeployment *fea
 		VmID:          featureDeployment.GetVirtualMachineId(),
 		Environment:   featureDeployment.GetEnvironment(),
 	}
-	mutex, err := server.ServerSpecs.MutexPool.GetMutex(ctx, featureDeployment.GetVirtualMachineId())
+	mutexOptions := library.NewMutexOptions(featureDeployment.GetVirtualMachineId(), featureDeployment.GetName())
+
+	mutex, err := server.ServerSpecs.MutexDistributor.GetMutex(ctx, mutexOptions)
 	if err != nil {
-		return nil, err
+		log.Errorf("Error getting mutex: %v", err)
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Error getting mutex: %v", err))
 	}
 	if err = mutex.Lock(ctx); err != nil {
-		return nil, err
+		log.Errorf("Error locking mutex: %v", err)
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Error locking mutex: %v", err))
 	}
 	executorResponse, installErr := installPackage(ctx, &vmWareTarget, server.ServerSpecs)
-	if err := mutex.Unlock(ctx); err != nil {
-		return nil, err
+	if err := mutex.Unlock(); err != nil {
+		log.Errorf("Error unlocking mutex: %v", err)
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Error unlocking mutex: %v", err))
 	}
 	if installErr != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Error during Feature Create: %v", installErr))
+		log.Errorf("Error installing feature package on VM: %v", err)
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Error installing feature package on VM: %v", installErr))
 	}
 
 	return executorResponse, nil
 }
 
 func (server *featurerServer) Delete(ctx context.Context, identifier *common.Identifier) (*emptypb.Empty, error) {
-	return uninstallPackage(ctx, server.ServerSpecs, identifier)
+	empty, err := uninstallPackage(ctx, server.ServerSpecs, identifier)
+	if err != nil {
+		log.Errorf("Error deleting feature: %v", err)
+		return empty, status.Error(codes.Internal, fmt.Sprintf("Error deleting feature: %v", err))
+	}
+
+	return empty, nil
 }
 
 func (server *injectServer) Create(ctx context.Context, injectDeployment *inject.Inject) (*common.ExecutorResponse, error) {
@@ -251,26 +279,38 @@ func (server *injectServer) Create(ctx context.Context, injectDeployment *inject
 		PackageSource: injectDeployment.GetSource(),
 		Environment:   injectDeployment.GetEnvironment(),
 	}
-	mutex, err := server.ServerSpecs.MutexPool.GetMutex(ctx, injectDeployment.GetVirtualMachineId())
+	mutexOptions := library.NewMutexOptions(injectDeployment.VirtualMachineId, injectDeployment.Name)
+
+	mutex, err := server.ServerSpecs.MutexDistributor.GetMutex(ctx, mutexOptions)
 	if err != nil {
-		return nil, err
+		log.Errorf("Error getting mutex: %v", err)
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Error getting mutex: %v", err))
 	}
 	if err = mutex.Lock(ctx); err != nil {
-		return nil, err
+		log.Errorf("Error locking mutex: %v", err)
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Error locking mutex: %v", err))
 	}
 	executorResponse, installErr := installPackage(ctx, &vmWareTarget, server.ServerSpecs)
-	if err := mutex.Unlock(ctx); err != nil {
-		return nil, err
+	if err := mutex.Unlock(); err != nil {
+		log.Errorf("Error unlocking mutex: %v", err)
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Error unlocking mutex: %v", err))
 	}
 	if installErr != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Error during Inject Create: %v", installErr))
+		log.Errorf("Error installing inject package on vm: %v", err)
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Error installing inject package on vm: %v", installErr))
 	}
 
 	return executorResponse, nil
 }
 
 func (server *injectServer) Delete(ctx context.Context, identifier *common.Identifier) (*emptypb.Empty, error) {
-	return uninstallPackage(ctx, server.ServerSpecs, identifier)
+	empty, err := uninstallPackage(ctx, server.ServerSpecs, identifier)
+	if err != nil {
+		log.Errorf("Error deleting inject: %v", err)
+		return empty, status.Error(codes.Internal, fmt.Sprintf("Error deleting inject: %v", err))
+	}
+
+	return empty, nil
 }
 
 func installPackage(ctx context.Context, vmWareTarget *vmWareTarget, serverSpecs *serverSpecs) (*common.ExecutorResponse, error) {
@@ -348,7 +388,9 @@ func uninstallPackage(ctx context.Context, serverSpecs *serverSpecs, identifier 
 		return nil, err
 	}
 
-	mutex, err := serverSpecs.MutexPool.GetMutex(ctx, executorContainer.VMID)
+	mutexOptions := library.NewMutexOptions(executorContainer.VMID, identifier.GetValue(), int(executorContainer.Interval))
+
+	mutex, err := serverSpecs.MutexDistributor.GetMutex(ctx, mutexOptions)
 	if err != nil {
 		return new(emptypb.Empty), err
 	}
@@ -356,7 +398,7 @@ func uninstallPackage(ctx context.Context, serverSpecs *serverSpecs, identifier 
 		return new(emptypb.Empty), err
 	}
 	deleteErr := vmwareClient.DeleteUploadedFiles(ctx, &executorContainer)
-	if err := mutex.Unlock(ctx); err != nil {
+	if err := mutex.Unlock(); err != nil {
 		return new(emptypb.Empty), err
 	}
 	if deleteErr != nil {
@@ -385,16 +427,16 @@ func RealMain(configuration *library.Configuration) {
 	})
 	redisPool := goredis.NewPool(redisClient)
 
-	mutexPool, err := library.NewMutexPool(ctx, configuration.Hostname, *redsync.New(redisPool), *redisClient, configuration.Variables)
+	mutexDistributor, err := library.NewMutexDistributor(ctx, configuration.Hostname, *redsync.New(redisPool), *redisClient, configuration.Variables.MaxConnections)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	serverSpecs := serverSpecs{
-		Client:        govmomiClient,
-		Configuration: configuration,
-		Storage:       &storage,
-		MutexPool:     &mutexPool,
+		Client:           govmomiClient,
+		Configuration:    configuration,
+		Storage:          &storage,
+		MutexDistributor: &mutexDistributor,
 	}
 	feature.RegisterFeatureServiceServer(grpcServer, &featurerServer{ServerSpecs: &serverSpecs})
 	condition.RegisterConditionServiceServer(grpcServer, &conditionerServer{ServerSpecs: &serverSpecs})
@@ -410,7 +452,7 @@ func RealMain(configuration *library.Configuration) {
 
 	log.Printf("Executor listening at %v", listeningAddress.Addr())
 	log.Printf("Version: %v", library.Version)
-	log.Printf("Max Connections: %v", mutexPool.Configuration.MaxConnections)
+	log.Printf("Max Connections: %v", mutexDistributor.MaxConnections)
 
 	if bindError := grpcServer.Serve(listeningAddress); bindError != nil {
 		log.Fatalf("Failed to serve: %v", bindError)

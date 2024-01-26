@@ -1,3 +1,10 @@
+ranger-vmware-handlers (5.3.0) stretch; urgency=medium
+
+  * Improves Executor queueing
+  * Fixes General Handler GetPackagesByType endpoint to return all versions of packages
+
+  -- Rait Rotšan <developers@cr14.ee>  Fri, 26 Jan 2024 16:32:00 +0200
+
 ranger-vmware-handlers (5.2.0) stretch; urgency=medium
 
   * Separates executor vm_log to stdout and stderr
