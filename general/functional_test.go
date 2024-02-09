@@ -122,6 +122,39 @@ func TestCreateEventInfo(t *testing.T) {
 
 }
 
+func TestDeleteEventInfo(t *testing.T) {
+	configuration := startServer(3 * time.Second)
+	gRPCClient := createEventClient(t, configuration.ServerAddress)
+
+	request := &common.Source{
+		Name:    "handler-test-event-info",
+		Version: "*",
+	}
+
+	eventInfoResponse, err := createEventCreateRequest(t, gRPCClient, request, "event-info-package")
+	if err != nil {
+		t.Fatalf("Failed to create event info: %v", err)
+	}
+
+	request2 := &common.Source{
+		Name:    "handler-test-event-info2",
+		Version: "*",
+	}
+	eventInfoResponse2, err := createEventCreateRequest(t, gRPCClient, request2, "event-info-package2")
+	if err != nil {
+		t.Fatalf("Failed to create event info: %v", err)
+	}
+
+	if err = sendEventDeleteRequest(t, gRPCClient, &common.Identifier{Value: eventInfoResponse.Id}); err != nil {
+		t.Fatalf("Failed to delete event: %v", err)
+	}
+
+	if err = sendEventDeleteRequest(t, gRPCClient, &common.Identifier{Value: eventInfoResponse2.Id}); err != nil {
+		t.Fatalf("Failed to delete event: %v", err)
+	}
+
+}
+
 func TestStreamEventInfo(t *testing.T) {
 	ctx := context.Background()
 	configuration := startServer(3 * time.Second)

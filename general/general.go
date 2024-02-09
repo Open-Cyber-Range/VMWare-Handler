@@ -122,10 +122,15 @@ func (server *deputyQueryServer) Stream(identifier *common.Identifier, stream de
 }
 
 func (server *deputyQueryServer) Delete(ctx context.Context, identifier *common.Identifier) (*emptypb.Empty, error) {
-	filePath := server.ServerSpecs.Storage.Container.Path
-	log.Debugf("Deleting package file: %v", filePath)
 
-	if err := os.Remove(filePath); err != nil {
+	deputyInfoContainer, err := server.ServerSpecs.Storage.Get(ctx, identifier.GetValue())
+	if err != nil {
+		return &emptypb.Empty{}, status.Error(codes.Internal, fmt.Sprintf("Error getting eventInfoContainer: %v", err))
+	}
+
+	log.Debugf("Deleting package file: %v", deputyInfoContainer.Path)
+
+	if err := os.Remove(deputyInfoContainer.Path); err != nil {
 		log.Errorf("Error deleting file: %v", err)
 		return &emptypb.Empty{}, status.Error(codes.Internal, fmt.Sprintf("Error deleting file: %v", err))
 	}

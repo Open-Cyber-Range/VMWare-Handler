@@ -1,0 +1,13 @@
+[package]
+name = "handler-test-event-info2"
+description = "A test package for the General handler"
+version = "0.2.0"
+authors = ["Rait Rotšan rait.rotsan@cr14.ee"]
+license = "MIT"
+readme = "readme.md"
+
+[content]
+type = "event"
+
+[event]
+file_path = "src/eventInfo.md"
