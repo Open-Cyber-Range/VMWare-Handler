@@ -38,6 +38,10 @@ type Exercise struct {
 	FilePath string `json:"file_path"`
 }
 
+type Banner struct {
+	FilePath string `json:"file_path"`
+}
+
 type PackageBody struct {
 	Name        string     `json:"name"`
 	Description string     `json:"description"`
@@ -54,6 +58,7 @@ type ExecutorPackage struct {
 	Inject      Inject      `json:"inject,omitempty"`
 	Event       Event       `json:"event,omitempty"`
 	Exercise    Exercise    `json:"exercise,omitempty"`
+	Banner      Banner      `json:"banner,omitempty"`
 }
 
 func (executorPackage ExecutorPackage) GetAction() (action string) {

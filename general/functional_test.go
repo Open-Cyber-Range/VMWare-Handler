@@ -79,6 +79,15 @@ func sendEventDeleteRequest(t *testing.T, gRPCClient event.EventInfoServiceClien
 	return nil
 }
 
+func sendBannerDeleteRequest(t *testing.T, gRPCClient deputy.DeputyQueryServiceClient, identifier *common.Identifier) error {
+	ctx := context.Background()
+	_, err := gRPCClient.Delete(ctx, &common.Identifier{Value: identifier.GetValue()})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func createEventCreateRequest(t *testing.T, gRPCClient event.EventInfoServiceClient, eventRequest *common.Source, packageName string) (eventInfoResponse *event.EventCreateResponse, err error) {
 	token := os.Getenv("TEST_DEPUTY_TOKEN")
 	if err := library.PublishTestPackage(packageName, token); err != nil {
@@ -87,6 +96,22 @@ func createEventCreateRequest(t *testing.T, gRPCClient event.EventInfoServiceCli
 
 	eventInfoResponse, err = gRPCClient.Create(context.Background(), eventRequest)
 	if err != nil {
+		t.Fatalf("Test Create request error: %v", err)
+	}
+
+	return
+}
+
+func createBannerCreateRequest(t *testing.T, gRPCClient deputy.DeputyQueryServiceClient, bannerRequest *common.Source, packageName string) (bannerResponse *deputy.BannerCreateResponse, err error) {
+	token := os.Getenv("TEST_DEPUTY_TOKEN")
+	if err := library.PublishTestPackage(packageName, token); err != nil {
+		t.Fatalf("Failed to upload test Banner package: %v", err)
+	}
+	log.Infof("request was: %v", bannerRequest)
+
+	bannerResponse, err = gRPCClient.Create(context.Background(), bannerRequest)
+	if err != nil {
+		log.Infof("response is: %v", bannerResponse)
 		t.Fatalf("Test Create request error: %v", err)
 	}
 
@@ -214,4 +239,60 @@ func TestGetScenario(t *testing.T) {
 		t.Fatalf("GetScenario: Received empty response")
 	}
 
+}
+
+func TestStreamBanner(t *testing.T) {
+	ctx := context.Background()
+	configuration := startServer(3 * time.Second)
+	gRPCClient := createDeputyQueryClient(t, configuration.ServerAddress)
+
+	request := &common.Source{
+		Name:    "handler-test-banner",
+		Version: "*",
+	}
+
+	bannerResponse, err := createBannerCreateRequest(t, gRPCClient, request, request.Name)
+	if err != nil {
+		t.Fatalf("Failed to create banner: %v", err)
+	}
+
+	stream, err := gRPCClient.Stream(ctx, &common.Identifier{Value: bannerResponse.Id})
+	if err != nil {
+		t.Fatalf("Test Stream request error: %v", err)
+	}
+
+	log.Infof("Received bannerResponse: %v", bannerResponse)
+
+	receivedFilePath := "/tmp" + "/" + bannerResponse.GetFilename()
+
+	file, err := os.Create(receivedFilePath)
+	if err != nil {
+		t.Fatalf("Failed to create file: %v", err)
+	}
+	defer file.Close()
+
+	for {
+		chunkResponse, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			log.Errorf("err receiving chunk: %v", err)
+			break
+		}
+		file.Write(chunkResponse.Chunk)
+	}
+
+	receivedFileChecksum, err := library.GetSha256Checksum(receivedFilePath)
+	if err != nil {
+		t.Fatalf("Failed to get checksum of received file: %v", err)
+	}
+
+	if receivedFileChecksum != bannerResponse.Checksum {
+		t.Fatalf("Received file checksum %v does not match expected checksum %v ", receivedFileChecksum, bannerResponse.Checksum)
+	}
+
+	if err = sendBannerDeleteRequest(t, gRPCClient, &common.Identifier{Value: bannerResponse.Id}); err != nil {
+		t.Fatalf("Failed to delete event: %v", err)
+	}
 }
