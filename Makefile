@@ -53,7 +53,6 @@ compile-protobuf:
 	--go_opt=Msrc/feature.proto=github.com/open-cyber-range/vmware-handler/grpc/feature \
 	--go_opt=Msrc/condition.proto=github.com/open-cyber-range/vmware-handler/grpc/condition \
 	--go_opt=Msrc/inject.proto=github.com/open-cyber-range/vmware-handler/grpc/inject \
-	--go_opt=Msrc/event.proto=github.com/open-cyber-range/vmware-handler/grpc/event \
 	--go_opt=Msrc/deputy.proto=github.com/open-cyber-range/vmware-handler/grpc/deputy \
 	--go-grpc_opt=Msrc/common.proto=github.com/open-cyber-range/vmware-handler/grpc/common \
 	--go-grpc_opt=Msrc/template.proto=github.com/open-cyber-range/vmware-handler/grpc/template \
@@ -63,11 +62,10 @@ compile-protobuf:
 	--go-grpc_opt=Msrc/feature.proto=github.com/open-cyber-range/vmware-handler/grpc/feature  \
 	--go-grpc_opt=Msrc/condition.proto=github.com/open-cyber-range/vmware-handler/grpc/condition  \
 	--go-grpc_opt=Msrc/inject.proto=github.com/open-cyber-range/vmware-handler/grpc/inject  \
-	--go-grpc_opt=Msrc/event.proto=github.com/open-cyber-range/vmware-handler/grpc/event  \
 	--go-grpc_opt=Msrc/deputy.proto=github.com/open-cyber-range/vmware-handler/grpc/deputy  \
 	--go_opt=module=github.com/open-cyber-range/vmware-handler/grpc \
 	--go-grpc_opt=module=github.com/open-cyber-range/vmware-handler/grpc \
-	--proto_path=grpc/proto src/virtual-machine.proto src/switch.proto src/common.proto src/capability.proto src/template.proto src/feature.proto src/condition.proto src/inject.proto src/event.proto src/deputy.proto
+	--proto_path=grpc/proto src/virtual-machine.proto src/switch.proto src/common.proto src/capability.proto src/template.proto src/feature.proto src/condition.proto src/inject.proto src/deputy.proto
 
 generate-nsx-t-openapi:
 	java -Dapis=Segments,Connectivity -Dmodels -DsupportingFiles -jar /var/opt/swagger/swagger-codegen-cli.jar generate -DpackageName=nsx_t_openapi -DmodelTests=false -DapiTests=false -DapiDocs=false -DmodelDocs=false -D io.swagger.parser.util.RemoteUrl.trustAll=true -i extra/nsx_policy_api.yaml -l go -o nsx_t_openapi &&\

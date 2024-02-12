@@ -12,7 +12,6 @@ import (
 	"github.com/open-cyber-range/vmware-handler/grpc/capability"
 	"github.com/open-cyber-range/vmware-handler/grpc/common"
 	"github.com/open-cyber-range/vmware-handler/grpc/deputy"
-	"github.com/open-cyber-range/vmware-handler/grpc/event"
 	"github.com/open-cyber-range/vmware-handler/library"
 	log "github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
@@ -21,11 +20,6 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-type eventInfoServer struct {
-	event.UnimplementedEventInfoServiceServer
-	ServerSpecs *serverSpecs
-}
-
 type deputyQueryServer struct {
 	deputy.UnimplementedDeputyQueryServiceServer
 	ServerSpecs *serverSpecs
@@ -33,71 +27,73 @@ type deputyQueryServer struct {
 
 type serverSpecs struct {
 	Configuration *library.Configuration
-	Storage       *library.Storage[library.EventInfoContainer]
+	Storage       *library.Storage[library.PackageContainer]
 }
 
-func (server *eventInfoServer) Create(ctx context.Context, source *common.Source) (*event.EventCreateResponse, error) {
+func (server *deputyQueryServer) Create(ctx context.Context, source *common.Source) (*deputy.DeputyCreateResponse, error) {
 	packagePath, executorPackage, err := library.GetPackageMetadata(
 		source.GetName(),
 		source.GetVersion(),
 	)
 	if err != nil {
 		log.Errorf("Error getting package metadata: %v", err)
-		return &event.EventCreateResponse{}, status.Error(codes.Internal, fmt.Sprintf("Error getting package metadata: %v", err))
-	} else if executorPackage.Event.FilePath == "" {
-		log.Errorf("Unexpected Event file path (is empty)")
-		return &event.EventCreateResponse{}, status.Error(codes.Internal, "Unexpected Event file path (is empty)")
+		return &deputy.DeputyCreateResponse{}, status.Error(codes.Internal, fmt.Sprintf("Error getting package metadata: %v", err))
+	}
+	filename := executorPackage.GetFilename()
+	if filename == "" {
+		log.Errorf("Unexpected package file path (is empty)")
+		return &deputy.DeputyCreateResponse{}, status.Error(codes.Internal, "Unexpected package file path (is empty)")
 	}
 
-	filePath := packagePath + "/" + executorPackage.Event.FilePath
+	filePath := packagePath + "/" + filename
 	htmlPath, checksum, err := library.ConvertMarkdownToHtml(filePath)
 	if err != nil {
 		log.Errorf("Error converting md to HTML: %v", err)
-		return &event.EventCreateResponse{}, status.Error(codes.Internal, fmt.Sprintf("Error converting md to HTML: %v", err))
+		return &deputy.DeputyCreateResponse{}, status.Error(codes.Internal, fmt.Sprintf("Error converting md to HTML: %v", err))
 	}
 
 	fileMetadata, err := os.Stat(htmlPath)
 	if err != nil {
 		log.Errorf("Error getting file metadata: %v", err)
-		return &event.EventCreateResponse{}, status.Error(codes.Internal, fmt.Sprintf("Error getting file metadata: %v", err))
+		return &deputy.DeputyCreateResponse{}, status.Error(codes.Internal, fmt.Sprintf("Error getting file metadata: %v", err))
 	}
 
 	log.Infof("Converted md to HTML: %v, %v, %v bytes", htmlPath, checksum, fileMetadata.Size())
 
-	server.ServerSpecs.Storage.Container = library.EventInfoContainer{
+	server.ServerSpecs.Storage.Container = library.PackageContainer{
 		Path:     htmlPath,
 		Name:     fileMetadata.Name(),
 		Size:     fileMetadata.Size(),
 		Checksum: checksum,
 	}
 
-	eventId := uuid.New().String()
-	if err = server.ServerSpecs.Storage.Create(ctx, eventId); err != nil {
+	packageId := uuid.New().String()
+	if err = server.ServerSpecs.Storage.Create(ctx, packageId); err != nil {
 		log.Errorf("Error creating package metadata storage: %v", err)
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Error creating package metadata storage: %v", err))
 	}
 
-	return &event.EventCreateResponse{
-		Id:       eventId,
+	return &deputy.DeputyCreateResponse{
+		Id:       packageId,
 		Checksum: checksum,
 		Filename: fileMetadata.Name(),
 		Size:     fileMetadata.Size(),
 	}, nil
 }
 
-func (server *eventInfoServer) Stream(identifier *common.Identifier, stream event.EventInfoService_StreamServer) error {
+func (server *deputyQueryServer) Stream(identifier *common.Identifier, stream deputy.DeputyQueryService_StreamServer) error {
 	ctx := context.Background()
 
-	eventInfoContainer, err := server.ServerSpecs.Storage.Get(ctx, identifier.GetValue())
+	packageContainer, err := server.ServerSpecs.Storage.Get(ctx, identifier.GetValue())
 	if err != nil {
 		log.Errorf("Error getting package metadata from storage: %v", err)
 		return status.Error(codes.Internal, fmt.Sprintf("Error getting package metadata from storage: %v", err))
 	}
 
-	file, err := os.Open(eventInfoContainer.Path)
+	file, err := os.Open(packageContainer.Path)
 	if err != nil {
-		log.Errorf("Error opening event package file: %v", err)
-		return status.Error(codes.Internal, fmt.Sprintf("Error opening event package file: %v", err))
+		log.Errorf("Error opening package file: %v", err)
+		return status.Error(codes.Internal, fmt.Sprintf("Error opening package file: %v", err))
 	}
 	defer file.Close()
 
@@ -109,27 +105,32 @@ func (server *eventInfoServer) Stream(identifier *common.Identifier, stream even
 		readBytes, err = file.Read(chunk)
 		if err != nil {
 			if err != io.EOF {
-				log.Errorf("Error reading event file chunk: %v", err)
-				return status.Error(codes.Internal, fmt.Sprintf("Error reading event file chunk: %v", err))
+				log.Errorf("Error reading package file chunk: %v", err)
+				return status.Error(codes.Internal, fmt.Sprintf("Error reading package file chunk: %v", err))
 			}
 			break
 		}
 
-		response := &event.EventStreamResponse{Chunk: chunk[:readBytes]}
+		response := &deputy.DeputyStreamResponse{Chunk: chunk[:readBytes]}
 
 		if err := stream.Send(response); err != nil {
-			log.Errorf("Error streaming event chunk: %v", err)
-			return status.Error(codes.Internal, fmt.Sprintf("Error streaming event chunk: %v", err))
+			log.Errorf("Error streaming package chunk: %v", err)
+			return status.Error(codes.Internal, fmt.Sprintf("Error streaming package chunk: %v", err))
 		}
 	}
 	return nil
 }
 
-func (server *eventInfoServer) Delete(ctx context.Context, identifier *common.Identifier) (*emptypb.Empty, error) {
-	filePath := server.ServerSpecs.Storage.Container.Path
-	log.Debugf("Deleting EventInfo file: %v", filePath)
+func (server *deputyQueryServer) Delete(ctx context.Context, identifier *common.Identifier) (*emptypb.Empty, error) {
 
-	if err := os.Remove(filePath); err != nil {
+	deputyInfoContainer, err := server.ServerSpecs.Storage.Get(ctx, identifier.GetValue())
+	if err != nil {
+		return &emptypb.Empty{}, status.Error(codes.Internal, fmt.Sprintf("Error getting deputyInfoContainer: %v", err))
+	}
+
+	log.Debugf("Deleting package file: %v", deputyInfoContainer.Path)
+
+	if err := os.Remove(deputyInfoContainer.Path); err != nil {
 		log.Errorf("Error deleting file: %v", err)
 		return &emptypb.Empty{}, status.Error(codes.Internal, fmt.Sprintf("Error deleting file: %v", err))
 	}
@@ -190,14 +191,13 @@ func RealMain(configuration *library.Configuration) {
 		log.Fatalf("Failed to listen: %v", addressError)
 	}
 
-	storage := library.NewStorage[library.EventInfoContainer](configuration.RedisAddress, configuration.RedisPassword)
+	storage := library.NewStorage[library.PackageContainer](configuration.RedisAddress, configuration.RedisPassword)
 	grpcServer := grpc.NewServer()
 
 	serverSpecs := serverSpecs{
 		Configuration: configuration,
 		Storage:       &storage,
 	}
-	event.RegisterEventInfoServiceServer(grpcServer, &eventInfoServer{ServerSpecs: &serverSpecs})
 	deputy.RegisterDeputyQueryServiceServer(grpcServer, &deputyQueryServer{ServerSpecs: &serverSpecs})
 
 	capabilityServer := library.NewCapabilityServer([]capability.Capabilities_DeployerType{
