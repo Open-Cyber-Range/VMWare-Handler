@@ -124,7 +124,7 @@ func TestCreateEventInfo(t *testing.T) {
 
 func TestDeleteEventInfo(t *testing.T) {
 	configuration := startServer(3 * time.Second)
-	gRPCClient := createEventClient(t, configuration.ServerAddress)
+	gRPCClient := createDeputyQueryClient(t, configuration.ServerAddress)
 
 	request := &common.Source{
 		Name:    "handler-test-event-info",
