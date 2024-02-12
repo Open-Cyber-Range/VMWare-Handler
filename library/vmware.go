@@ -139,6 +139,14 @@ func NewVMWareClient(ctx context.Context, client *govmomi.Client, configuration 
 		}
 	}
 
+	var mgr mo.SessionManager
+
+	err := mo.RetrieveProperties(context.Background(), client, client.ServiceContent.PropertyCollector, *client.ServiceContent.SessionManager, &mgr)
+	if err != nil {
+        log.Printf("Failed to connect to VMWare: %v", err)
+        return VMWareClient{}, err
+    }
+
 	return VMWareClient{
 		Client:        client,
 		templatePath:  configuration.TemplateFolderPath,
