@@ -18,7 +18,7 @@ type ExecutorContainer struct {
 	Environment []string
 }
 
-type EventInfoContainer struct {
+type PackageContainer struct {
 	Path     string
 	Name     string
 	Size     int64

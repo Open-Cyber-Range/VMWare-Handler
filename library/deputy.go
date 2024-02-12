@@ -74,6 +74,19 @@ func (executorPackage ExecutorPackage) GetAction() (action string) {
 	}
 }
 
+func (executorPackage ExecutorPackage) GetFilename() (filename string) {
+	switch parcel := executorPackage; {
+	case parcel.Banner.FilePath != "":
+		return executorPackage.Banner.FilePath
+	case parcel.Event.FilePath != "":
+		return executorPackage.Event.FilePath
+	case parcel.Exercise.FilePath != "":
+		return executorPackage.Exercise.FilePath
+	default:
+		return
+	}
+}
+
 func LoginToDeputy(token string) (err error) {
 	loginCommand := exec.Command("deputy", "login", "-T", token)
 	output, err := loginCommand.CombinedOutput()

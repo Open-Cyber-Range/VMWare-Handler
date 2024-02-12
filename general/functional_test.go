@@ -11,7 +11,6 @@ import (
 
 	"github.com/open-cyber-range/vmware-handler/grpc/common"
 	"github.com/open-cyber-range/vmware-handler/grpc/deputy"
-	"github.com/open-cyber-range/vmware-handler/grpc/event"
 	"github.com/open-cyber-range/vmware-handler/library"
 	log "github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
@@ -42,20 +41,6 @@ func startServer(timeout time.Duration) (configuration library.Configuration) {
 	return configuration
 }
 
-func createEventClient(t *testing.T, serverPath string) event.EventInfoServiceClient {
-	connection, connectionError := grpc.Dial(serverPath, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if connectionError != nil {
-		t.Fatalf("Failed to connect to grpc server: %v", connectionError)
-	}
-	t.Cleanup(func() {
-		connectionError := connection.Close()
-		if connectionError != nil {
-			t.Fatalf("Failed to close grpc connection: %v", connectionError)
-		}
-	})
-	return event.NewEventInfoServiceClient(connection)
-}
-
 func createDeputyQueryClient(t *testing.T, serverPath string) deputy.DeputyQueryServiceClient {
 	connection, connectionError := grpc.Dial(serverPath, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if connectionError != nil {
@@ -70,7 +55,7 @@ func createDeputyQueryClient(t *testing.T, serverPath string) deputy.DeputyQuery
 	return deputy.NewDeputyQueryServiceClient(connection)
 }
 
-func sendEventDeleteRequest(t *testing.T, gRPCClient event.EventInfoServiceClient, identifier *common.Identifier) error {
+func sendEventDeleteRequest(t *testing.T, gRPCClient deputy.DeputyQueryServiceClient, identifier *common.Identifier) error {
 	ctx := context.Background()
 	_, err := gRPCClient.Delete(ctx, &common.Identifier{Value: identifier.GetValue()})
 	if err != nil {
@@ -88,7 +73,7 @@ func sendBannerDeleteRequest(t *testing.T, gRPCClient deputy.DeputyQueryServiceC
 	return nil
 }
 
-func createEventCreateRequest(t *testing.T, gRPCClient event.EventInfoServiceClient, eventRequest *common.Source, packageName string) (eventInfoResponse *event.EventCreateResponse, err error) {
+func createEventCreateRequest(t *testing.T, gRPCClient deputy.DeputyQueryServiceClient, eventRequest *common.Source, packageName string) (eventInfoResponse *deputy.DeputyCreateResponse, err error) {
 	token := os.Getenv("TEST_DEPUTY_TOKEN")
 	if err := library.PublishTestPackage(packageName, token); err != nil {
 		t.Fatalf("Failed to upload test Event package: %v", err)
@@ -102,7 +87,7 @@ func createEventCreateRequest(t *testing.T, gRPCClient event.EventInfoServiceCli
 	return
 }
 
-func createBannerCreateRequest(t *testing.T, gRPCClient deputy.DeputyQueryServiceClient, bannerRequest *common.Source, packageName string) (bannerResponse *deputy.BannerCreateResponse, err error) {
+func createBannerCreateRequest(t *testing.T, gRPCClient deputy.DeputyQueryServiceClient, bannerRequest *common.Source, packageName string) (bannerResponse *deputy.DeputyCreateResponse, err error) {
 	token := os.Getenv("TEST_DEPUTY_TOKEN")
 	if err := library.PublishTestPackage(packageName, token); err != nil {
 		t.Fatalf("Failed to upload test Banner package: %v", err)
@@ -120,7 +105,7 @@ func createBannerCreateRequest(t *testing.T, gRPCClient deputy.DeputyQueryServic
 
 func TestCreateEventInfo(t *testing.T) {
 	configuration := startServer(3 * time.Second)
-	gRPCClient := createEventClient(t, configuration.ServerAddress)
+	gRPCClient := createDeputyQueryClient(t, configuration.ServerAddress)
 
 	request := &common.Source{
 		Name:    "handler-test-event-info",
@@ -140,7 +125,7 @@ func TestCreateEventInfo(t *testing.T) {
 func TestStreamEventInfo(t *testing.T) {
 	ctx := context.Background()
 	configuration := startServer(3 * time.Second)
-	gRPCClient := createEventClient(t, configuration.ServerAddress)
+	gRPCClient := createDeputyQueryClient(t, configuration.ServerAddress)
 
 	request := &common.Source{
 		Name:    "handler-test-event-info",
