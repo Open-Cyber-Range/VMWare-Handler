@@ -9,7 +9,7 @@ services:
       - ./development-configs/deputy-cli-configuration.toml:/home/vscode/.deputy/configuration.toml
     user: vscode
     ports:
-      - 8080:8080
+      - "8080:8080"
 
   vmware-handler-mariadb:
     image: nexus.ocr.cr14.net:8003/mariadb:10.7
@@ -30,6 +30,6 @@ services:
     restart: always
     command: ["redis-server", "/etc/redis/redis.conf"]
     ports:
-      - 6380:6380
+      - "6380:6380"
     volumes:
       - ./development-configs/redis-configuration.conf:/etc/redis/redis.conf
