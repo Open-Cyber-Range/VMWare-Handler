@@ -192,7 +192,7 @@ func (server *conditionerServer) Stream(identifier *common.Identifier, stream co
 			return status.Error(codes.Internal, fmt.Sprintf("Error unlocking mutex: %v", err))
 		}
 		if executeErr != nil {
-			log.Errorf("Error executing condition package action %v", err)
+			log.Errorf("Error executing condition package action %v", executeErr)
 			return status.Error(codes.Internal, fmt.Sprintf("Error executing condition package action: %v", executeErr))
 		}
 		conditionValue, err := strconv.ParseFloat(stdout, 32)
@@ -252,7 +252,7 @@ func (server *featurerServer) Create(ctx context.Context, featureDeployment *fea
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Error unlocking mutex: %v", err))
 	}
 	if installErr != nil {
-		log.Errorf("Error installing feature package on VM: %v", err)
+		log.Errorf("Error installing feature package on VM: %v", installErr)
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Error installing feature package on VM: %v", installErr))
 	}
 
@@ -296,7 +296,7 @@ func (server *injectServer) Create(ctx context.Context, injectDeployment *inject
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Error unlocking mutex: %v", err))
 	}
 	if installErr != nil {
-		log.Errorf("Error installing inject package on vm: %v", err)
+		log.Errorf("Error installing inject package on vm: %v", installErr)
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Error installing inject package on vm: %v", installErr))
 	}
 
