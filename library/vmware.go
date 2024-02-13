@@ -143,7 +143,7 @@ func NewVMWareClient(ctx context.Context, client *govmomi.Client, configuration 
 
 	err := mo.RetrieveProperties(context.Background(), client, client.ServiceContent.PropertyCollector, *client.ServiceContent.SessionManager, &mgr)
 	if err != nil {
-        log.Printf("Failed to connect to VMWare: %v", err)
+        log.Errorf("Failed to connect to VMWare: %v", err)
         return VMWareClient{}, err
     }
 
