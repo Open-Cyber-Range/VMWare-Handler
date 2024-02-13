@@ -85,9 +85,10 @@ func (templateDeployment *TemplateDeployment) ImportOVA(filePath string, client 
 	defer updater.Done()
 
 	for _, i := range info.Items {
-		ovaArchive.Upload(ctx, lease, i)
+		err := ovaArchive.Upload(ctx, lease, i)
 		if err != nil {
-			return
+			log.Errorf("Failed to upload template (%v): %v", templateDeployment.templateName, err)
+			return nil, err
 		}
 	}
 
