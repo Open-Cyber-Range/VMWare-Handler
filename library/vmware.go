@@ -12,6 +12,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -24,6 +25,7 @@ import (
 	"github.com/vmware/govmomi/guest"
 	"github.com/vmware/govmomi/guest/toolbox"
 	"github.com/vmware/govmomi/object"
+	"github.com/vmware/govmomi/property"
 	"github.com/vmware/govmomi/session"
 	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/soap"
@@ -419,6 +421,101 @@ func (vmwareClient *VMWareClient) DeleteUploadedFiles(ctx context.Context, execu
 		log.Infof("Deleted %v", targetFile)
 	}
 	return nil
+}
+
+func (vmwareClient *VMWareClient) PickHostSystem(ctx context.Context) (*object.HostSystem, error) {
+
+	finder, _, err := vmwareClient.CreateFinderAndDatacenter()
+	if err != nil {
+		log.Errorf("error creating finder and datacenter")
+		return nil, err
+	}
+
+	hostSystems, err := finder.HostSystemList(ctx, "*")
+	if err != nil {
+		log.Errorf("error getting host systems: %v", err)
+		return nil, err
+	}
+
+	sort.Slice(hostSystems, func(i, j int) bool {
+		return hostSystems[i].Name() < hostSystems[j].Name()
+	})
+
+	hostSystem := hostSystems[len(hostSystems)-1]
+
+	return hostSystem, nil
+}
+
+func (vmwareClient *VMWareClient) CreateTmpNetwork(ctx context.Context, hostSystem *object.HostSystem, hostNetworkSystem *object.HostNetworkSystem) (err error) {
+
+	hostConfigManager := object.NewHostConfigManager(vmwareClient.Client.Client, hostSystem.Reference())
+	networkSystem, err := hostConfigManager.NetworkSystem(ctx)
+	if err != nil {
+		log.Errorf("error getting network system: %v", err)
+		return err
+	}
+
+	var networkConfig mo.HostNetworkSystem
+	err = property.DefaultCollector(vmwareClient.Client.Client).RetrieveOne(ctx, networkSystem.Reference(), []string{"networkConfig"}, &networkConfig)
+	if err != nil {
+		log.Errorf("error getting network config: %v", err)
+		return err
+	}
+
+	vSwitchExists := false
+	for _, vSwitch := range networkConfig.NetworkConfig.Vswitch {
+		if vSwitch.Name == TmpSwitchName {
+			vSwitchExists = true
+			break
+		}
+	}
+
+	portGroupExists := false
+	for _, portGroup := range networkConfig.NetworkConfig.Portgroup {
+		if portGroup.Spec.Name == TmpPortGroupName {
+			portGroupExists = true
+			break
+		}
+	}
+
+	if !vSwitchExists {
+		err = hostNetworkSystem.AddVirtualSwitch(ctx, TmpSwitchName, &types.HostVirtualSwitchSpec{
+			NumPorts: 8,
+		})
+		if err != nil {
+			log.Errorf("error creating new standard vSwitch: %v", err)
+			return err
+		}
+	}
+
+	if !portGroupExists {
+		err = hostNetworkSystem.AddPortGroup(ctx, types.HostPortGroupSpec{
+			Name:        TmpPortGroupName,
+			VswitchName: TmpSwitchName,
+			Policy:      types.HostNetworkPolicy{},
+			VlanId:      0,
+		})
+		if err != nil {
+			log.Errorf("error creating new port group: %v", err)
+			return err
+		}
+	}
+	return
+}
+
+func (vmwareClient *VMWareClient) CleanupTmpNetwork(ctx context.Context, hostNetworkSystem *object.HostNetworkSystem) error {
+	err := hostNetworkSystem.RemovePortGroup(ctx, TmpPortGroupName)
+	if err != nil {
+		log.Errorf("error removing tmp port group: %v", err)
+		return err
+	}
+
+	err = hostNetworkSystem.RemoveVirtualSwitch(ctx, TmpSwitchName)
+	if err != nil {
+		log.Errorf("error removing tmp virtual switch: %v", err)
+		return err
+	}
+	return err
 }
 
 func normalizePackageTargetPath(sourcePath string, destinationPath string) string {
