@@ -64,11 +64,7 @@ func creategRPCClient(t *testing.T, serverPath string) template.TemplateServiceC
 	return template.NewTemplateServiceClient(connection)
 }
 
-func createTemplate(t *testing.T, client template.TemplateServiceClient) string {
-	templateSource := &common.Source{
-		Name:    "alpine-minimal",
-		Version: "*",
-	}
+func createTemplate(t *testing.T, client template.TemplateServiceClient, templateSource *common.Source) string {
 
 	creationResult, err := client.Create(context.Background(), templateSource)
 	if err != nil {
@@ -94,10 +90,48 @@ func TestTemplateCreation(t *testing.T) {
 	}
 	serverConfiguration, err := startServer(time.Second * 3)
 	gRPCClient := creategRPCClient(t, serverConfiguration.ServerAddress)
-	uuid := createTemplate(t, gRPCClient)
+
+	templateSource := &common.Source{
+		Name:    "alpine-minimal",
+		Version: "*",
+	}
+
+	uuid := createTemplate(t, gRPCClient, templateSource)
 	if err != nil {
 		t.Fatalf("Failed to create test server: %v", err)
 	}
+	t.Cleanup(func() {
+		cleanupError := vmwareClient.DeleteVirtualMachineByUUID(uuid)
+		if cleanupError != nil {
+			t.Fatalf("Failed to cleanup: %v", cleanupError)
+		}
+	})
+}
+
+func TestTemplateCreationWithNIC(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	govmomiClient, govmomiClientError := testConfiguration.CreateClient(ctx)
+	if govmomiClientError != nil {
+		t.Fatalf("Failed to create govmomi client: %v", govmomiClientError)
+	}
+	serverConfiguration, err := startServer(time.Second * 3)
+	gRPCClient := creategRPCClient(t, serverConfiguration.ServerAddress)
+
+	templateWithNicSource := &common.Source{
+		Name:    "handler-nic-test",
+		Version: "*",
+	}
+	vmwareClient, loginError := library.NewVMWareClient(ctx, govmomiClient, testConfiguration)
+	if loginError != nil {
+		t.Fatalf("Failed to login: %v", loginError)
+	}
+
+	uuid := createTemplate(t, gRPCClient, templateWithNicSource)
+	if err != nil {
+		t.Fatalf("Failed to create test server: %v", err)
+	}
+
 	t.Cleanup(func() {
 		cleanupError := vmwareClient.DeleteVirtualMachineByUUID(uuid)
 		if cleanupError != nil {
