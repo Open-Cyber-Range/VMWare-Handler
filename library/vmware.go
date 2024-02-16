@@ -806,7 +806,7 @@ func (guestManager *GuestManager) ExecutePackageAction(ctx context.Context, acti
 			Stderr: stderrBuffer,
 		}
 
-		log.Infof("Executing Action: %v, Input environment: %v, Final Environment: %v", action, environment, combinedEnvironment)
+		log.Debugf("Executing Action: %v, Input environment: %v, Final Environment: %v", action, environment, combinedEnvironment)
 		runErr := guestManager.Toolbox.Run(ctx, cmd)
 		if runErr != nil {
 			log.Errorf("Error executing command. Error: %v. Stdout: %v. Stderr: %v", runErr, stdoutBuffer.String(), stderrBuffer.String())
