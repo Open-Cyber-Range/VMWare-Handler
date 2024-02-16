@@ -893,27 +893,43 @@ func (guestManager *GuestManager) CopyAssetsToVM(ctx context.Context, assets [][
 }
 
 func (guestManager *GuestManager) UploadPackageContents(ctx context.Context, source *common.Source) (ExecutorPackage, []string, error) {
-	if err := AwaitVMToolsToComeOnline(ctx, guestManager.VirtualMachine, guestManager.configuration); err != nil {
-		return ExecutorPackage{}, nil, err
-	}
+	var tries = int(guestManager.configuration.ExecutorRunTimeoutSec / guestManager.configuration.ExecutorRunRetrySec)
+	for tries > 0 {
+		tries -= 1
+		if err := AwaitVMToolsToComeOnline(ctx, guestManager.VirtualMachine, guestManager.configuration); err != nil {
+			return ExecutorPackage{}, nil, err
+		}
 
-	packagePath, executorPackage, err := GetPackageMetadata(
-		source.GetName(),
-		source.GetVersion(),
-	)
-	if err != nil {
-		return ExecutorPackage{}, nil, err
-	}
+		packagePath, executorPackage, err := GetPackageMetadata(
+			source.GetName(),
+			source.GetVersion(),
+		)
+		if err != nil {
+			return ExecutorPackage{}, nil, err
+		}
 
-	assetFilePaths, err := guestManager.CopyAssetsToVM(ctx, executorPackage.PackageBody.Assets, packagePath)
-	if err != nil {
-		return ExecutorPackage{}, nil, err
-	}
-	if err = CleanupTempPackage(packagePath); err != nil {
-		return ExecutorPackage{}, nil, fmt.Errorf("error during temp package cleanup (%v)", err)
-	}
+		assetFilePaths, err := guestManager.CopyAssetsToVM(ctx, executorPackage.PackageBody.Assets, packagePath)
+		if err != nil {
+			if !isRebootRelatedError(err) {
+				return ExecutorPackage{}, nil, err
+			}
 
-	return executorPackage, assetFilePaths, nil
+			if err = AwaitVMToolsToComeOnline(ctx, guestManager.VirtualMachine, guestManager.configuration); err != nil {
+				return ExecutorPackage{}, nil, err
+			}
+			time.Sleep(time.Duration(guestManager.configuration.ExecutorRunRetrySec) * time.Second)
+			err = nil
+
+			continue
+		}
+
+		if err = CleanupTempPackage(packagePath); err != nil {
+			return ExecutorPackage{}, nil, fmt.Errorf("error during temp package cleanup (%v)", err)
+		}
+
+		return executorPackage, assetFilePaths, nil
+	}
+	return ExecutorPackage{}, nil, fmt.Errorf("timeout uploading package contents to VM UUID: %v", guestManager.VirtualMachine.UUID(ctx))
 }
 
 func (guestManager *GuestManager) Reboot(ctx context.Context) (err error) {
