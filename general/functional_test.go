@@ -314,3 +314,24 @@ func TestStreamBanner(t *testing.T) {
 		t.Fatalf("Failed to delete event: %v", err)
 	}
 }
+
+func TestCheckPackageExists(t *testing.T) {
+	ctx := context.Background()
+	configuration := startServer(3 * time.Second)
+	gRPCClient := createDeputyQueryClient(t, configuration.ServerAddress)
+
+	request := &common.Source{
+		Name:    "handler-test-exercise",
+		Version: "*",
+	}
+
+	token := os.Getenv("TEST_DEPUTY_TOKEN")
+	if err := library.PublishTestPackage(request.Name, token); err != nil {
+		t.Fatalf("Failed to upload test Exercise package: %v", err)
+	}
+
+	_, err := gRPCClient.CheckPackageExists(ctx, request)
+	if err != nil {
+		t.Fatalf("Validate request error: %v", err)
+	}
+}

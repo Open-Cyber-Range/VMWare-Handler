@@ -185,6 +185,23 @@ func (server *deputyQueryServer) GetScenario(ctx context.Context, source *common
 	return &deputy.GetScenarioResponse{Sdl: string(fileContents)}, nil
 }
 
+func (server *deputyQueryServer) CheckPackageExists(ctx context.Context, source *common.Source) (*emptypb.Empty, error) {
+	checksum, checksumError := library.GetPackageChecksum(
+		source.GetName(),
+		source.GetVersion(),
+	)
+	if checksumError != nil {
+		log.Errorf("Error getting package checksum: %v", checksumError)
+		return &emptypb.Empty{}, status.Error(codes.Internal, fmt.Sprintf("Failed to get package checksum (%v)", checksumError))
+	}
+	if checksum == "" {
+		log.Errorf("Checksum is empty")
+		return &emptypb.Empty{}, status.Error(codes.Internal, "Checksum is empty")
+	}
+
+	return &emptypb.Empty{}, nil
+}
+
 func RealMain(configuration *library.Configuration) {
 	listeningAddress, addressError := net.Listen("tcp", configuration.ServerAddress)
 	if addressError != nil {
