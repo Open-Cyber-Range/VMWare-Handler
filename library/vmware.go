@@ -145,9 +145,9 @@ func NewVMWareClient(ctx context.Context, client *govmomi.Client, configuration 
 
 	err := mo.RetrieveProperties(context.Background(), client, client.ServiceContent.PropertyCollector, *client.ServiceContent.SessionManager, &mgr)
 	if err != nil {
-        log.Errorf("Failed to connect to VMWare: %v", err)
-        return VMWareClient{}, err
-    }
+		log.Errorf("Failed to connect to VMWare: %v", err)
+		return VMWareClient{}, err
+	}
 
 	return VMWareClient{
 		Client:        client,
@@ -806,7 +806,7 @@ func (guestManager *GuestManager) ExecutePackageAction(ctx context.Context, acti
 			Stderr: stderrBuffer,
 		}
 
-		log.Infof("Executing Action: %v, Input environment: %v, Final Environment: %v", action, environment, combinedEnvironment)
+		log.Debugf("Executing Action: %v, Input environment: %v, Final Environment: %v", action, environment, combinedEnvironment)
 		runErr := guestManager.Toolbox.Run(ctx, cmd)
 		if runErr != nil {
 			log.Errorf("Error executing command. Error: %v. Stdout: %v. Stderr: %v", runErr, stdoutBuffer.String(), stderrBuffer.String())
@@ -893,27 +893,43 @@ func (guestManager *GuestManager) CopyAssetsToVM(ctx context.Context, assets [][
 }
 
 func (guestManager *GuestManager) UploadPackageContents(ctx context.Context, source *common.Source) (ExecutorPackage, []string, error) {
-	if err := AwaitVMToolsToComeOnline(ctx, guestManager.VirtualMachine, guestManager.configuration); err != nil {
-		return ExecutorPackage{}, nil, err
-	}
+	var tries = int(guestManager.configuration.ExecutorRunTimeoutSec / guestManager.configuration.ExecutorRunRetrySec)
+	for tries > 0 {
+		tries -= 1
+		if err := AwaitVMToolsToComeOnline(ctx, guestManager.VirtualMachine, guestManager.configuration); err != nil {
+			return ExecutorPackage{}, nil, err
+		}
 
-	packagePath, executorPackage, err := GetPackageMetadata(
-		source.GetName(),
-		source.GetVersion(),
-	)
-	if err != nil {
-		return ExecutorPackage{}, nil, err
-	}
+		packagePath, executorPackage, err := GetPackageMetadata(
+			source.GetName(),
+			source.GetVersion(),
+		)
+		if err != nil {
+			return ExecutorPackage{}, nil, err
+		}
 
-	assetFilePaths, err := guestManager.CopyAssetsToVM(ctx, executorPackage.PackageBody.Assets, packagePath)
-	if err != nil {
-		return ExecutorPackage{}, nil, err
-	}
-	if err = CleanupTempPackage(packagePath); err != nil {
-		return ExecutorPackage{}, nil, fmt.Errorf("error during temp package cleanup (%v)", err)
-	}
+		assetFilePaths, err := guestManager.CopyAssetsToVM(ctx, executorPackage.PackageBody.Assets, packagePath)
+		if err != nil {
+			if !isRebootRelatedError(err) {
+				return ExecutorPackage{}, nil, err
+			}
 
-	return executorPackage, assetFilePaths, nil
+			if err = AwaitVMToolsToComeOnline(ctx, guestManager.VirtualMachine, guestManager.configuration); err != nil {
+				return ExecutorPackage{}, nil, err
+			}
+			time.Sleep(time.Duration(guestManager.configuration.ExecutorRunRetrySec) * time.Second)
+			err = nil
+
+			continue
+		}
+
+		if err = CleanupTempPackage(packagePath); err != nil {
+			return ExecutorPackage{}, nil, fmt.Errorf("error during temp package cleanup (%v)", err)
+		}
+
+		return executorPackage, assetFilePaths, nil
+	}
+	return ExecutorPackage{}, nil, fmt.Errorf("timeout uploading package contents to VM UUID: %v", guestManager.VirtualMachine.UUID(ctx))
 }
 
 func (guestManager *GuestManager) Reboot(ctx context.Context) (err error) {
