@@ -118,7 +118,7 @@ test-general: build-general
 	go test -v -count=1 ./general
 
 test-deputy: build-general
-	go test -v -count=1 ./general -run "(TestGetDeputyPackagesByType|TestGetScenario|TestCheckPackageChecksum)"
+	go test -v -count=1 ./general -run "(TestGetDeputyPackagesByType|TestGetScenario|TestCheckPackageExists|TestCheckPackageDoesntExist)"
 
 test-library:
 	go test -v -count=1 ./library

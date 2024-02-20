@@ -335,3 +335,20 @@ func TestCheckPackageExists(t *testing.T) {
 		t.Fatalf("Validate request error: %v", err)
 	}
 }
+
+func TestCheckPackageDoesntExist(t *testing.T) {
+	ctx := context.Background()
+	configuration := startServer(3 * time.Second)
+	gRPCClient := createDeputyQueryClient(t, configuration.ServerAddress)
+
+	request := &common.Source{
+		Name:    "package-does-not-exist",
+		Version: "*",
+	}
+
+	_, err := gRPCClient.CheckPackageExists(ctx, request)
+
+	if err == nil {
+		t.Fatalf("Validation should have failed with non-existent package")
+	}
+}
