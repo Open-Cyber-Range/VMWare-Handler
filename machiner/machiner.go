@@ -222,7 +222,11 @@ func (server *virtualMachineServer) Delete(ctx context.Context, identifier *comm
 		Configuration: server.Configuration,
 	}
 
-	virtualMachine, _ := deployment.Client.GetVirtualMachineByUUID(ctx, uuid)
+	virtualMachine, err := deployment.Client.GetVirtualMachineByUUID(ctx, uuid)
+	if err != nil {
+		log.Errorf("Failed to delete Virtual Machine (%v)", err)
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to delete Virtual Machine (%v)", err))
+	}
 	virtualMachineName, virtualMachineNameError := virtualMachine.ObjectName(ctx)
 	if virtualMachineNameError != nil {
 		log.Errorf("Node name retrieval error (%v)", virtualMachineNameError)
