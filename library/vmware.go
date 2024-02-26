@@ -12,6 +12,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -24,6 +25,7 @@ import (
 	"github.com/vmware/govmomi/guest"
 	"github.com/vmware/govmomi/guest/toolbox"
 	"github.com/vmware/govmomi/object"
+	"github.com/vmware/govmomi/property"
 	"github.com/vmware/govmomi/session"
 	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/soap"
@@ -137,6 +139,14 @@ func NewVMWareClient(ctx context.Context, client *govmomi.Client, configuration 
 		if loginError != nil {
 			return VMWareClient{}, loginError
 		}
+	}
+
+	var mgr mo.SessionManager
+
+	err := mo.RetrieveProperties(context.Background(), client, client.ServiceContent.PropertyCollector, *client.ServiceContent.SessionManager, &mgr)
+	if err != nil {
+		log.Errorf("Failed to connect to VMWare: %v", err)
+		return VMWareClient{}, err
 	}
 
 	return VMWareClient{
@@ -421,6 +431,101 @@ func (vmwareClient *VMWareClient) DeleteUploadedFiles(ctx context.Context, execu
 	return nil
 }
 
+func (vmwareClient *VMWareClient) PickHostSystem(ctx context.Context) (*object.HostSystem, error) {
+
+	finder, _, err := vmwareClient.CreateFinderAndDatacenter()
+	if err != nil {
+		log.Errorf("error creating finder and datacenter")
+		return nil, err
+	}
+
+	hostSystems, err := finder.HostSystemList(ctx, "*")
+	if err != nil {
+		log.Errorf("error getting host systems: %v", err)
+		return nil, err
+	}
+
+	sort.Slice(hostSystems, func(i, j int) bool {
+		return hostSystems[i].Name() < hostSystems[j].Name()
+	})
+
+	hostSystem := hostSystems[len(hostSystems)-1]
+
+	return hostSystem, nil
+}
+
+func (vmwareClient *VMWareClient) CreateTmpNetwork(ctx context.Context, hostSystem *object.HostSystem, hostNetworkSystem *object.HostNetworkSystem) (err error) {
+
+	hostConfigManager := object.NewHostConfigManager(vmwareClient.Client.Client, hostSystem.Reference())
+	networkSystem, err := hostConfigManager.NetworkSystem(ctx)
+	if err != nil {
+		log.Errorf("error getting network system: %v", err)
+		return err
+	}
+
+	var networkConfig mo.HostNetworkSystem
+	err = property.DefaultCollector(vmwareClient.Client.Client).RetrieveOne(ctx, networkSystem.Reference(), []string{"networkConfig"}, &networkConfig)
+	if err != nil {
+		log.Errorf("error getting network config: %v", err)
+		return err
+	}
+
+	vSwitchExists := false
+	for _, vSwitch := range networkConfig.NetworkConfig.Vswitch {
+		if vSwitch.Name == TmpSwitchName {
+			vSwitchExists = true
+			break
+		}
+	}
+
+	portGroupExists := false
+	for _, portGroup := range networkConfig.NetworkConfig.Portgroup {
+		if portGroup.Spec.Name == TmpPortGroupName {
+			portGroupExists = true
+			break
+		}
+	}
+
+	if !vSwitchExists {
+		err = hostNetworkSystem.AddVirtualSwitch(ctx, TmpSwitchName, &types.HostVirtualSwitchSpec{
+			NumPorts: 8,
+		})
+		if err != nil {
+			log.Errorf("error creating new standard vSwitch: %v", err)
+			return err
+		}
+	}
+
+	if !portGroupExists {
+		err = hostNetworkSystem.AddPortGroup(ctx, types.HostPortGroupSpec{
+			Name:        TmpPortGroupName,
+			VswitchName: TmpSwitchName,
+			Policy:      types.HostNetworkPolicy{},
+			VlanId:      0,
+		})
+		if err != nil {
+			log.Errorf("error creating new port group: %v", err)
+			return err
+		}
+	}
+	return
+}
+
+func (vmwareClient *VMWareClient) CleanupTmpNetwork(ctx context.Context, hostNetworkSystem *object.HostNetworkSystem) error {
+	err := hostNetworkSystem.RemovePortGroup(ctx, TmpPortGroupName)
+	if err != nil {
+		log.Errorf("error removing tmp port group: %v", err)
+		return err
+	}
+
+	err = hostNetworkSystem.RemoveVirtualSwitch(ctx, TmpSwitchName)
+	if err != nil {
+		log.Errorf("error removing tmp virtual switch: %v", err)
+		return err
+	}
+	return err
+}
+
 func normalizePackageTargetPath(sourcePath string, destinationPath string) string {
 
 	const unixPathSeparator = "/"
@@ -701,7 +806,7 @@ func (guestManager *GuestManager) ExecutePackageAction(ctx context.Context, acti
 			Stderr: stderrBuffer,
 		}
 
-		log.Infof("Executing Action: %v, Input environment: %v, Final Environment: %v", action, environment, combinedEnvironment)
+		log.Debugf("Executing Action: %v, Input environment: %v, Final Environment: %v", action, environment, combinedEnvironment)
 		runErr := guestManager.Toolbox.Run(ctx, cmd)
 		if runErr != nil {
 			log.Errorf("Error executing command. Error: %v. Stdout: %v. Stderr: %v", runErr, stdoutBuffer.String(), stderrBuffer.String())
@@ -788,27 +893,43 @@ func (guestManager *GuestManager) CopyAssetsToVM(ctx context.Context, assets [][
 }
 
 func (guestManager *GuestManager) UploadPackageContents(ctx context.Context, source *common.Source) (ExecutorPackage, []string, error) {
-	if err := AwaitVMToolsToComeOnline(ctx, guestManager.VirtualMachine, guestManager.configuration); err != nil {
-		return ExecutorPackage{}, nil, err
-	}
+	var tries = int(guestManager.configuration.ExecutorRunTimeoutSec / guestManager.configuration.ExecutorRunRetrySec)
+	for tries > 0 {
+		tries -= 1
+		if err := AwaitVMToolsToComeOnline(ctx, guestManager.VirtualMachine, guestManager.configuration); err != nil {
+			return ExecutorPackage{}, nil, err
+		}
 
-	packagePath, executorPackage, err := GetPackageMetadata(
-		source.GetName(),
-		source.GetVersion(),
-	)
-	if err != nil {
-		return ExecutorPackage{}, nil, err
-	}
+		packagePath, executorPackage, err := GetPackageMetadata(
+			source.GetName(),
+			source.GetVersion(),
+		)
+		if err != nil {
+			return ExecutorPackage{}, nil, err
+		}
 
-	assetFilePaths, err := guestManager.CopyAssetsToVM(ctx, executorPackage.PackageBody.Assets, packagePath)
-	if err != nil {
-		return ExecutorPackage{}, nil, err
-	}
-	if err = CleanupTempPackage(packagePath); err != nil {
-		return ExecutorPackage{}, nil, fmt.Errorf("error during temp package cleanup (%v)", err)
-	}
+		assetFilePaths, err := guestManager.CopyAssetsToVM(ctx, executorPackage.PackageBody.Assets, packagePath)
+		if err != nil {
+			if !isRebootRelatedError(err) {
+				return ExecutorPackage{}, nil, err
+			}
 
-	return executorPackage, assetFilePaths, nil
+			if err = AwaitVMToolsToComeOnline(ctx, guestManager.VirtualMachine, guestManager.configuration); err != nil {
+				return ExecutorPackage{}, nil, err
+			}
+			time.Sleep(time.Duration(guestManager.configuration.ExecutorRunRetrySec) * time.Second)
+			err = nil
+
+			continue
+		}
+
+		if err = CleanupTempPackage(packagePath); err != nil {
+			return ExecutorPackage{}, nil, fmt.Errorf("error during temp package cleanup (%v)", err)
+		}
+
+		return executorPackage, assetFilePaths, nil
+	}
+	return ExecutorPackage{}, nil, fmt.Errorf("timeout uploading package contents to VM UUID: %v", guestManager.VirtualMachine.UUID(ctx))
 }
 
 func (guestManager *GuestManager) Reboot(ctx context.Context) (err error) {

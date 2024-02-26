@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/xml"
 	"fmt"
 	"io"
 	"path"
@@ -9,6 +10,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/vmware/govmomi/govc/importx"
 	"github.com/vmware/govmomi/nfc"
+	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/ovf"
 	"github.com/vmware/govmomi/vim25"
 	"github.com/vmware/govmomi/vim25/soap"
@@ -17,6 +19,30 @@ import (
 
 type Archive struct {
 	importx.TapeArchive
+}
+
+type Envelope struct {
+	XMLName        xml.Name       `xml:"Envelope"`
+	NetworkSection NetworkSection `xml:"NetworkSection"`
+}
+
+type NetworkSection struct {
+	Info    string    `xml:"Info"`
+	Network []Network `xml:"Network"`
+}
+
+type Network struct {
+	Name        string `xml:"name,attr"`
+	Description string `xml:"Description"`
+}
+
+func parseOVF(ovfBytes []byte) (*Envelope, error) {
+	var envelope Envelope
+	err := xml.Unmarshal(ovfBytes, &envelope)
+	if err != nil {
+		return nil, err
+	}
+	return &envelope, nil
 }
 
 func (templateDeployment *TemplateDeployment) readOvf(ovaArchive *Archive) (ovfBytes []byte, err error) {
@@ -31,6 +57,7 @@ func (templateDeployment *TemplateDeployment) readOvf(ovaArchive *Archive) (ovfB
 }
 
 func (templateDeployment *TemplateDeployment) ImportOVA(filePath string, client *vim25.Client) (importObject *types.ManagedObjectReference, err error) {
+	ctx := context.Background()
 	ovaArchive := Archive{
 		TapeArchive: importx.TapeArchive{
 			Path: filePath,
@@ -44,12 +71,40 @@ func (templateDeployment *TemplateDeployment) ImportOVA(filePath string, client 
 		return
 	}
 
+	ovfEnvelope, err := parseOVF(ovfBytes)
+	if err != nil {
+		return
+	}
+
+	ovfHasNetworks := len(ovfEnvelope.NetworkSection.Network) > 0
+
+	var hostNetworkSystem *object.HostNetworkSystem
+	if ovfHasNetworks {
+		log.Infof("OVF has networks, creating temporary network infrastructure")
+
+		hostSystem, err := templateDeployment.Client.PickHostSystem(ctx)
+		if err != nil {
+			log.Errorf("error picking host system: %v", err)
+			return nil, err
+		}
+
+		hostNetworkSystem, err = hostSystem.ConfigManager().NetworkSystem(ctx)
+		if err != nil {
+			log.Errorf("error getting host network system: %v", err)
+			return nil, err
+		}
+
+		if err = templateDeployment.Client.CreateTmpNetwork(ctx, hostSystem, hostNetworkSystem); err != nil {
+			log.Errorf("error creating network infrastructure: %v", err)
+			return nil, err
+		}
+	}
+
 	cisp := types.OvfCreateImportSpecParams{
 		EntityName: templateDeployment.templateName,
 	}
-	uploadManager := ovf.NewManager(templateDeployment.Client.Client.Client)
-	ctx := context.Background()
 
+	uploadManager := ovf.NewManager(templateDeployment.Client.Client.Client)
 	resourcePool, err := templateDeployment.Client.GetResourcePool(templateDeployment.Configuration.ResourcePoolPath)
 	if err != nil {
 		log.Errorf("Failed to get resource pool: %v", err)
@@ -85,9 +140,17 @@ func (templateDeployment *TemplateDeployment) ImportOVA(filePath string, client 
 	defer updater.Done()
 
 	for _, i := range info.Items {
-		ovaArchive.Upload(ctx, lease, i)
+		err := ovaArchive.Upload(ctx, lease, i)
 		if err != nil {
-			return
+			log.Errorf("Failed to upload template (%v): %v", templateDeployment.templateName, err)
+			return nil, err
+		}
+	}
+
+	if ovfHasNetworks {
+		if err := templateDeployment.Client.CleanupTmpNetwork(ctx, hostNetworkSystem); err != nil {
+			log.Errorf("error cleaning up tmp ovf infrastructure: %v", err)
+			return nil, err
 		}
 	}
 

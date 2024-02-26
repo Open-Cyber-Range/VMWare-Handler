@@ -23,3 +23,6 @@ var PotentialRebootErrorList = []string{
 	"download(", // Toolbox Download api error
 	"3016",      // vSphere api VIX error code
 }
+
+const TmpPortGroupName = "TempNicOVFImportPortGroup"
+const TmpSwitchName = "TempNicOVFImportSwitch"
