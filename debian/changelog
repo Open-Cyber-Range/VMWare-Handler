@@ -1,3 +1,12 @@
+ranger-vmware-handlers (5.5.0) stretch; urgency=medium
+
+  * Add checking if package exists in Deputy
+  * Fix error checking for template upload
+  * Fix error handling in delete function
+  * Fix supporting OVA filed with assigned networks
+
+  -- Kristi Reispass <developers@cr14.ee>  Mon, 26 Feb 2024 11:00:00 +0200
+
 ranger-vmware-handlers (5.4.0) stretch; urgency=medium
 
   * Add support for streaming banner file from general handler
