@@ -150,14 +150,8 @@ func (server *deputyQueryServer) GetPackagesByType(ctx context.Context, query *d
 		return nil, status.Error(codes.Internal, fmt.Sprintf("%v (%v)", string(output), err))
 	}
 
-	packageList, err := library.ParseListCommandOutput(output)
-	if err != nil {
-		log.Errorf("Error parsing deputy list command output, %v", err)
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Error parsing deputy list command output, %v", err))
-	}
-
 	return &deputy.GetPackagesResponse{
-			Packages: packageList,
+			Packages: library.ParseListCommandOutput(output),
 		},
 		nil
 }

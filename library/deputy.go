@@ -194,7 +194,7 @@ func GetPackageMetadata(packageName string, packageVersion string) (packagePath 
 	return
 }
 
-func ParseListCommandOutput(commandOutput []byte) (packages []*deputy.Package, err error) {
+func ParseListCommandOutput(commandOutput []byte) (packages []*deputy.Package) {
 	trimmedString := strings.TrimSuffix(string(commandOutput), "\n")
 	packageStringList := strings.Split(trimmedString, "\n")
 	re := regexp.MustCompile(`([^/]+)/([^,]+),\s(.*)`)
@@ -202,12 +202,14 @@ func ParseListCommandOutput(commandOutput []byte) (packages []*deputy.Package, e
 	for _, packageString := range packageStringList {
 		matches := re.FindStringSubmatch(packageString)
 		if len(matches) != 4 {
-			return nil, fmt.Errorf("error parsing output of deputy list command, expected 4 matches per line, got %v", len(matches))
+			log.Errorf("Error parsing deputy list command output: (%v). Expected 4 matches got %v", packageString, len(matches))
+			return
 		}
-		packageName, packageType, packageVersion := matches[1], matches[2], matches[3]
 
+		packageName, packageType, packageVersion := matches[1], matches[2], matches[3]
 		if packageName == "" || packageType == "" || packageVersion == "" {
-			return nil, fmt.Errorf("error parsing output of deputy list command, one of the values was empty")
+			log.Errorf("Error parsing output deputy list command output: (%v), one or more of the values was empty", matches)
+			return
 		}
 
 		packages = append(packages, &deputy.Package{

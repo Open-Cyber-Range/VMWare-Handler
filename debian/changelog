@@ -1,3 +1,9 @@
+ranger-vmware-handlers (5.5.1) stretch; urgency=medium
+
+  * Fixes General Handler GetPackagesByType endpoint to correctly return an empty list when no packages are found
+
+  -- Rait Rotšan <developers@cr14.ee>  Tue, 05 Mar 2024 14:46:00 +0200
+
 ranger-vmware-handlers (5.5.0) stretch; urgency=medium
 
   * Add checking if package exists in Deputy
